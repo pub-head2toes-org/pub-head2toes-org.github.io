@@ -1,0 +1,154 @@
+/* Retro mainframe terminal styling */
+body {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: #000;
+    color: #0f0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-image:
+        radial-gradient(circle at 10% 20%, rgba(0, 255, 0, 0.05) 0.5px, transparent 0.5px),
+        radial-gradient(circle at 90% 80%, rgba(0, 255, 0, 0.03) 0.5px, transparent 0.5px),
+        radial-gradient(circle at 70% 30%, rgba(0, 255, 0, 0.02) 0.5px, transparent 0.5px);
+    background-size: 200px 200px;
+}
+
+.terminal {
+    width: 80%;
+    max-width: 800px;
+    height: 80%;
+    max-height: 600px;
+    background-color: #000;
+    border: 2px solid #0f0;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.terminal::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        linear-gradient(45deg, transparent 49%, rgba(0, 255, 0, 0.1) 50%, transparent 51%),
+        linear-gradient(-45deg, transparent 49%, rgba(0, 255, 0, 0.1) 50%, transparent 51%);
+    background-size: 20px 20px;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.menu-bar {
+    background-color: #000;
+    padding: 5px 10px;
+    border-bottom: 1px solid #0f0;
+    overflow-x: auto;
+}
+
+.menu-item {
+    display: inline-block;
+    padding: 5px 10px;
+    margin: 0 5px;
+    background-color: #0f0;
+    color: #000;
+    text-decoration: none;
+    font-weight: bold;
+    border: 1px solid #0f0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.menu-item:hover {
+    background-color: #0a0;
+    color: #fff;
+}
+
+.menu-item:active {
+    background-color: #080;
+    color: #fff;
+    transform: scale(0.98);
+}
+
+.terminal-content {
+    padding: 10px;
+    height: calc(100% - 60px);
+    /* height: 90%; */
+    display: flex;
+    flex-direction: column;
+}
+
+#cmd_line_area {
+    background-color: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    /* width: 100%; */
+    height: 50px;
+    resize: none;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    padding: 5px;
+    margin-bottom: 5px;
+    overflow: hidden;
+}
+
+#sys_msg {
+    background-color: #000;
+    color: #f00;
+    border: 1px solid #f00;
+    padding: 5px;
+    margin-bottom: 5px;
+    min-height: 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    overflow: hidden;
+}
+
+#main_area {
+    background-color: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    /* width: 100%; */
+    flex-grow: 1;
+    resize: none;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    padding: 5px;
+    overflow-y: auto;
+}
+
+/* Cursor blink effect */
+#cmd_line_area::after {
+    content: "▓";
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #0f0;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    from, to { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* Scrollbar styling */
+#main_area::-webkit-scrollbar {
+    width: 5px;
+}
+#main_area::-webkit-scrollbar-track {
+    background: #000;
+}
+#main_area::-webkit-scrollbar-thumb {
+    background: #0f0;
+    border-radius: 5px;
+}
+#main_area::-webkit-scrollbar-thumb:hover {
+    background: #0a0;
+}
