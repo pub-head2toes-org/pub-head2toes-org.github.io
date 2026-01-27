@@ -1,5 +1,5 @@
 # **Eve – Progressive Web Application (PWA) Reference Manual**
-*Your Gateway to AI on High-Performance Hardware*
+*Your Gateway to AI on High-Performance PC Hardware*
 
 ---
 
@@ -99,7 +99,22 @@ ollama list
 ## **3.2 Launching Eve**
 Once Ollama is installed and a model is pulled, you can launch **Eve** via your browser.
 
-### **Option 1: Install Eve as a PWA (Progressive Web App)**
+### **Option 1: Install Eve as a PWA (Progressive Web App) from Local Server**
+1. **Open Command Shell**:
+  - To start Eve PWA in local server open the command shell to prepare and start the local server:
+  ```bash
+  git clone https://github.com/pub-head2toes-org/pub-head2toes-org.github.io.git
+  cd pub-head2toes-org.github.io
+  python3 -m http.server
+  ```
+
+2. **Open Eve in Your Browser**:
+   - Visit the Eve PWA localhost URL: `http://localhost:8000/eve/`
+   - Optional: **Install** to add Eve to your home screen.
+
+*(Note: Need to elaborate on need to run the local server)*
+
+### **Option 2: Install Eve as a PWA (Progressive Web App)**
 1. **Open Eve in Your Browser**:
    - Visit the Eve PWA URL (e.g., `https://git.head2toes.org/eve` or a local dev server if self-hosted).
    - Click **"Install"** (Chrome/Firefox/Edge) to add Eve to your home screen.
@@ -108,8 +123,7 @@ Once Ollama is installed and a model is pulled, you can launch **Eve** via your 
    - Run the proxy server in your local machine
    - One example is the pure Node JS proxy server: [Example Proxy Server](https://stackoverflow.com/questions/20351637/how-to-create-a-simple-http-proxy-in-node-js)
 
-### **Option 2: Run Eve Hosted on Local Machine 
-*(Note: Need to elaborate on this)*
+*(Note: Need to elaborate on need to run the proxy server)*
 
 ---
 
