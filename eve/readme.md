@@ -104,12 +104,16 @@ Once Ollama is installed and a model is pulled, you can launch **Eve** via your 
   - To start Eve PWA in local server open the command shell to prepare and start the local server:
   ```bash
   git clone https://github.com/pub-head2toes-org/pub-head2toes-org.github.io.git
+  ```
+  ```bash
   cd pub-head2toes-org.github.io
+  ```
+  ```bash
   python3 -m http.server
   ```
 
 2. **Open Eve in Your Browser**:
-   - Visit the Eve PWA localhost URL: `http://localhost:8000/eve/`
+   - Visit the Eve PWA localhost URL: ```bash http://localhost:8000/eve/```
    - Optional: **Install** to add Eve to your home screen.
 
 *(Note: Need to elaborate on need to run the local server)*
