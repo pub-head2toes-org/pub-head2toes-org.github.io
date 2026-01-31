@@ -28,7 +28,8 @@ class OllamaAPI {
       const data = await response.json();
       return { content: data.message.content, time: time };
     } catch (error) {
-      console.error('Error calling Ollama API:', error);
+      const t = (Date.now() - start)/1000;
+      console.error('Error calling Ollama API:[${t}]', error);
       throw error;
     }
   }
