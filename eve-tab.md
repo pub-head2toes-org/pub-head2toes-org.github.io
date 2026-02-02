@@ -72,7 +72,7 @@ Eve allows you to easily save and share your conversations:
 
 **Ready to Dive In?**
 
-[Link to Eve's Get Started Documentation]:  (https://github.com/pub-head2toes-org/pub-head2toes-org.github.io/tree/main/eve)
+[Link to Eve's Get Started Documentation](https://github.com/pub-head2toes-org/pub-head2toes-org.github.io/tree/main/eve)
 
 **Start your AI journey today with Eve – the PWA that puts the power of AI directly into your hands!**
 
