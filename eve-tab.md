@@ -5,7 +5,7 @@
 
 **Unlock the Power of AI – Locally – with Eve: Your Personal AI Hub**
 
-**(Image: A visually appealing screenshot of the Eve PWA interface – showing a clean, modern design with a conversation window and perhaps a visual representation of an LLM.)**
+![eve](https://git.head2toes.org/eve/icon-512x512.png)
 
 Are you ready to experience the power of Large Language Models (LLMs) without the hassle of complicated installations and cloud-based subscriptions?  Introducing **Eve**, a friendly Progressive Web App (PWA) that brings the best of AI directly to your local machine.  Whether you're a gamer, a creative professional, a developer, or simply a tech enthusiast, Eve lets you effortlessly explore and experiment with AI on your MacBook Pro, gaming PC, or even a Raspberry Pi.
 
@@ -72,7 +72,7 @@ Eve allows you to easily save and share your conversations:
 
 **Ready to Dive In?**
 
-[Link to Eve's Get Started Documentation]:  (https://github.com/pub-head2toes-org/pub-head2toes-org.github.io/tree/main/eve)
+[Link to Eve's Get Started Documentation](https://github.com/pub-head2toes-org/pub-head2toes-org.github.io/tree/main/eve)
 
 **Start your AI journey today with Eve – the PWA that puts the power of AI directly into your hands!**
 
