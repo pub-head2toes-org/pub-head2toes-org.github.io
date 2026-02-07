@@ -51,7 +51,7 @@ Derek, ever the optimist, raised his glass. *"But hey-at least we're all sober n
 
 Marlon shot him a look. *"Shut up, Derek."*
 
-Lena smirked. *"Or maybe… maybe this is the universe's way of saying we've been doing it wrong for too long."*
+Lena smirked. *"Or maybe... maybe this is the universe's way of saying we've been doing it wrong for too long."*
 
 Rook didn't smile, but for the first time in years, he didn't scowl either.
 
