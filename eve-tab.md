@@ -1,4 +1,4 @@
-# **Eve – Progressive Web Application (PWA)**
+# **PWA Eve – Progressive Web Application (PWA)**
 *Your Gateway to AI on High-Performance PC Hardware*
 
 ---
@@ -35,16 +35,10 @@ Traditional AI tools can be daunting. Eve changes that. It's designed for ease o
 Here's how to quickly get Eve up and running:
 
 1.  **Install Ollama:** Ollama is the foundation of Eve. It's a lightweight platform that allows you to run LLMs locally.
-    *   **macOS:** Download the `.dmg` from [https://ollama.com/download](https://ollama.com/download) and drag **Ollama** to your Applications folder.
-    *   **Windows:** Download the `.exe` installer from the same link and follow the prompts.
-    *   **Linux:**  Use the install script: `curl -fsSL https://ollama.com/install.sh | sh` (Check the Ollama documentation for specific instructions for your Linux distribution)
-    *   **Raspberry Pi:**  Install via `.deb` package or the install script mentioned above. *Important:* Ensure you're running a 64-bit OS for optimal performance.
 
-2.  **Pull an AI Model:** Once Ollama is installed, you need to choose a model to use with Eve.
-    *   Type `ollama list` in your terminal. This shows you the available models.
-    *   To pull a model (e.g., ‘gemma3'), type `ollama pull gemma3`.
+2.  **Pull an AI Model:** Once Ollama is installed, you need to choose a LLM model.
 
-3.  **Launch Eve:** Next, pool Eve's repo from github, start the local http server using python command line and open Eve in your browser. For more details, navigate to the URL provided in the Eve documentation.
+3.  **Launch Eve:** Next, pool Eve's repo from github, start the local http server using python in the command line and open PWA Eve in your browser. For more details, navigate to the URL provided in the [Eve documentation](https://github.com/pub-head2toes-org/pub-head2toes-org.github.io/tree/main/eve).
 
 **Your First Interaction:  A Writing Assistant Example**
 
