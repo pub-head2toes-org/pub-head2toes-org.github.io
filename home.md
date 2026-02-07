@@ -8,3 +8,6 @@ On January 20, 2026 domain went live:
 git.head2toes.org
 
 ---
+
+[View as raw rendering](./index.html)
+[Or view as markup rendering](./index-md.html)
