@@ -7,15 +7,15 @@
 
 **(Image: A visually appealing screenshot of the Eve PWA interface – showing a clean, modern design with a conversation window and perhaps a visual representation of an LLM.)**
 
-Are you ready to experience the power of Large Language Models (LLMs) without the hassle of complicated installations and cloud-based subscriptions?  Introducing **Eve**, a friendly Progressive Web App (PWA) that brings the best of AI directly to your local machine.  Whether you’re a gamer, a creative professional, a developer, or simply a tech enthusiast, Eve lets you effortlessly explore and experiment with AI on your MacBook Pro, gaming PC, or even a Raspberry Pi.
+Are you ready to experience the power of Large Language Models (LLMs) without the hassle of complicated installations and cloud-based subscriptions?  Introducing **Eve**, a friendly Progressive Web App (PWA) that brings the best of AI directly to your local machine.  Whether you're a gamer, a creative professional, a developer, or simply a tech enthusiast, Eve lets you effortlessly explore and experiment with AI on your MacBook Pro, gaming PC, or even a Raspberry Pi.
 
 **What is Eve?**
 
-Eve is a PWA that runs entirely on your local device, utilizing the incredible capabilities of locally installed LLMs provided by Ollama. This means you get instant access to AI, solid performance, and complete privacy – all without relying on internet connectivity.  It’s time to use your high-performance hardware for what it’s truly meant to do: drive AI innovation!
+Eve is a PWA that runs entirely on your local device, utilizing the incredible capabilities of locally installed LLMs provided by Ollama. This means you get instant access to AI, solid performance, and complete privacy – all without relying on internet connectivity.  It's time to use your high-performance hardware for what it's truly meant to do: drive AI innovation!
 
 **Why Eve?**
 
-Traditional AI tools can be daunting. Eve changes that. It’s designed for ease of use, offering:
+Traditional AI tools can be daunting. Eve changes that. It's designed for ease of use, offering:
 
 *   **Instant AI Access:** Launch Eve directly from your browser with minimal setup.
 *   **Hardware Optimization:** Eve adapts to your machine's power, ensuring smooth performance on Macs, Windows PCs, and even Raspberry Pi 5s.
@@ -34,7 +34,7 @@ Traditional AI tools can be daunting. Eve changes that. It’s designed for ease
 
 Here's how to quickly get Eve up and running:
 
-1.  **Install Ollama:** Ollama is the foundation of Eve. It’s a lightweight platform that allows you to run LLMs locally.
+1.  **Install Ollama:** Ollama is the foundation of Eve. It's a lightweight platform that allows you to run LLMs locally.
     *   **macOS:** Download the `.dmg` from [https://ollama.com/download](https://ollama.com/download) and drag **Ollama** to your Applications folder.
     *   **Windows:** Download the `.exe` installer from the same link and follow the prompts.
     *   **Linux:**  Use the install script: `curl -fsSL https://ollama.com/install.sh | sh` (Check the Ollama documentation for specific instructions for your Linux distribution)
@@ -42,13 +42,13 @@ Here's how to quickly get Eve up and running:
 
 2.  **Pull an AI Model:** Once Ollama is installed, you need to choose a model to use with Eve.
     *   Type `ollama list` in your terminal. This shows you the available models.
-    *   To pull a model (e.g., ‘gemma3’), type `ollama pull gemma3`.
+    *   To pull a model (e.g., ‘gemma3'), type `ollama pull gemma3`.
 
 3.  **Launch Eve:** Next, pool Eve's repo from github, start the local http server using python command line and open Eve in your browser. For more details, navigate to the URL provided in the Eve documentation.
 
 **Your First Interaction:  A Writing Assistant Example**
 
-Let's walk through a simple example:  creating a JSON file using Eve’s help.
+Let's walk through a simple example:  creating a JSON file using Eve's help.
 
 1.  **Pre-Context Setup:** In Eve, click the “Add” button to add some initial context to help Eve understand the task.  Type in the following:
 
