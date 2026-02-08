@@ -1,0 +1,117 @@
+<style>
+
+
+	.root {
+    display: flex;
+    height: 100%;
+  }
+
+  .container {
+    width: 78%;
+    float: left;
+  }
+
+  .rightPanel{
+    width: 22%;
+    height: 100%;
+    float: right;
+  }
+
+  .rightPanel > div {
+     margin: 5px;
+  }
+
+  .button-hidden {
+    background-color: #c5c7c9;
+    /* Blue */
+    border: none;
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    display: none;
+    font-size: 20px;
+    width: 100%;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .tog-button {
+    background-color: lightsteelblue;
+    /* Blue */
+    border-radius: 10px;
+    border: none;
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 11px;
+    font-weight: bold;
+    width: 100%;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .button {
+    background-color: steelblue;
+    /* Blue */
+    border-radius: 10px;
+    border: none;
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 11px;
+    font-weight: bold;
+    width: 100%;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 3px;
+    margin-bottom: 3px;
+  }
+
+  ul {
+    display: block;
+    list-style-type: disc;
+    margin-block-start: 1em;
+    margin-block-end: 1em;
+    margin-inline-start: 0px;
+    margin-inline-end: 0px;
+    padding-inline-start: 0px;
+    unicode-bidi: isolate;
+    font-size:x-small;
+  }
+
+  li {
+    border-bottom: 1px solid #ddd;
+    padding: 2%;
+    width: 95%;
+    text-align: left;
+    list-style-type: none;
+    font-size: 12px;
+  }
+
+  li:hover {
+    background-color: lightsalmon;
+  }
+
+  li:active {
+    background-color: salmon
+  }
+
+	.small-print {
+    font-size: xx-small;
+    text-align: center;
+  }
+
+  span#entryKey{
+    font-size: 12px;
+  }
+
+  .sec-on {
+    display: block;
+  }
+
+  .sec-off {
+    display: none;
+  }
+</style>

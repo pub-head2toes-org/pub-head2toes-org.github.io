@@ -1,0 +1,30 @@
+{
+  "name": "Cyra",
+  "short_name": "Log",
+  "description": "Captain's log",
+  "icons": [{
+    "src": "https://head2toes.asuscomm.com/static/prj-cat-128x128.png",
+    "type": "image/png",
+    "sizes": "128x128"
+  }, {
+    "src": "https://head2toes.asuscomm.com/static/prj-cat-152x152.png",
+    "type": "image/png",
+    "sizes": "152x152"
+  }, {
+    "src": "https://head2toes.asuscomm.com/static/prj-cat-144x144.png",
+    "type": "image/png",
+    "sizes": "144x144"
+  }, {
+    "src": "https://head2toes.asuscomm.com/static/prj-cat-192x192.png",
+    "type": "image/png",
+    "sizes": "192x192"
+  }, {
+    "src": "https://head2toes.asuscomm.com/static/prj-cat-512x512.png",
+    "type": "image/png",
+    "sizes": "512x512"
+  }],
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF"
+}

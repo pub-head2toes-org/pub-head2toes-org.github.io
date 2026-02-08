@@ -1,0 +1,78 @@
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
+	<link rel="stylesheet" href="log.css">
+	<link rel="manifest" href="manifest.json">
+</head>
+
+<div class='root'>
+<div id="container" class='container'>
+  <textarea id="entryText" style="width: 100%; height: 100%;"></textarea>
+</div>
+<div id='rightPanel' class='rightPanel'>
+  <div id="sec_id_indicator" class="small-print">
+  No ID Key
+  </div>
+  <div>
+    <button id='tog_id' class="tog-button">Id Setup</button>
+  </div>
+  <div id="sec_id" class="sec-on">
+    <div>
+      <input type="password" id="pass" style="width: 100%;">
+    </div>
+    <div>
+      <button id='idme' class="button">Create ID Key</button>
+    </div>
+  </div>
+  <div>
+    <button id='tog_new' class="sec-off">New Entry</button>
+  </div>
+  <div id="sec_new" class="sec-off">
+    <div>
+      <button id='new' class="button">Create Entry Key</button>
+    </div>
+    <div>
+      <span id="entryKey"></span>
+      <input type="hidden" id="entryKeyVal">
+    </div>
+    <div>
+      <button id='save' class="sec-off">Save</button>
+    </div>
+  </div>
+  <div id="sec_workspace" class="sec-off">
+    <div>
+      <ul id="list"></ul>
+    </div>
+    <div>
+      <button id='next' class="button">Next</button>
+    </div>
+    <div>
+      <button id='prev' class="button" class="button">Prev</button>
+    </div>
+    <div>
+      <button id='export' class="button">Export</button>
+    </div>
+    <div>
+      <label for="fileinput" class="button">Import</label>
+      <input class="button-hidden" type="file" id="fileinput"/>
+    </div>
+    <div>
+      <input type="text" id="searchText" style="width: 100%;">
+    </div>
+    <div>
+      <button id='search' class="button">Search</button>
+    </div>
+    <div>
+      <button id='clear' class="button">Clear Search</button>
+    </div>
+    <div class='small-print'>Rev.2026.02.05</div>
+    <div>
+        <textarea id="trailText" style="width: 100%; height: 30%;"></textarea>
+    </div>
+  </div>
+</div>
+</div>
+<script src="./wc.js"></script>
+<script src="./log.js"></script>
+
+
