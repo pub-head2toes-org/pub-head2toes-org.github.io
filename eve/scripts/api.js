@@ -1,5 +1,6 @@
 class OllamaAPI {
   async sendMessage(model, endpoint, context, messages) {
+    const start = Date.now();
     try {
       const payload = {
         model: model,
@@ -10,7 +11,6 @@ class OllamaAPI {
         messages: messages
       };
 
-      const start = Date.now();
       const response = await fetch(`${endpoint}/api/chat`, {
         method: 'POST',
         headers: {

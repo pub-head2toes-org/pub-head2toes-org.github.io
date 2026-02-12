@@ -6,6 +6,7 @@ const urlsToCache = [
   './scripts/api.js',
   './scripts/main.js',
   './manifest.json',
+  './service-worker.js',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
