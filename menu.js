@@ -1,5 +1,5 @@
 const menuItems = [
-    ["h2t", "./home.md"],
-    ["eve", "./eve-tab.md"],
-    ["shorts", "./shorts.md"],
+    ["h2t", "./home.html"],
+    ["eve", "./eve-tab.html"],
+    ["shorts", "./short-stories.html"],
 ];

@@ -85,7 +85,7 @@ function getLinks(textLine) {
                 // Simple HTML sanitization to prevent XSS
                 const doc = new DOMParser().parseFromString(html, 'text/html');
                 const content = doc.body.innerText.replace(/\n/g, '\n\n');
-
+/*
     let mdurl = "https://api.github.com/markdown/raw"
    	let hdrs = new Headers({"X-GitHub-Api-Version": "2022-11-28","Accept": "text/html"});
     let data = html 
@@ -105,7 +105,12 @@ function getLinks(textLine) {
     }).catch(function(error) {
       console.log('Looks like there was a problem: \n', error);
     }); 
-
+*/
+        mainArea.innerHTML = html;
+		    mainArea.scrollTop = 0;
+        sysMsg.textContent = `Loaded: ${url}`;
+        footerArea.innerHTML = ''
+ 
             })
             .catch(error => {
                 sysMsg.textContent = `Error loading ${url}: ${error.message}`;
