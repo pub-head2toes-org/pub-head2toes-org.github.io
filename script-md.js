@@ -115,21 +115,11 @@ function getLinks(textLine) {
 
     // Handle window resize
     window.addEventListener('resize', function() {
-        // Adjust terminal height on resize
-        const terminal = document.querySelector('.terminal');
-        const menuHeight = terminal.querySelector('.menu-bar').offsetHeight;
-        const contentHeight = window.innerHeight * 0.8 - menuHeight - 20;
-        terminal.style.height = `${contentHeight}px`;
     });
 
     // Initialize on load
     window.addEventListener('load', function() {
         // Set initial terminal height
-        const terminal = document.querySelector('.terminal');
-        const menuHeight = terminal.querySelector('.menu-bar').offsetHeight;
-        terminal.style.height = `${window.innerHeight * 0.8 - menuHeight - 20}px`;
 
-        // Focus command line
-        setTimeout(() => cmdLine.focus(), 100);
     });
 });
