@@ -84,14 +84,14 @@ a {
     font-family: 'Courier New', monospace;
     font-size: 12px;
     overflow: hidden;
-    width: 98%;
+    width: calc( 100% - 10px);
 }
 
 #main_area {
     background-color: #000;
     color: #0f0;
     border: 1px solid #0f0;
-    width: 98%;
+    width: calc( 100% - 10px);
     padding: 10px;
     resize: none;
     font-family: 'Courier New';
