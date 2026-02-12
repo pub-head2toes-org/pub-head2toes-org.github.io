@@ -1,5 +1,3 @@
----
-
 # **Title: *The Last High***
 
 ---
