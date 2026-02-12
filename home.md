@@ -9,5 +9,5 @@ git.head2toes.org
 
 ---
 
-[View as raw rendering](./index.html)
-[Or view as markup rendering](./index-md.html)
+[View as raw rendering](./index-md.html)
+[Or view as markup rendering](./index.html)
