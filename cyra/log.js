@@ -8,6 +8,7 @@ props.searchRes = [];
 const keySpace = 'apps-cyra-'
 
 document.getElementById("idme").onclick = idme;
+document.getElementById("rekey").onclick = rekey;
 document.getElementById("new").onclick = getNewEntryKey;
 document.getElementById("save").onclick = saveEntry;
 document.getElementById("export").onclick = saveToNamedFile;
@@ -188,6 +189,55 @@ function getNewEntryKey() {
   document.getElementById("entryKeyVal").value = key;
   saveButton.className = "button";
 }
+
+async function rekey() {
+  const hash = "SHA-256";
+  const sectionWorkspace = document.getElementById("sec_workspace");
+  const sectionId = document.getElementById("sec_id");
+  const togNew = document.getElementById("tog_new");
+  const sectionIdIndicator = document.getElementById("sec_id_indicator");
+  let password = document.getElementById("pass").value;
+  let salt = password.split('').reverse().join('');
+  document.getElementById("pass").value = '';
+  const iteratrions = 1000;
+  const keyLength = 48;
+  const derivation = await getDerivation(hash, salt, password, iteratrions, keyLength);
+  password = '';
+  salt = '';
+  // create a new key
+  const newKeyObject = await getKey(derivation);
+  let n = localStorage.length;
+  for (let i = 0; i < n; i++) {
+    if (!localStorage.key(i).startsWith(keySpace)) {
+      continue
+    }
+    let entry = {};
+    // load the entry for the key from local storage
+    entry.key = localStorage.key(i);
+    entry.val = localStorage.getItem(localStorage.key(i));
+    try {
+    // decrypt entry with key
+    const decryptedObject = await decrypt(str2ab(entry.val), keyObject);
+    const decryptedEntry = JSON.parse(decryptedObject);
+    // encrypt with a new key
+    entry.val = decryptedEntry.val;
+    const encryptedObject = await encrypt(JSON.stringify(entry), newKeyObject);
+    // put it back to a local storage
+    localStorage.setItem(entry.key, ab2b64(encryptedObject));
+    } catch (err) {
+      console.log(`rekey failed for: ${entry.key}`);
+    }
+  }
+  // finish re-keying
+  keyObject = newKeyObject;
+
+  sectionWorkspace.className = 'sec-on';
+  sectionId.className = 'sec-off';
+  togNew.className = 'tog-button';
+  sectionIdIndicator.innerHTML = 'ID Key is set';
+  props.isIdKeySet = true;
+}
+
 
 async function idme() {
   const hash = "SHA-256";
