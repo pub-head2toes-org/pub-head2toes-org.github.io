@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+  const mdConverter = new showdown.Converter();
   // Initialize menu
   const menuContainer = document.getElementById('menu-container');
   const hash = window.location.hash.substr(1);
@@ -65,6 +66,77 @@ document.addEventListener('DOMContentLoaded', function() {
     return links;
   }
 
+/**
+ * Converts a Markdown document to an HTML document.
+ * (gemma3:12b - nice attempt but not complete)
+ * This is the way: Open source solution "showdown"
+ * ref: https://github.com/showdownjs/showdown?tab=readme-ov-file
+ *
+ * @param {string} markdownText The Markdown text to convert.
+ * @returns {string} The HTML document generated from the Markdown text.
+ */
+function markdownToHtml(markdownText) {
+  if (!markdownText) {
+    return '';
+  }
+
+  const lines = markdownText.split('\n');
+  let html = '';
+  let inList = false;
+  let listType = ''; // 'ul' or 'ol'
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.startsWith('## ')) {
+      html += `<h2>${trimmedLine.substring(2)}</h2>`;
+    } else if (trimmedLine.startsWith('# ')) {
+      html += `<h1>${trimmedLine.substring(2)}</h1>`;
+    } else if (trimmedLine.startsWith('### ')) {
+      html += `<h3>${trimmedLine.substring(3)}</h3>`;
+    } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('1. ')) {
+      if (!inList) {
+        if (trimmedLine.startsWith('1. ')) {
+          listType = 'ol';
+          html += '<ol>';
+          inList = true;
+        } else {
+          listType = 'ul';
+          html += '<ul>';
+          inList = true;
+        }
+      }
+
+      const listItemContent = trimmedLine.substring(2) || trimmedLine.substring(3);
+      html += `<li>${listItemContent}</li>`;
+    } else if (trimmedLine.startsWith('</li>')) {
+      // This handles closing list items that might be malformed in input.
+    }
+    else if (inList) {
+      if (listType === 'ol') {
+        html += '</ol>';
+      } else {
+        html += '</ul>';
+      }
+      inList = false;
+      listType = '';
+    } else if (trimmedLine !== '') {
+      html += `<p>${trimmedLine}</p>`;
+    }
+  }
+
+  // Handle closing list if still open at the end.
+  if (inList) {
+    if (listType === 'ol') {
+      html += '</ol>';
+    } else {
+      html += '</ul>';
+    }
+  }
+
+  return html;
+}
+
   // Load page content
   function loadPage(url) {
     fetch(url)
@@ -79,6 +151,14 @@ document.addEventListener('DOMContentLoaded', function() {
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const content = doc.body.innerText.replace(/\n/g, '\n\n');
 
+            mainArea.innerHTML = mdConverter.makeHtml(html);//markdownToHtml(html);
+            mainArea.scrollTop = 0;
+            sysMsg.textContent = `Loaded: ${url}`;
+ 
+
+/*
+        // This was the github markdown service
+        // This is the way: Good enough but better to have a local lib for converting md to html
         let mdurl = "https://api.github.com/markdown/raw"
         let hdrs = new Headers({"X-GitHub-Api-Version": "2022-11-28","Accept": "text/html"});
         let data = html 
@@ -98,6 +178,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(function(error) {
           console.log('Looks like there was a problem: \n', error);
         });
+*/
+
       })
       .catch(error => {
           sysMsg.textContent = `Error loading ${url}: ${error.message}`;
