@@ -1,5 +1,9 @@
 <style>
-
+  
+  @keyframes fade {
+    from {background-color: lightsteelblue;}
+    to {background-color: steelblue;}
+  }
 
 	.root {
     display: flex;

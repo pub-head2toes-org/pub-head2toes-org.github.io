@@ -67,8 +67,16 @@ function togNew() {
   const saveButton = document.getElementById("save");
   const secNew = document.getElementById("sec_new");
   const secWorkspace = document.getElementById("sec_workspace");
-  document.getElementById("entryText").value = '';
+  const ta = document.getElementById("entryText");
   if (secNew.className === "sec-on") {
+    if (ta.value.length > 0){
+      saveButton.style.backgroundColor = "red";
+      ta.focus();
+      setTimeout(()=>{saveButton.style.backgroundColor="steelblue";},2000);
+      return;
+    }
+    ta.readOnly = true;
+    ta.focus();
     secNew.className = "sec-off";
     secWorkspace.className = "sec-on";
     togId.className = "tog-button";
@@ -76,10 +84,12 @@ function togNew() {
     document.getElementById("entryKey").innerHTML = "";
     saveButton.className = "sec-off";
   } else {
+    ta.value = '';
     secNew.className = "sec-on";
     togNew.innerHTML = "CANCEL ENTRY";
     secWorkspace.className = "sec-off";
     togId.className = "sec-off";
+    getNewEntryKey();
   }
 }
 
@@ -183,6 +193,9 @@ function saveToNamedFile() {
 
 function getNewEntryKey() {
 
+  const ta = document.getElementById("entryText");
+  ta.readOnly = false;
+  ta.focus();
   const saveButton = document.getElementById("save");
   let key = getNewKey();
   document.getElementById("entryKey").innerHTML = getDesc(key);
@@ -246,6 +259,9 @@ async function idme() {
   const togNew = document.getElementById("tog_new");
   const sectionIdIndicator = document.getElementById("sec_id_indicator");
   let password = document.getElementById("pass").value;
+  if (password.length === 0){
+    return;
+  }
   let salt = password.split('').reverse().join('');
   document.getElementById("pass").value = '';
   const iteratrions = 1000;
@@ -262,8 +278,13 @@ async function idme() {
 }
 
 async function saveEntry() {
+
+  const ta = document.getElementById("entryText");
+  ta.readOnly = false;
+  ta.focus();
+
   let key = document.getElementById("entryKeyVal").value;
-  let val = document.getElementById("entryText").value;
+  let val = ta.value;
   if (key == "") {
     togNew();
     return Promise.resolve("");
@@ -285,6 +306,8 @@ async function saveEntry() {
   setMyList();
   document.getElementById("entryKeyVal").value = "";
   document.getElementById("entryKey").innerHTML = "";
+  ta.value = '';
+  ta.readOnly = true;
   togNew();
 }
 
