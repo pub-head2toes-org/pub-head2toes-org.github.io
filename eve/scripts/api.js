@@ -29,8 +29,8 @@ class OllamaAPI {
       return { content: data.message.content, time: time };
     } catch (error) {
       const t = (Date.now() - start)/1000;
-      console.error('Error calling Ollama API:[${t}]', error);
-      throw error;
+      console.error(`Error calling Ollama API:[${t}]`, error);
+      throw new Error(`Error calling Ollama API:[${t}]`, error);
     }
   }
 
