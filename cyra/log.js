@@ -22,6 +22,15 @@ document.getElementById("tog_new").onclick = togNew;
 
 setMyList();
 
+function init () {
+  document.getElementById("pass").addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      idme();
+    }
+  })
+}
+
 document.getElementById('fileinput').addEventListener('change', function() {
   var file = this.files[0];
   console.log("name : " + file.name);
