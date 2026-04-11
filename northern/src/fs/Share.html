@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<head>
+        <link rel="stylesheet" type="text/css" href="/fs/get/style.css">
+        <script src="/fs/get/jquery-1.9.1.min.js"></script>
+</head>
+<script>
+      function populate(){
+        let userid = localStorage.getItem("userid");
+        if(userid){
+          document.getElementById("userid").value = userid;
+        }
+      }
+
+      function showMore(){
+        document.getElementById("showMore").style.display = "none";
+        document.getElementById("showLess").style.display = "block";
+        document.getElementById("moreOptions").style.display = "block";
+      }
+
+      function showLess(){
+        document.getElementById("showMore").style.display = "block";
+        document.getElementById("showLess").style.display = "none";
+        document.getElementById("moreOptions").style.display = "none";
+      }
+      function backupIndex (cb,ctx){
+        var strData = "{}";
+        try{
+          strData = JSON.stringify(ctx.data);
+        } catch (error){
+          console.log("Data="+ctx.data+" Err="+error);
+        }
+        ctx.payload = {};
+        ctx.key = ""+Date.now();
+        ctx.reqPath = "/shared/time/" + ctx.key + ".json";
+        ctx.payload.url = document.getElementById("getPath").value;
+        ctx.payload.desc = document.getElementById("getData").value;
+        ctx.url = ctx.payload.url;
+        ctx.desc = ctx.payload.desc;
+        if (ctx.data === null || strData === "{}"){
+          //alert('New index file. Inserting...');
+          ctx.newIndex = true;
+          insertOperation (cb,ctx); //(key, payload, updateIndex);
+        } else {
+          //alert('data='+ctx.data);
+          ctx.newIndex = false;
+          insertOperation (cb,ctx);
+        }
+      }
+
+      function share (){
+        //alert('share');
+        ctx={};
+        ctx.state='start';
+        flow(ctx);
+        //getOperation(backupIndex, ctx);
+      }
+
+      function flow (ctx){
+        if('start' === ctx.state){
+          ctx.state = 'backupIndex';
+          ctx.reqPath = "/shared/index.html";
+          getOperation(flow,ctx);
+        } else if ('backupIndex' === ctx.state){
+          ctx.state = 'updateIndex';
+          backupIndex(flow,ctx);
+        } else if ('updateIndex' === ctx.state){
+          ctx.state = 'endFlow';
+          updateIndex(flow,ctx);
+        }
+      }
+
+      function updateIndex (cb,ctx){
+        //alert('update');
+        ctx.payload = "<a href='"+ctx.url+"'>"+ctx.desc+"</a><br>";
+        ctx.reqPath = "/shared/index.html";
+        if(ctx.newIndex){
+          insertOperation(cb,ctx);
+        } else {
+          ctx.payload = ctx.data + ctx.payload;
+          updateOperation(cb,ctx);
+        }
+      }
+
+      function getOperation(cb,ctx){
+        let getPath = ctx.reqPath;
+          //document.getElementById("getPath").value;
+        $.ajax({
+            url : getPath,
+            type : "get"
+            }).done(function(data) {
+            console.log("state data=" + JSON.stringify(data));
+            //document.getElementById("getData").value = "" + data;
+            ctx.data = data;
+            cb(ctx);
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            ctx.errDesc = "getOperation";
+            ctx.error = error;
+            cb(ctx);
+            document.getElementById("getData").value = "" + err;
+            console.log("get state failed: err=" + err);
+            }); 
+      }
+
+      function insertOperation(cb,ctx){ //(key, payload, cb){
+        let reqPath = ctx.reqPath; //document.getElementById("insertPath").value;
+        let reqInput = ctx.payload; //document.getElementById("insertBody").value;
+        $.ajax({
+            url : reqPath,
+            type : "post",
+            data : JSON.stringify(reqInput),
+            dataType : "json",
+            contentType: "application/json"
+            }).done(function(data) {
+            ctx.insertResponse = data;
+            console.log("state data=" + JSON.stringify(data));
+            cb(ctx);
+
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("insert failed: err=" + err);
+            }); 
+      }
+
+      function updateOperation(cb, ctx){
+        let getPath = ctx.reqPath; //document.getElementById("updatePath").value;
+        let reqInput = ctx.payload; //.getElementById("updateBody").value;
+        $.ajax({
+            url : getPath,
+            type : "PUT",
+            data : reqInput,
+            dataType : "json",
+            contentType: "application/json"
+            }).done(function(data) {
+
+            console.log("state data=" + JSON.stringify(data));
+            cb(ctx);
+
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("insert failed: err=" + err);
+            }); 
+      }
+
+      function incrementOperation(){
+        let getPath = document.getElementById("incrementPath").value;
+        if(!getPath.startsWith("/metrics/counter/")){
+            //alert("Increment path must start with /metrics/counter/");
+            return;
+        }
+        $.ajax({
+            url : getPath,
+            type : "PUT",
+            data : {},
+            dataType : "json",
+            contentType: "application/json"
+            }).done(function(data) {
+
+            console.log("state data=" + JSON.stringify(data));
+
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("insert failed: err=" + err);
+            }); 
+      }
+</script>
+<body onload="populate()">
+
+  <section class="intro" id="zen-intro">
+    <header role="banner">
+      <h1>head2toes</h1>
+      <h2>Share</h2>
+    </header>
+
+    <div class="summary" id="zen-summary" role="article">
+      <p>Bookmark and share.
+      <a href="Signin.html">Sign in</a>
+      <a href="Reg.html">Reg</a>
+      <a href="index.html">Back to home page</a></p>
+    </div>
+
+    <div class="preamble" id="zen-preamble" role="article">
+      <h3>How it works</h3>
+      <p>Paste the request path</p>
+      <p>Provide the description of the bookmarked URL path</p>
+    </div>
+  </section>
+
+<div class="content">
+    
+    <form id="get" action="javascript:share()" method="GET">
+        
+        <textarea style="width: 100%!important;" id="getPath" cols="63" rows="5"></textarea>
+
+        <div class="wrapper">
+        <input type="button" onclick="share()" name="getBt" value="Share" id="getBt" class="btn ipb btn-prim sgnBtn">
+        </div>
+    
+        <textarea style="width: 100%!important;" id="getData" cols="63" rows="20"></textarea>
+        
+    </form>
+    <a href="/fs/get/Shared.html" target="shared">Shared</a>
+        
+</div>
+
+
+</body>
+</html>

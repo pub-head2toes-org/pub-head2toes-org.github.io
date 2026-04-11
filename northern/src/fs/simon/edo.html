@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Text Editor</title>
+<style>
+  body {
+    font-family: sans-serif;
+    color: #0b0;
+    background-color: #111;
+  }
+  textarea {
+    color: #0f0;
+    background-color: #111;
+    width: 80%;
+    height: 200px;
+    margin-bottom: 10px;
+  }
+  .button-container {
+    margin-bottom: 10px;
+  }
+  button {
+    margin: 5px;
+    background-color: #0b0;
+  }
+</style>
+</head>
+<body>
+
+  <h1>Simple Text Editor</h1>
+
+  <div>
+    <label for="mainText">Main Text:</label><br>
+    <textarea id="mainText" placeholder="Enter main text here"></textarea>
+  </div>
+
+  <div>
+    <label for="oneLineText">Current Line:</label><br>
+    <textarea id="oneLineText"></textarea>
+  </div>
+
+  <div class="button-container">
+    <button id="upButton">Up</button>
+    <button id="downButton">Down</button>
+    <button id="leftButton">Left</button>
+    <button id="rightButton">Right</button>
+    <button id="homeButton">Home</button>
+    <button id="endButton">End</button>
+    <button id="undoButton">Undo</button>
+    <button id="redoButton">Redo</button>
+    <button id="yankButton">Yank</button>
+    <button id="pasteButton">Paste</button>
+  </div>
+
+  <script>
+    const mainText = document.getElementById('mainText');
+    const oneLineText = document.getElementById('oneLineText');
+    const upButton = document.getElementById('upButton');
+    const downButton = document.getElementById('downButton');
+    const leftButton = document.getElementById('leftButton');
+    const rightButton = document.getElementById('rightButton');
+    const homeButton = document.getElementById('homeButton');
+    const endButton = document.getElementById('endButton');
+    const undoButton = document.getElementById('undoButton');
+    const redoButton = document.getElementById('redoButton');
+    const yankButton = document.getElementById('yankButton');
+    const pasteButton = document.getElementById('pasteButton');
+
+    let lines = [];
+    let currentLine = 0;
+    let yankedText = "";
+    let undoStack = [];
+    let redoStack = [];
+
+    function updateOneLineText() {
+      if (lines.length > 0) {
+        oneLineText.value = lines[currentLine] || "";
+      } else {
+        oneLineText.value = "";
+      }
+    }
+
+    function loadText(text) {
+      lines = text.split('\n');
+      currentLine = 0;
+      updateOneLineText();
+    }
+
+    // Initialize with some sample text
+    loadText("This is the first line.\nThis is the second line.\nThis is the third line.\nThis is the fourth line.");
+
+
+    upButton.addEventListener('click', () => {
+      if (currentLine > 0) {
+        currentLine--;
+        updateOneLineText();
+      }
+    });
+
+    downButton.addEventListener('click', () => {
+      if (currentLine < lines.length - 1) {
+        currentLine++;
+        updateOneLineText();
+      }
+    });
+
+    leftButton.addEventListener('click', () => {
+      // Moving left isn't really meaningful for line-based movement.
+      // Consider character-level movement if needed.
+      console.log("Left movement not implemented.");
+    });
+
+    rightButton.addEventListener('click', () => {
+      // Moving right isn't really meaningful for line-based movement.
+      // Consider character-level movement if needed.
+      console.log("Right movement not implemented.");
+    });
+
+    homeButton.addEventListener('click', () => {
+      currentLine = 0;
+      updateOneLineText();
+    });
+
+    endButton.addEventListener('click', () => {
+      currentLine = lines.length - 1;
+      updateOneLineText();
+    });
+
+    undoButton.addEventListener('click', () => {
+      if (undoStack.length > 0) {
+        redoStack.push(lines);
+        lines = undoStack.pop();
+        updateOneLineText();
+      }
+    });
+
+    redoButton.addEventListener('click', () => {
+      if (redoStack.length > 0) {
+        undoStack.push(lines);
+        lines = redoStack.pop();
+        updateOneLineText();
+      }
+    });
+
+    yankButton.addEventListener('click', () => {
+      yankedText = oneLineText.value;
+    });
+
+    pasteButton.addEventListener('click', () => {
+      if (yankedText !== "") {
+        lines.splice(currentLine, 0, yankedText);
+        updateOneLineText();
+      }
+    });
+
+    mainText.addEventListener('input', () => {
+        lines = mainText.value.split('\n');
+        currentLine = Math.min(currentLine, lines.length-1); // Keep currentLine valid
+        updateOneLineText();
+    });
+
+    updateOneLineText();
+  </script>
+
+</body>
+</html>

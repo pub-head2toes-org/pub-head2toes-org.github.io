@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Musical Grid</title>
+  <script src="tonal.min.js"></script>
+  <style>
+    .grid-container {
+      display: grid;
+      grid-template-columns: auto auto auto;
+      gap: 5px;
+      width: 80%;
+      margin: 20px auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+
+    .grid-item {
+      border: 1px solid 555;
+      text-align: center;
+      height: 25px;
+      font-weight: bold;
+      color: white;
+      padding: 8px;
+      cursor: pointer;
+      background-color: #444;
+    }
+
+body {
+    font-family: sans-serif;
+    color: #0b0;
+    background-color: #111;
+  }
+  input {
+    color: #0f0;
+    background-color: #444;
+    padding: 5px;
+  }
+
+textarea {
+    color: #0f0;
+    background-color: #111;
+    width: 100%;
+    height: 200px;
+    margin-bottom: 10px;
+  }
+  .button-container {
+    margin-bottom: 10px;
+  }
+  button {
+    margin: 5px;
+    background-color: #0b0;
+  }
+
+    .grid-item:hover {
+      background-color: #555;
+    }
+  </style>
+</head>
+<body onload="initChordsAudio()">
+
+  <section id="bpm-section">
+    <h3>Beat Per Minute (BPM):</h3>
+    <input type="number" id="bpm-input" value="60">
+  </section>
+
+  <section id="grid-section">
+    <div id="grid" class="grid-container">
+      <!-- Grid items will be dynamically added here -->
+    </div>
+  </section>
+
+  <section id="controls-section">
+    <button id="load-button">Load</button>
+    <button id="play-button">Play</button>
+    <button id="play-button" onClick="stopMusic()">Stop</button>
+  </section>
+
+  <script>
+    const bpmInput = document.getElementById('bpm-input');
+    const gridDiv = document.getElementById('grid');
+    const loadButton = document.getElementById('load-button');
+    const playButton = document.getElementById('play-button');
+
+    let bpm = bpmInput.value;
+    let gridItems = [];
+    let timeoutId;
+    let intervalId;
+
+    function loadGridItems(lines) {
+
+      gridDiv.textContent = ''; //`len=${gridItems.length}`;
+
+      for (let i = 0; i < lines.length; i++) {
+        const item = document.createElement('div');
+        item.classList.add('grid-item');
+        item.textContent = lines[i];
+        gridItems.push(item);
+        gridDiv.appendChild(item);
+      }
+    }
+
+ 
+    // Function to create grid items
+    function createGridItems() {
+      const numColumns = 3;
+      const numRows = 4;
+      const numItems = numColumns * numRows;
+
+      for (let i = 0; i < numItems; i++) {
+        const item = document.createElement('div');
+        item.classList.add('grid-item');
+        item.textContent = String.fromCharCode(65 + i % 7); // A, B, C, D, E, F, G
+        gridItems.push(item);
+        gridDiv.appendChild(item);
+      }
+    }
+
+    function stopMusic() {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    }
+
+    // Function to highlight grid items based on BPM
+    function playMusic() {
+      bpm = bpmInput.value;
+      stopMusic();
+      timeoutId = setTimeout(() => {
+        let highlightedIndex = 0;
+
+        intervalId = setInterval(() => {
+          highlightGridItem(highlightedIndex);
+          highlightedIndex = (highlightedIndex + 1) % gridItems.length;
+        }, (60000 / bpm) / 2); // Adjust the interval based on BPM
+      }, 0); // Run immediately
+    }
+
+let lastChord = "";
+
+    function highlightGridItem(index) {
+      gridItems[index].style.backgroundColor = '#777';
+      gridItems[index].scrollIntoView();
+      const chordName = gridItems[index].textContent;
+      if (chordName == ""){
+        playChord(lastChord);
+      } else {
+        lastChord = chordName;
+        playChord(chordName);
+      }
+      //console.log(Tonal.Chord.notes(gridItems[index].textContent));
+      //Revert background color after some time
+      setTimeout(() => {
+        gridItems[index].style.backgroundColor = '#222';
+      }, 500);
+    }
+
+    // Load button action
+    loadButton.addEventListener('click', () => {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'text/csv';
+      fileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const csvData = e.target.result;
+          const lines = csvData.split('\n');
+          // Assuming the CSV file has data in the same format as the grid
+          gridItems = []; // Clear previous grid items
+          //gridItems = [...lines];
+          loadGridItems(lines); //Recreate the grid
+
+        };
+        reader.readAsText(file);
+      });
+      fileInput.click();
+    });
+
+
+    // Play button action
+    playButton.addEventListener('click', () => {
+      playMusic();
+    });
+
+
+    //Initial grid creation
+    createGridItems();
+
+    document.addEventListener('keydown', (event) => {
+      //console.log(`Key pressed: ${event.key}`);
+      if (event.key === 'p'){
+        playMusic();
+      } else if (event.key === 's'){
+        stopMusic();
+      }
+    });
+
+// webaudio
+
+const audioContext = new AudioContext();
+
+function loadBuffer(chordName){
+
+  fetch(`/fs/get/games/${chordName}.m4a`)
+  .then(response => response.arrayBuffer())
+  .then(data => audioContext.decodeAudioData(data))
+  .then(buffer => {
+    chordAudioElements[chordName] = buffer;
+   });
+
+}
+
+const chordAudioElements={};
+const chordList =  ["Am", "C" , "F", "Em", "E", "G", "Bm", "Dm", "Cm"];
+
+function initChordsAudio (){
+
+    chordList.forEach (chord => loadBuffer(chord));
+ 
+}
+
+    function playChord(chordName) {
+
+      if (chordList.includes(chordName)) {
+
+        const source = audioContext.createBufferSource();
+        source.buffer = chordAudioElements[chordName];
+        source.connect(audioContext.destination);
+        source.start(0);
+     
+      } else {
+        // ignore
+      }
+
+    }
+ 
+  </script>
+
+</body>
+</html>

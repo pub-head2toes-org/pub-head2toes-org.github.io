@@ -1,0 +1,66 @@
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simon Listen</title>
+    <script src="./fetch.js"></script>
+    <link rel="stylesheet" media="screen" href="/fs/get/style.css">
+</head>
+
+<body>
+    <div class="center-screen">
+
+    <div id="msg">
+    </div>
+
+    <div class="wide-content">
+ 
+      <div>
+      	<input id="url" type="text" value="/sub/simon/says.json"/>
+      	<button id='setURL' class="menu-item"> - Connect - </button>
+      </div>
+      <div>
+      	<input id="pass" type="password"/>
+      	<button id='idme' class="menu-item"> - Secure - </button>
+      </div>
+    </div>
+
+</div>
+</div>
+<script src="./oo.js"></script>
+
+    <script>
+          
+document.getElementById('setURL').onclick = setURL
+document.getElementById('idme').onclick = idme
+
+function setURL (){
+ connect(document.getElementById('url').value)
+ document.getElementById('msg').innerHTML = "Conected"
+}
+
+async function idme (){
+  let pass = document.getElementById('pass')
+  simon.key = await oo.idme(pass.value)
+  pass.value = ''
+}
+
+var events = {}
+const simon = {}
+          
+function connect (url){
+        events = new EventSource(url);
+
+        events.onmessage = async (event) => {
+          	let data = event.data
+            if (simon.key){
+              data = await oo.decrypt(oo.str2ab(data), simon.key)
+            }
+            let payload = JSON.parse(data);
+
+            if (payload.s){
+            	window.open(`https://duckduckgo.com/?q=${payload.s}`,"blank")
+            }
+        }
+}
+            
+    </script>
+</body>

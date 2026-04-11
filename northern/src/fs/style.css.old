@@ -1,0 +1,389 @@
+/* css Zen Garden submission 217 - 'Screen Filler', by Elliot Jay Stocks, http://elliotjaystocks.com/  */
+/* css released under Creative Commons License - http://creativecommons.org/licenses/by-nc-sa/1.0/  */
+	
+	/* TYPEKIT_KIT_ID: lxq7gid */
+
+	/*
+	================================================
+	CSS Zen Garden theme for Typekit 01
+	================================================
+	Handcrafted by Elliot Jay Stocks
+	http://elliotjaystocks.com/
+	Last updated on 18.11.2013
+	================================================
+	01	Sensible Defaults
+	02	Typography
+	03	Layout
+	04	Media Queries
+	================================================
+	*/
+
+	/* ---------------------------------------------------------------------------------------------------------- 
+	01 Sensible defaults ----------------------------------------------------------------------------------------
+	---------------------------------------------------------------------------------------------------------- */
+
+	* 								{ margin:0; padding:0; /* So sue me */ }
+
+	div,
+	article,
+	section,
+	header,
+	footer,
+	nav,
+	figure,
+	li								{ position:relative; } /* For absolutely positioning elements within containers  */
+	.group:after 					{ display: block; height: 0; font-size: 0; content: "."; clear: both; visibility: hidden; } /* For clearing */
+	*								{ -moz-box-sizing:border-box; -webkit-box-sizing:border-box; box-sizing:border-box; } /* Apply a natural box layout model to all elements â€” see http://paulirish.com/2012/box-sizing-border-box-ftw */
+
+	::-moz-selection 				{ background:#333; color:#fff; }
+	::selection 					{ background:#333; color:#fff; }
+
+	/* ---------------------------------------------------------------------------------------------------------- 
+	02 Typography -----------------------------------------------------------------------------------------------
+	---------------------------------------------------------------------------------------------------------- */
+	/*
+
+	14 / 16	= 		0.875em 		(14px equivalent)
+	16 / 16	= 		1em 			(16px equivalent)
+	18 / 16 = 		1.125em 		(18px equivalent)
+	21 / 16 = 		1.3125em 		(21px equivalent)
+	24 / 16 = 		1.5em 			(24px equivalent)
+	30 / 16 = 		1.875em 		(30px equivalent)
+	36 / 16 = 		2.25em 			(36px equivalent)
+	48 / 16 = 		3em 			(48px equivalent)
+	60 / 16 = 		3.75em 			(60px equivalent)
+	72 / 16 = 		4.5em 			(72px equivalent)
+	96 / 16 = 		6em 			(96px equivalent)
+
+	*/
+
+	/* Rendering */
+	body,
+	input,
+	textarea 						{ color:#333; /*-webkit-font-smoothing:antialiased;*/ } 
+
+	/* Families */
+	body							{ font-family:"tablet-gothic", verdana, arial, sans-serif; /* Weights from Typekit: 300, 400 */ }
+	h2,
+	h3 								{ font-family:"tablet-gothic-condensed", "arial narrow", arial, verdana, sans-serif; /* Weights from Typekit: 200, 900 */ }
+
+	/* Headings */
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 								{ font-weight:normal; }
+	h1 								{ background:#ea2e49; color:#fff; display:inline-block; margin-bottom:1em; padding:0.5em 1em; }
+	h2 								{ color:#fff; font-weight:900; /* Heavy */ font-size:6em; letter-spacing:1px; line-height:1em; }
+	h3 								{ font-size:2.25em; font-weight:200; /* Thin */ letter-spacing:1px; line-height:1em; padding:0.5em 0 0.25em 0; }
+
+	/* Links */
+	a 								{ border-bottom:1px solid rgba(0,0,0,0.2); color:#333; text-decoration:none; -moz-transition:border-color 0.2s ease-in-out; -ms-transition:border-color 0.2s ease-in-out; -o-transition:border-color 0.2s ease-in-out; -webkit-transition:border-color 0.2s ease-in-out; transition:border-color 0.2s ease-in-out; }
+	a:hover 						{ border-color:#ea2e49; }
+	section.intro div.summary p a,
+	div.explanation p a,
+	div.participation p a			{ color:#fff; }
+	div.participation p a:hover		{ border-color:#fff; }
+
+	/* Paragraph styles */
+	p,
+	li 								{ font-size:1em; font-weight:400; /* Regular */ line-height:1.5em; padding:0.5em 0; }
+	h1,
+	section.intro div.summary p,
+	div.requirements p:last-child 	{ font-weight:300; letter-spacing:2px; text-transform:uppercase; }
+	section.intro div.summary p:last-child, 
+	div.requirements p:last-child 	{ border-top:1px solid #ea2e49; margin-top:1em; padding-top:1.5em; }
+
+	/* Other bits & bobs */
+	em,
+	strong 							{ font-style:normal; font-weight:400; }
+
+	/* ---------------------------------------------------------------------------------------------------------- 
+	03 Layout ---------------------------------------------------------------------------------------------------
+	---------------------------------------------------------------------------------------------------------- */
+
+	html 							{ background:#daede2; padding:5%; }
+	body 							{ background:#77c4d3; }
+	div.page-wrapper 				{ z-index:2; }
+
+	section.intro 					{ padding:5%; }
+	section.intro div.summary 		{ color:#fff; padding:15% 0; }
+	section.intro div.preamble 		{ background:rgba(255,255,255,0.9); color:#333; margin-left:-30%; padding:5% 5% 5% 30%; }
+	div.main 						{ padding:5%; }
+	aside.sidebar 					{ background:rgba(246,247,146,0.9); padding:5%; }
+	aside.sidebar ul 				{ padding:0.5em 0 2em 0; }
+	aside.sidebar ul li 			{ color:rgba(0,0,0,0.4); list-style:none; margin:0; padding:0 0 0.825em 0; }
+	footer 							{ background:rgba(246,247,146,0.9); clear:both; color:#fff; padding:1em 5%; width:50%; }
+	footer a 						{ margin-right:0.5em; }
+
+	div.explanation 				{ color:#fff; padding:5%; }
+	div.participation 				{ background:rgba(234,46,73,0.9); color:#fff; padding:5%; }
+	div.benefits 					{ background:rgba(255,255,255,0.9); margin-top:10%; padding:5%; }
+	div.requirements 				{ background:rgba(255,255,255,0.9); padding:5%; }
+
+	/* ---------------------------------------------------------------------------------------------------------- 
+	04 Media queries (using a mobile-first approach) ------------------------------------------------------------
+	---------------------------------------------------------------------------------------------------------- */
+
+	/* 1 and up */	
+	@media screen and (min-width:1px) {
+
+		body 						{ font-size:85%; }
+
+	}
+
+
+	/* 550 and up */	
+	@media screen and (min-width:550px) {
+
+		h2 							{ font-size:8em; }
+		section.intro 				{ width:66.6%; }
+		aside.sidebar 				{ position:absolute; right:0; top:2.5%; width:32.75%; }
+		div.extra1 					{ background:rgba(51,55,69,0.9); bottom:0; right:0; position:fixed; top:0; width:30%; z-index:1; }
+		div.explanation 			{ float:left; width:50%; }
+		div.participation 			{ float:left; width:49%; }
+		div.benefits 				{ float:left; }
+		div.requirements 			{ float:left; }
+	}
+
+	/* 650 and up */	
+	@media screen and (min-width:650px) {
+
+		div.benefits 				{ margin-top:12%; width:30%; }
+		div.requirements 			{ width:69%; }
+
+	}
+
+	/* 700 and up */	
+	@media screen and (min-width:700px) {
+
+		body 						{ font-size:90%; }
+
+	}
+
+	/* 800 and up */	
+	@media screen and (min-width:800px) {
+
+		body 						{ font-size:100%; }
+
+	}
+
+	/* 900 and up */	
+	@media screen and (min-width:900px) {
+
+		body 						{ font-size:110%; }
+
+	}
+
+	/* 1500 and up */	
+	@media screen and (min-width:1500px) {
+
+		body 						{ font-size:125%; }
+
+	}
+
+	/* 1800 and up */	
+	@media screen and (min-width:1800px) {
+
+		body 						{ font-size:150%; }
+
+	}
+
+	/* 2100 and up */	
+	@media screen and (min-width:2100px) {
+
+		body 						{ font-size:175%; }
+
+	}
+
+
+	/* 2500 and up */	
+	@media screen and (min-width:2500px) {
+
+		body 						{ font-size:200%; }
+
+	}
+
+/* Addendum */
+
+.button-hidden {
+    background-color: #008CBA; /* Blue */
+    border: none;
+    color: white;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none;
+    display: none;
+    font-size: 20px;
+width: 100%;
+letter-spacing:2px; text-transform:uppercase;
+}
+
+.button {
+    background-color: #008CBA; /* Blue */
+    border: none;
+    color: white;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 20px;
+width: 100%;
+letter-spacing:2px; text-transform:uppercase;
+}
+
+.button:hover {background-color: #ffffff; color:#000000}
+
+input {
+    border: 1px solid #ddd;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(255,255,255,.8), inset 0 1px 2px rgba(0,0,0,.06);
+ }
+ 
+ a 
+ {
+    font-weight: bold;
+    display: block;
+    margin: 8px 0;
+    top: -3px;
+    color: #0654ba;
+    text-decoration: none;
+    color: #6a29b9;
+    font-size: 12px;
+    padding: 2px 1px 5px 1px;
+ }
+ 
+ .fld {
+    width: 96.75%;
+    height: 32px;
+    font-size: 16px;
+    color: #333;
+    padding: 2px 0 0 3%;
+    line-height: 35px\9;
+    display: inline-block;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+ }
+ 
+ .wrapper {
+    margin: 20px 0px 20px;
+ }
+ 
+ .content {
+    max-width: 400px;
+    margin: auto;
+    padding: 10px;
+    background: none repeat scroll 0 0 #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+ }
+
+ .wide-content {
+    max-width: 100%;
+    margin: auto;
+    padding: 10px;
+    background: none repeat scroll 0 0 #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+ }
+ 
+ .hdr {
+    margin: 0 0 0 1%;
+    
+    height: 45px;
+    
+    color: #555;
+    font-size: 18px;
+    font-size: 100%;
+    font-weight: 200;
+    vertical-align: middle;
+    font-family: "Helvetica neue",Helvetica,Arial,Sans-serif;
+    }
+ .spr {
+    background-image: url(https://securepics.ebaystatic.com/aw/pics/register/sprSignIn3.png)!important;
+    background-position: 0 -75px;
+    display: inline-block!important;
+    background-repeat: no-repeat;
+    width: 30px;
+    position: relative;
+    height: 30px;
+    left: 1%;
+    bottom: -11px;
+    
+ }
+ 
+ .btn {
+    padding: .5em 1.2em;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: 0 3px 0 rgba(0,0,0,.04);
+    vertical-align: baseline;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    font-weight: 500;
+    font-size: 16px;
+    cursor: pointer;
+    zoom: 1;
+    display: inline-block;
+    width: 100%!important;
+    font-weight: bold!important;
+    background: -webkit-gradient(linear,left top,left bottom,from(#0079bc),to(#00509d));
+    background: -moz-linear-gradient(top,#0079bc,#00509d);
+    color: #fff;
+ }
+ 
+ .btn:disabled {
+     opacity: .4;
+     padding: .5em 1.2em;
+     border: 1px solid transparent;
+     border-radius: 3px;
+     box-shadow: 0 3px 0 rgba(0,0,0,.04);
+     vertical-align: baseline;
+     text-align: center;
+     text-decoration: none;
+     white-space: nowrap;
+     font-weight: 500;
+     font-size: 16px;
+     cursor: pointer;
+     zoom: 1;
+     display: inline-block;
+     width: 100%!important;
+     font-weight: bold!important;
+     background: -webkit-gradient(linear,left top,left bottom,from(#0079bc),to(#00509d));
+     background: -moz-linear-gradient(top,#0079bc, #00509d);
+     color: #fff;
+  }
+ 
+ .chip {
+     display: inline-block;
+     padding: 0 25px;
+     height: 50px;
+     font-size: 16px;
+     line-height: 50px;
+     border-radius: 25px;
+     background-color: #f1f1f1;
+ }
+ 
+ .chip img {
+     float: left;
+     margin: 0 10px 0 -25px;
+     height: 50px;
+     width: 50px;
+     border-radius: 50%;
+ }
+ 
+ .center {
+     margin: auto;
+     max-width: 400px;
+     border: 0;
+     padding: 10px;
+     height: 100px;
+ }
+ .logo {
+     margin: auto;
+     max-width: 130px;
+     border: 0;
+     padding: 10px;
+ }

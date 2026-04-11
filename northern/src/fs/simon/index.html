@@ -1,0 +1,80 @@
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simon Says</title>
+    <script src="./fetch.js"></script>
+    <link rel="stylesheet" media="screen" href="/fs/get/style.css">
+</head>
+
+<body>
+    <div class="center-screen">
+
+    <div id="msg">
+    </div>
+
+    <div>
+
+      <div>
+      	<input id="url" type="text" value="/sub/simon/says.json"/>
+      	<button id='setURL' class="menu-item"> - Connect - </button>
+      </diV>
+      <div>
+      	<input id="search" type="text"/>
+      	<button id='sendSearch' class="menu-item"> - Send URL - </button>
+      </div>
+      <div>
+      	<input id="pass" type="password"/>
+      	<button id='idme' class="menu-item"> - Secure - </button>
+      </div>
+
+    </div>
+    </div>
+
+
+<script src="./oo.js"></script>
+
+    <script>
+        document.getElementById('sendSearch').onclick = sendSearch
+        document.getElementById('search').addEventListener("keypress",keyPressed)
+		document.getElementById('setURL').onclick = setURL
+		document.getElementById('idme').onclick = idme
+
+async function idme (){
+  let pass = document.getElementById('pass')
+  simon.key = await oo.idme(pass.value)
+  pass.value = ''
+}
+
+const simon = {}
+
+        var url = "/sub/simon/says.json"
+		function setURL (){
+         url =  document.getElementById('url').value
+        }
+
+		function keyPressed(e){
+          if(e.keyCode === 13){
+            e.preventDefault();
+            sendSearch()
+          }
+        }
+
+        async function sendSearch() {
+          const s = document.getElementById('search').value
+            await doOp(s.split(' ').join('+'))
+        }
+ 
+
+        async function doOp(op) {
+            let hdrs = {};
+            let payload = `{"s":"${op}"}`;
+            if (simon.key){
+              payload = oo.ab2b64(await oo.encrypt(payload, simon.key))
+            }
+            try {
+                put(url, payload, hdrs);
+            } catch (err) {
+                console.log(err);
+            }
+        }
+    </script>
+</body>

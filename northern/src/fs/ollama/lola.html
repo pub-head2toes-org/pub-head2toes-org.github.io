@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Lola</title>
+<style>
+  body {
+    font-family: sans-serif;
+    color: #0b0;
+    background-color: #111;
+  }
+  textarea {
+    color: #0f0;
+    background-color: #111;
+    width: 100%;
+    height: 200px;
+    margin-bottom: 10px;
+  }
+  .button-container {
+    margin-bottom: 10px;
+  }
+  button {
+    margin: 5px;
+    background-color: #0b0;
+  }
+</style>
+</head>
+<body>
+<div>
+  <textarea id="prompt">Prompt...</textarea>
+</div>
+<div>
+  <button id="sendPrompt" onclick="callLLM()">Send Prompt</button>
+</div>
+<textarea id="myCodeMirror2"></textarea>
+</div>
+</body>
+
+<script>
+
+function callLLM(){
+const input = document.getElementById("prompt")
+const myCodeMirror2 = document.getElementById("myCodeMirror2")
+
+const llmPayload = {"model": "gemma3:4b","prompt": input.value, "stream": false}
+const fetchPayload = 
+  {
+    "method": "POST",
+    "port": 8000,
+    "protocol": "http:",
+    "host": "ssd120",
+    "path": "/api/generate",
+    "headers": {"Content-Type": "application/json"},
+    "origRequest": "post /func/httpClient.js",
+    "payload": {"model": "gemma3:4b","prompt": "Why is the sky blue?", "stream": false}
+  }
+fetchPayload.payload = llmPayload
+
+myCodeMirror2.value = "Thinking..."
+fetch('/func/httpClient.js', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(fetchPayload)
+})
+.then(response => response.json())
+.then(data => myCodeMirror2.value = `${data.response} \n Eval duration ${data.eval_duration/1000000000}s`)
+.catch(error => console.error('Error:', error));
+}
+</script>

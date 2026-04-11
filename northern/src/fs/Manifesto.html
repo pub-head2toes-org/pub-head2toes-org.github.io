@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>H2T</title>
+
+	<link rel="stylesheet" media="screen" href="style.css">
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml">
+
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Neb">
+	<meta name="description" content="A demonstration of what can be accomplished if we keep things simple.">
+	<meta name="robots" content="all">
+
+
+	<!--[if lt IE 9]>
+	<script src="script/html5shiv.js"></script>
+	<![endif]-->
+</head>
+
+<body id="head2toes">
+<div class="page-wrapper">
+
+	<section class="intro" id="zen-intro">
+		<header role="banner">
+			<h1>head2toes</h1>
+			<h2>Manifesto</h2>
+		</header>
+
+		<div class="summary" id="zen-summary" role="article">
+			<p><a href="index.html">Back to home</a></p>
+        </div>
+
+
+        <div class="preamble">
+            <p>
+                Get inspired to rethink just about every software component that you can remember.
+            </p>
+        </div>
+    </section>
+    <div class="main supporting"> 
+        <div class="participation">
+            <h3>Storage</h3>
+            <p>
+                Can we have the best of both worlds, SQL and no-SQL? 
+            </p>
+            <p>
+                What is the DB without the API? Can we have the REST API that comes with the storage?
+            </p>
+            
+        </div>
+
+        <div class="benefits">
+                <p>
+                    <u>Storage API example:</u>
+                </p>
+                <p>To get payload addressed with some path:</p>
+                <p>    
+                        GET /some/path/           
+                </p>
+                <p>To insert payload addressed with some path:</p>
+                <p>    
+                        POST /some/path/
+                        payload body            
+                </p>
+                <p>To update payload addressed with some path:</p>
+                <p>    
+                        PUT /some/path/
+                        payload body            
+                </p>
+        </div>
+
+        <div class="participation">
+            <h3>Web app</h3>
+            <p>
+                 Can we build the web apps just using the HTML and CSS? What can be more basic than that?
+            </p>
+                
+        </div>
+
+        <div class="benefits">
+            <p><u>Example of web app:</u></p>
+            <p>Built with Node JS or Golang standard libraries, using the REST Storage API</p>
+        </div>
+
+        <div class="participation">
+            <h3>Authentication</h3>
+            <p>
+                What can be very simple way of user registration and authentication? Can it be also passwordless?
+            </p>
+        </div>
+
+        <div class="benefits">
+            <p><u>Example of authentication:</u></p>
+            <p>Generate keys in browser, and download them to a local file system.</p>
+            <p>To authenticate click a button to upload the keys from local file system to produce a signature</p>
+        </div>
+
+        <div class="participation">
+            <h3>Deployment</h3>
+            <p>
+                Build the app as a Docker image, and have it easy deployed and scaled with Kubernates. 
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>

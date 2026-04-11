@@ -1,0 +1,20 @@
+[req]
+prompt = no
+default_bits = 2048
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+ 
+[req_distinguished_name]
+CN = localhost
+O = Local Development
+ 
+[v3_ca]
+subjectAltName = @alt_names
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+basicConstraints = CA:FALSE
+ 
+[alt_names]
+DNS.1 = localhost
+IP.1 = 127.0.0.1
+IP.2 = ::1

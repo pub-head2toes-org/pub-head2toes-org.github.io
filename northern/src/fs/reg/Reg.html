@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration</title>
+    <script type="text/javascript" src="sjcl.js"></script>
+    <script type="text/javascript" src="cookies.js"></script>
+    <script type="text/javascript" src="db.js"></script>
+    <link rel="stylesheet" media="screen" href="style.css">
+</head>
+
+
+<body onLoad = "init();">
+
+  <div class="page-wrapper">
+                <section class="intro" id="zen-intro">
+                    <header role="banner">
+                        <h1>head2toes</h1>
+                        <h2>Sign In</h2>
+                    </header>
+
+                    <div></div>
+            
+                    <div class="summary" id="zen-summary" role="article">
+                            <label for="fileinput" class="menu-item">
+                                    Load Id Card
+                                </label>
+                            <input class="button-hidden" type="file" id="fileinput" />
+                    </div>
+                </section> 
+    <section class="intro" id="zen-intro">
+        <header role="banner">
+            <h1>pub.head2toes.org</h1>
+            <h2>Reg</h2>
+        </header>
+
+        <div id="msg"></div>
+
+        <div class="summary" id="zen-summary" role="article">
+          <button class="menu-item" value="Download Keys" onclick="javascript:saveToNamedFile()">Save Id Card & Continue</button>
+          <a id="next" class="menu-item" href="#">Continue</a>
+        </div>
+    </section>
+
+  </div>
+</body>
+
+<script>
+        document.getElementById('fileinput').addEventListener('change', function(){
+            var file = this.files[0];
+            const msg = document.getElementById("msg");
+            console.log("name : " + file.name);
+            console.log("size : " + file.size);
+            console.log("type : " + file.type);
+            console.log("date : " + file.lastModified);
+    
+            var reader = new FileReader();
+    
+            reader.onload = function(e) {
+            var text = reader.result;
+            var keys = text.split(".");
+            localStorage.pub = keys[0];
+            localStorage.priv = keys[1];
+      
+            msg.innerHTML = `<textarea rows="10">ID loaded!  ID=${localStorage.pub}</textarea>`;
+    
+            keyspub = new sjcl.ecc.ecdsa.publicKey(
+                sjcl.ecc.curves.c256,
+                sjcl.codec.base64.toBits(localStorage.pub)
+            );
+            keyssec = new sjcl.ecc.ecdsa.secretKey(
+                sjcl.ecc.curves.c256,
+                sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
+            );
+            var ssId = 
+            localStorage.pub +
+                "." + 
+                (new Date().getTime());
+            
+            var sig = keyssec.sign(sjcl.hash.sha256.hash(ssId))
+            var sigb64 = sjcl.codec.base64.fromBits(sig);
+    
+            setCookie ('ssid', ssId + "." + sigb64, 1);
+    
+            next.href = getNextURL();   
+
+            }
+    
+            reader.readAsText(file);
+    
+        }, false);
+    
+ 
+async function init() {
+  try { 
+
+    var localStorage = window.localStorage;
+    var keys = {};
+    var ssId = "";
+    const ts = new Date().getTime();
+    const msg = document.getElementById("msg");
+    const next = document.getElementById("next");
+    next.href = getNextURL();   
+
+    if (localStorage.pub && localStorage.pub !== "notloggedin"){
+
+      keys.pub = new sjcl.ecc.ecdsa.publicKey(
+          sjcl.ecc.curves.c256,
+          sjcl.codec.base64.toBits(localStorage.pub)
+      );
+      
+      keys.sec = new sjcl.ecc.ecdsa.secretKey(
+          sjcl.ecc.curves.c256,
+          sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
+      );
+
+      msg.innerHTML = `<textarea rows="10">ID key found!  ID=${localStorage.pub}</textarea>`;
+
+    } else {
+
+      keys = 
+          sjcl.ecc.ecdsa.generateKeys(256);
+
+      var serializedPubKey = 
+         await sjcl.codec.base64.fromBits(keys.pub.get().x.concat(keys.pub.get().y));
+      localStorage.pub = serializedPubKey;
+      
+      var serializedSecKey = 
+          await sjcl.codec.base64.fromBits(keys.sec.get());
+      localStorage.priv = serializedSecKey;
+
+      msg.innerHTML = `<textarea rows="10">New ID keys generated: pub=${localStorage.pub}</textarea>`;
+      next.href = `javascript:saveIdCard();`;
+   }
+
+    ssId = 
+      localStorage.pub +
+      "." + 
+      ts;
+   
+    var sig = keys.sec.sign(sjcl.hash.sha256.hash(ssId))
+    var sigb64 = sjcl.codec.base64.fromBits(sig);
+
+    bakeCookie(ssId + "." + sigb64);
+
+  } catch(e) {
+   console.log(e);
+  }
+}
+
+function getNextURL () {
+    const nextURL = window.location.hash.substr(1);
+    let href = "/fs/get/home.html";
+    if (nextURL){
+      href = nextURL;
+    }
+    return href;
+}
+
+
+function saveIdCard (){
+      const ts = new Date().getTime();
+      var ctx = {};
+      payload = {};
+      payload.pub = localStorage.pub;
+      if (localStorage.pub_name){
+        payload.pub_name = localStorage.pub_name;
+      }
+      ctx.reqPath = `/id/${ts}/${payload.pub}.json?isPublic=true`;
+      ctx.payload = JSON.stringify(payload);
+      insertOperation (confirmReg, ctx);
+}
+ 
+
+function bakeCookie (val){
+  setCookie ('ssid', val, 1);
+}
+
+function confirmReg (ctx){
+    msg.innerHTML = `<textarea rows="10">New ID keys reistered! ID=${ctx.reqPath}</textarea>`;
+    console.log(JSON.stringify(ctx));
+    window.location.href = getNextURL();
+}
+
+function saveToNamedFile (){
+  var d = new Date().toISOString().slice(0, 19).replace(/-/g, "");
+  var content = localStorage.pub + "." + localStorage.priv;
+  var uriContent = "data:application/octet-stream," + encodeURIComponent(content);
+  var downloadLink = document.createElement("a");
+  downloadLink.href = uriContent;
+  downloadLink.download = d + ".id.txt";
+
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+
+  saveIdCard();
+}
+        
+</script>

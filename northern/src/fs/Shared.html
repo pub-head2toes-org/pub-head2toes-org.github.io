@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<head>
+        <link rel="stylesheet" type="text/css" href="/fs/get/style.css">
+        <script src="/fs/get/jquery-1.9.1.min.js"></script>
+        <script type="text/javascript" src="db.js"></script>
+</head>
+<script>
+  var start,end;
+    function populate(){
+      var ctx = {};
+      start = Date.now();
+      ctx.reqPath = "/shared?search=%";
+      getOperation(shared, ctx);
+    }
+
+    function getDetails(path){
+      var ctx = {};
+      ctx.reqPath = path;
+      getOperation(showDetails, ctx);
+    }
+
+    function showDetails(data){
+      var detailsLink = document.getElementById("detailsLink");
+      var detailsDesc = document.getElementById("detailsDesc");
+      if(data.error){
+        detailsLink.href = data.reqPath;
+        detailsLink.innerHTML = data.reqPath;    
+        detailsDesc.innerHTML = "No description";
+      } else {
+        detailsLink.href = data.data.url;
+        detailsLink.innerHTML = data.data.url;    
+        detailsDesc.innerHTML = data.data.desc;
+      }
+    }
+
+      function shared(data){
+        var div = document.createElement("div");
+        var ul = document.createElement("ul");
+        div.appendChild(ul);
+        div.className="wide-content";
+        var br = document.createElement("br");
+        
+        data.data.forEach(element => {
+          var li = document.createElement("li");
+          var link = document.createElement("a");
+          link.href = "javascript:getDetails('"+element.path+"');";
+          var text = ""; //element.path;
+          if (element.public === 'public'){
+            text = text + " (p) " + getDate(element.path);
+          } else {
+            text = text + "" + getDate(element.path);
+          }
+          var linkText = document.createTextNode(text);
+          link.appendChild(linkText);
+          li.appendChild(link);
+          ul.appendChild(li);
+          //div.appendChild(br);
+        });
+        end = Date.now();
+        console.log(end-start);
+        document.body.appendChild(div);
+        
+      }
+
+      function getDate(path){
+        try{
+          var s = path.split('/');
+          var last = s[s.length-1];
+          s = last.split('.');
+          return new Date (parseInt(s[0],10)).toISOString().slice(0, 19);
+        } catch (err){
+          console.log('Cant get date: '+paht);
+          return path;
+        }
+      }
+
+</script>
+<body onload="populate()">
+  <div class="wide-content">
+    <a style="color:#ffffff" href="Share.html">Back to share page</a>
+  </div>
+  <div class="wide-content">
+    <a id="detailsLink" href="#">select share</a><br>
+    <span id="detailsDesc"></span><br>
+  </div>
+  <br>
+</body>
+</html>

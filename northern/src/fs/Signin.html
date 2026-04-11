@@ -1,0 +1,81 @@
+<script type="text/javascript" src="sjcl.js"></script>
+<script type="text/javascript" src="cookies.js"></script>
+
+<link rel="stylesheet" media="screen" href="style.css">
+
+<body>
+
+        <div class="page-wrapper">
+
+                <section class="intro" id="zen-intro">
+                    <header role="banner">
+                        <h1>head2toes</h1>
+                        <h2>Sign In</h2>
+                    </header>
+
+                    <div></div>
+            
+                    <div class="summary" id="zen-summary" role="article">
+                            <label for="fileinput" class="button">
+                                    Load Id Card
+                                </label>
+                            <input class="button-hidden" type="file" id="fileinput" />
+                        <p>
+                            <a href="Reg.html">Register</a>
+                            <a href="index.html">Back to home page</a>
+                        </p>
+                    </div>
+            
+                    <div class="preamble" id="zen-preamble" role="article">
+                        <h3>How it works</h3>
+                        <p>Click on choose file to select and upload ECSDA key pair from file system.</p>
+                    </div>
+                </section>
+
+
+</body>
+
+
+<script>
+
+        document.getElementById('fileinput').addEventListener('change', function(){
+            var file = this.files[0];
+            console.log("name : " + file.name);
+            console.log("size : " + file.size);
+            console.log("type : " + file.type);
+            console.log("date : " + file.lastModified);
+    
+            var reader = new FileReader();
+    
+            reader.onload = function(e) {
+            var text = reader.result;
+            var keys = text.split(".");
+            localStorage.pub = keys[0];
+            localStorage.priv = keys[1];
+    
+            keyspub = new sjcl.ecc.ecdsa.publicKey(
+                sjcl.ecc.curves.c256,
+                sjcl.codec.base64.toBits(localStorage.pub)
+            );
+            keyssec = new sjcl.ecc.ecdsa.secretKey(
+                sjcl.ecc.curves.c256,
+                sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
+            );
+            var ssId = 
+            localStorage.pub +
+                "." + 
+                (new Date().getTime());
+            
+            var sig = keyssec.sign(sjcl.hash.sha256.hash(ssId))
+            var sigb64 = sjcl.codec.base64.fromBits(sig);
+    
+            setCookie ('ssid', ssId + "." + sigb64, 1);
+
+            }
+    
+            reader.readAsText(file);
+    
+        }, false);
+    
+    </script>
+    

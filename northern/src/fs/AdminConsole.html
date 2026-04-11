@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<head>
+        <link rel="stylesheet" type="text/css" href="style.css">
+        <script src="jquery-1.9.1.min.js"></script>
+</head>
+<script>
+      function populate(){
+        let userid = localStorage.getItem("userid");
+        if(userid){
+          document.getElementById("userid").value = userid;
+        }
+      }
+
+      function showMore(){
+        document.getElementById("showMore").style.display = "none";
+        document.getElementById("showLess").style.display = "block";
+        document.getElementById("moreOptions").style.display = "block";
+      }
+
+      function showLess(){
+        document.getElementById("showMore").style.display = "block";
+        document.getElementById("showLess").style.display = "none";
+        document.getElementById("moreOptions").style.display = "none";
+      }
+
+      function getOperation(){
+        let getPath = document.getElementById("getPath").value;
+        $.ajax({
+            url : getPath,
+            type : "get"
+            }).done(function(data) {
+            console.log("state data=" + JSON.stringify(data));
+            if(getPath.endsWith(".json")){
+              document.getElementById("getData").value = JSON.stringify(data);
+            } else {
+              document.getElementById("getData").value = "" + data;
+            }
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("get state failed: err=" + err);
+            }); 
+      }
+
+      function insertOperation(){
+        let reqPath = document.getElementById("insertPath").value;
+        let reqInput = document.getElementById("insertBody").value;
+        let isPublic = document.getElementById("insertPublic").checked;
+        if (isPublic){
+          reqPath = reqPath + "?isPublic=true";
+        } else {
+          reqPath = reqPath + "?isPublic=false";
+        }
+
+        $.ajax({
+            url : reqPath,
+            type : "post",
+            data : reqInput,
+            dataType : "json",
+            contentType: "application/json"
+            }).done(function(data) {
+            state = data;
+            console.log("state data=" + JSON.stringify(data));
+
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("insert failed: err=" + err);
+            }); 
+      }
+
+      function updateOperation(){
+        let reqPath = document.getElementById("updatePath").value;
+        let reqInput = document.getElementById("updateBody").value;
+        let isPublic = document.getElementById("updatePublic").checked;
+        if (isPublic){
+          reqPath = reqPath + "?isPublic=true";
+        } else {
+          reqPath = reqPath + "?isPublic=false";
+        }
+        $.ajax({
+            url : reqPath,
+            type : "PUT",
+            data : reqInput,
+            dataType : "json",
+            contentType: "application/json"
+            }).done(function(data) {
+
+            console.log("state data=" + JSON.stringify(data));
+
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("insert failed: err=" + err);
+            }); 
+      }
+
+      function incrementOperation(){
+        let getPath = document.getElementById("incrementPath").value;
+        if(!getPath.startsWith("/metrics/counter/")){
+            alert("Increment path must start with /metrics/counter/");
+            return;
+        }
+        $.ajax({
+            url : getPath,
+            type : "PUT",
+            data : {},
+            dataType : "json",
+            contentType: "application/json"
+            }).done(function(data) {
+
+            console.log("state data=" + JSON.stringify(data));
+
+            }).fail(function(error) {
+            var err = JSON.stringify(error);
+            console.log("insert failed: err=" + err);
+            }); 
+      }
+</script>
+<body onload="populate()">
+
+    <section class="intro" id="zen-intro">
+        <header role="banner">
+          <h1>head2toes</h1>
+          <h2>Storage API</h2>
+        </header>
+    
+        <div class="summary" id="summary" role="article">
+          <p>Author some web page or article
+          <a href="Signin.html">Sign in</a>
+          <a href="Reg.html">Reg</a>
+          <a href="index.html">Back to home page</a></p>
+        </div>
+    
+        <div class="preamble" id="zen-preamble" role="article">
+          <h3>How it works</h3>
+          <p>Provide the request path. Ex. /test.html</p>
+          <p>Use one of the operations: Get, Insert, Update, Increment</p>
+          <p>Insert will only work if there was no resource already for the given path</p>
+          <p>Update will only work for the resource owner</p>
+        </div>
+      </section>
+
+<div class="content">
+    
+    <form id="get" action="javascript:getOperation()" method="GET">
+        
+        <input size="40" maxlength="2064" name="getPath" value="" id="getPath" type="text" autocapitalize="off" autocorrect="off" placeholder="path ex /example.html" spellcheck="false" class="fld">
+        
+        <div class="wrapper">
+        <input type="button" onclick="getOperation()" name="getBt" value="Get" id="getBt" class="btn ipb btn-prim sgnBtn">
+        </div>
+    
+        <textarea style="width: 100%!important;" id="getData" cols="51" rows="20"></textarea>
+        
+    </form>
+        
+    </div>
+
+
+    <div class="wrapper"></div>
+
+<div class="content">
+
+<form id="insert" action="#" method="POST">
+  
+  <input size="40" maxlength="64" name="insertPath" value="" id="insertPath" type="text" autocapitalize="off" autocorrect="off" placeholder="path" spellcheck="false" class="fld">
+  
+  <div class="wrapper">
+  <input type="button" onclick="insertOperation()" name="insertBt" value="Insert" id="sgninsertBtBt" class="btn ipb btn-prim sgnBtn">
+  </div>
+
+    <textarea style="width: 100%!important;" id="insertBody" cols="51" rows="20"></textarea>
+
+  <div><input type="checkbox" id="insertPublic" name="insertPublic"><span style="margin-left:5pt; color:#adadad">public</span></div>
+  
+</form>
+  
+</div>
+
+<div class="wrapper"></div>
+
+<div class="content">
+
+<form id="update" action="#" method="POST">
+  
+  <input size="40" maxlength="64" name="updatePath" value="" id="updatePath" type="text" autocapitalize="off" autocorrect="off" placeholder="path" spellcheck="false" class="fld">
+  
+  <div class="wrapper">
+  <input type="button" onclick="updateOperation()" name="updateBt" value="Update" id="updateBt" class="btn ipb btn-prim sgnBtn">
+  </div>
+
+    <textarea style="width: 100%!important;" id="updateBody" cols="51" rows="20"></textarea>
+
+  <div><input type="checkbox" id="updatePublic" name="updatePublic"><span style="margin-left:5pt; color:#adadad">public</span></div>
+  
+</form>
+  
+</div>
+
+<div class="wrapper"></div>
+
+<div class="content">
+
+<form id="increment" action="#" method="POST">
+  
+  <input size="40" maxlength="64" name="incrementPath" value="" id="incrementPath" type="text" autocapitalize="off" autocorrect="off" placeholder="/metrics/counter/path" spellcheck="false" class="fld">
+  
+  <div class="wrapper">
+  <input type="button" onclick="incrementOperation()" name="incrementBt" value="Increment" id="incrementBt" class="btn ipb btn-prim sgnBtn">
+  </div>
+
+  
+</form>
+  
+</div>
+
+</body>
+</html>

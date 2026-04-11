@@ -1,0 +1,73 @@
+<link rel="stylesheet" media="screen" href="style.css">
+    <script type="text/javascript" src="sjcl.js"></script>
+    <script type="text/javascript" src="cookies.js"></script>
+ 
+<body onLoad = "init();">
+
+  <div class="page-wrapper">
+        <section class="intro" id="zen-intro">
+            <header role="banner">
+                <h1>head2toes</h1>
+                <h2>Sign In</h2>
+            </header>
+        </section>
+  </div>
+</body>
+
+<script>
+
+async function init() {
+  try { 
+
+    var localStorage = window.localStorage;
+    var keys = {};
+    var ssId = "";
+    const ts = new Date().getTime();
+ 
+    if (localStorage.pub && localStorage.pub !== "notloggedin"){
+      keys.pub = new sjcl.ecc.ecdsa.publicKey(
+          sjcl.ecc.curves.c256,
+          sjcl.codec.base64.toBits(localStorage.pub)
+      );
+      
+      keys.sec = new sjcl.ecc.ecdsa.secretKey(
+          sjcl.ecc.curves.c256,
+          sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
+      );
+
+      ssId = 
+        localStorage.pub +
+        "." + 
+        ts;
+     
+      var sig = keys.sec.sign(sjcl.hash.sha256.hash(ssId))
+      var sigb64 = sjcl.codec.base64.fromBits(sig);
+
+      bakeCookie(ssId + "." + sigb64);
+
+      window.location.href = getNextURL();
+
+    } else {
+
+      window.location.href = `/fs/get/reg/Reg.html#${getNextURL()}`;
+    }
+
+  } catch(e) {
+   console.log(e);
+  }
+}
+
+function bakeCookie (val){
+  setCookie ('ssid', val, 1);
+}
+
+function getNextURL () {
+    const nextURL = window.location.hash.substr(1);
+    let href = "/fs/get/home.html";
+    if (nextURL){
+      href = nextURL;
+    }
+    return href;
+}
+      
+</script>

@@ -1,0 +1,127 @@
+<script type="text/javascript" src="sjcl.js"></script>
+<script type="text/javascript" src="cookies.js"></script>
+<script src="jquery-1.9.1.min.js"></script>
+<script type="text/javascript" src="db.js"></script>
+
+<link rel="stylesheet" media="screen" href="style.css">
+
+<body>
+
+        <div class="page-wrapper">
+
+                <section class="intro" id="zen-intro">
+                    <header role="banner">
+                        <h1>head2toes</h1>
+                        <h2>Reg</h2>
+                    </header>
+
+                    <div></div>
+            
+                    <div class="summary" id="zen-summary" role="article">
+                            <button class="button" value="Download Keys" onclick="javascript:saveToNamedFile()">Save Id Card</button>
+                            <p>
+                                <!-- <a href="RegFido2.html">Register with FIDO 2 instead</a> -->
+                                <a href="index.html">Back to home page</a>
+                            </p>
+                    </div>
+            
+                    <div class="preamble" id="zen-preamble" role="article">
+                        <h3>How it works</h3>
+                        <p>Registration will create ECSDA key pair, and saved them into HTML5 local storage.</p>
+                        <p>If the keys are found in the local storage, then no new keys will be created.</p>
+                        <p>Download button will be available to download keys and saved them in the file system.</p>
+                    </div>
+                </section>
+
+</body>
+
+<script>
+
+        // YqL5e4TU0vk+sIUbCz7fjGQsRfyuQnVayTB13jMl+Ho=.1521258529558.IwGNGi0PKT8hQ1xGzhu76I4t1p7CnLDVxrmYa97c3SHIZN+8XzHat83EPoV9RhMhN1lf+pBx8OPhmlFDbGbQtQ==
+        
+        try {  
+            var localStorage = window.localStorage;
+            var keys = {};
+            var ssId = "";
+                
+            if (localStorage.pub && localStorage.pub !== "notloggedin"){
+        
+                keys.pub = new sjcl.ecc.ecdsa.publicKey(
+                    sjcl.ecc.curves.c256,
+                    sjcl.codec.base64.toBits(localStorage.pub)
+                );
+                
+                keys.sec = new sjcl.ecc.ecdsa.secretKey(
+                    sjcl.ecc.curves.c256,
+                    sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
+                );
+        
+            } else {
+        
+                keys = 
+                    sjcl.ecc.ecdsa.generateKeys(256);
+        
+                var serializedPubKey = 
+                    sjcl.codec.base64.fromBits(keys.pub.get().x.concat(keys.pub.get().y));
+                localStorage.pub = serializedPubKey;
+                
+                var serializedSecKey = 
+                    sjcl.codec.base64.fromBits(keys.sec.get());
+                localStorage.priv = serializedSecKey;
+        
+            }
+        
+            ssId = 
+                localStorage.pub +
+                "." + 
+                (new Date().getTime());
+             
+            var sig = keys.sec.sign(sjcl.hash.sha256.hash(ssId))
+            var sigb64 = sjcl.codec.base64.fromBits(sig);
+        
+            var ok = keys.pub.verify(sjcl.hash.sha256.hash(ssId), sig)
+            console.log('ok='+ok);
+        
+            var ctx = {};
+            payload = {};
+            payload.pub = localStorage.pub;
+            payload.ssId = ssId;
+            payload.sig = sigb64;
+            ctx.reqPath = "/id/" + payload.pub + ".json";
+            ctx.payload = JSON.stringify(payload);
+            insertOperation (confirmReg, ctx);
+        
+            bakeCookie(ssId + "." + sigb64);
+        
+          } catch(e) {
+           console.log(e);
+          }
+        
+          function bakeCookie (val){
+            setCookie ('ssid', val, 1);
+          }
+        
+          function confirmReg (ctx){
+              console.log(JSON.stringify(ctx));
+          }
+        
+          function saveToFile (){
+            var content = localStorage.pub + "." + localStorage.priv;
+            var uriContent = "data:application/octet-stream," + encodeURIComponent(content);
+            window.open(uriContent, 'hello.txt');
+          }
+        
+          function saveToNamedFile (){
+            var d = new Date().toISOString().slice(0, 19).replace(/-/g, "");
+            var content = localStorage.pub + "." + localStorage.priv;
+            var uriContent = "data:application/octet-stream," + encodeURIComponent(content);
+            var downloadLink = document.createElement("a");
+            downloadLink.href = uriContent;
+            downloadLink.download = d + ".id.txt";
+        
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+          }
+        
+        </script>

@@ -1,0 +1,105 @@
+<body>
+<hr>
+<section id="reg">
+<p>First thing to check is that registration/authentication works</p>
+<a href="/fs/get/reg/Reg.html#/fs/get/diagnostics/tests.html">Reg check</a>
+</section>
+<hr>
+<section id="basic">
+<div><button onclick="run_basic()">Run basic tests></button></div>
+<div id="test_post">
+</div>
+<div id="test_put">
+</div>
+<div id="test_get">
+</div>
+<div id="test_sse_listen">
+</div>
+<hr>
+<div id="test_sse_pub">
+  <button onclick="connectSSE()">ConnectSSE</button>
+  <button onclick="sendTestSSE()">Send SSE</button>
+</div>
+<div id="test_sse_sub">
+  <textarea id="sub" width="100%" height="200px"></textarea>
+</div>
+
+
+</section>
+<script>
+async function connectSSE(){
+  const url = "/sub/siagnostics/test.json"
+  connect(url)
+}
+async function sendTestSSE(){
+  const url = "/sub/siagnostics/test.json"
+  const payload = {"s":"Test SSE conent"}
+  fetch_post(url, "PUT", payload)
+}
+
+function connect (url){
+  events = new EventSource(url);
+  const ta_sub = document.getElementById("sub")
+
+  events.onmessage = async (event) => {
+      let data = event.data
+      let payload = JSON.parse(data);
+
+      if (payload.s){
+        ta_sub.value = payload.s
+      }
+  }
+}
+
+async function run_basic(){
+  const ts = `/diagnostics/${new Date().getTime()}`
+  const div_test_post = document.getElementById("test_post")
+  const div_test_put = document.getElementById("test_put")
+  const div_test_get = document.getElementById("test_get")
+
+  await test_post(div_test_post, ts)
+  await test_put(div_test_put, ts)
+  await test_get(div_test_get, ts)
+}
+
+async function test_post(div_element, ts){
+  div_element.innerHTML = "Testing..."
+  const data = {"test":"test_post"}
+  div_element.innerHTML = "test_post" + await fetch_post(`${ts}/post.json`, "POST", data)
+}
+
+async function test_put(div_element, ts){
+  div_element.innerHTML = "Testing..."
+  const data = {"test":"test_post","put":ts}
+  div_element.innerHTML = "test_put:<br>" + await fetch_post(`${ts}/post.json`, "PUT", data)
+}
+
+async function test_get(div_element, ts){
+  div_element.innerHTML = "Testing..."
+  const data = await fetch_post(`${ts}/post.json`, "GET")
+  div_element.innerHTML = "test_get:<br>" + data 
+}
+
+
+
+async function fetch_post(url, method="POST", data={}, headers={}){
+  const hdrs = new Headers(headers);
+  const fetchData = { 
+    method: method, 
+    mode: 'cors',
+    headers: hdrs
+  }
+  if ("GET" !== method){
+    fetchData.body = JSON.stringify(data)
+  }
+  try {
+    const response = await fetch(url, fetchData)
+    const text = await response.text()
+    return text
+  } catch(error) {
+    console.log('Looks like there was a problem: \n', error);
+    return JSON.stringify(error)
+  } 
+}
+</script>
+</body>

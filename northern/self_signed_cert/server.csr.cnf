@@ -1,0 +1,13 @@
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+
+[dn]
+C=US
+ST=California
+L=San Jose
+O=H2T
+OU=OSS
+emailAddress=nebojsa.pesic@gmail.com
+CN = head2toes.asuscomm.com

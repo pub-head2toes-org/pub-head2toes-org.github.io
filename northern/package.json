@@ -1,0 +1,25 @@
+{
+  "name": "nothern",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Node for the world",
+  "main": "src/h2t/Cluster.js",
+  "scripts": {
+    "start": "node src/h2t/Cluster.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "node",
+    "algorithm",
+    "SSE",
+    "memory",
+    "DB"
+  ],
+  "author": "pub.head2toes.org@gmail.com",
+  "dependencies": {
+    "sqlite3": "^5"
+  },
+  "devDependencies": {
+  },
+  "license": "Apache-2.0"
+}

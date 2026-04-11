@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chord Player</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+    }
+    section {
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 150px;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #3e8e41;
+    }
+  </style>
+</head>
+<body>
+
+  <section>
+    <label for="chordInput">Enter Chord (e.g., Em):</label>
+    <input type="text" id="chordInput" placeholder="Enter Chord">
+  </section>
+
+  <section>
+    <audio controls>
+      <source src="Am.m4a" type="audio/mp4">
+      Your browser does not support the audio element.
+      </audio>
+  </section>
+
+  <section>
+    <button id="playChordButton">Play</button>
+  </section>
+
+  <script>
+
+function loadBuffer(chordName){
+
+  fetch(`/fs/get/games/${chordName}.m4a`)
+  .then(response => response.arrayBuffer())
+  .then(data => audioContext.decodeAudioData(data))
+  .then(buffer => {
+    chordAudioElements[chordName] = buffer;
+   });
+
+}
+
+
+    // Chord list (replace with your actual audio file paths)
+    const chordList =  ["Am", "C" , "F", "Em", "E", "G", "Bm", "Dm", "Cm"];
+    const chordAudioElements={};
+    chordList.forEach (chord => loadBuffer(chord));
+
+    const audioContext = new AudioContext();
+    /*
+    const audioElement = document.createElement('audio');
+    audioElement.src = "Am.m4a";
+    chordAudioElements.push(audioElement);
+    */
+    const chordInput = document.getElementById("chordInput");
+    const playChordButton = document.getElementById("playChordButton");
+
+    playChordButton.addEventListener("click", playChord);
+
+    function playChord() {
+      const chordName = chordInput.value.trim(); //.toUpperCase();
+
+      if (chordList.includes(chordName)) {
+      /*
+        const audio = new Audio(chordList[chordList.indexOf(chordName)]);
+        audio.play();
+      */
+/*
+        const gainNode = audioContext.createGain();
+        const track = audioContext.createMediaElementSource(audioElement);
+        track.connect(gainNode).connect(audioContext.destination);
+        audioElement.play();
+*/
+
+    const source = audioContext.createBufferSource();
+    source.buffer = chordAudioElements[chordName];
+    source.connect(audioContext.destination);
+    source.start(0);
+ 
+      } else {
+        alert("Invalid chord. Please enter a chord from the list.");
+      }
+    }
+  </script>
+
+</body>
+</html>

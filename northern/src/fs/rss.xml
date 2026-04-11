@@ -1,0 +1,23 @@
+<?xml  version="1.0"?>
+
+<rss version="2.0">
+
+<channel>
+
+<title>head2toes</title>
+
+<description>A demonstration of what can be accomplished if we keep things simple.</description>
+<link>http://head2toes.asuscomm.com/fs/get/index.html</link>
+<language>en-ca</language>
+<webMaster>nebojsa.pesic@gmail.com</webMaster>
+
+<lastBuildDate>Mon, 19 Mar 2018 08:00:00 PST</lastBuildDate>
+
+<item>
+  <title>Welcome - 19 Mar 2018</title>
+  <description>Welcome to head 2 toes!</description>
+  <link>http://head2toes.asuscomm.com/fs/get/index.html</link>
+</item>
+
+</channel>
+</rss> 
