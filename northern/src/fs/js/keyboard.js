@@ -17,6 +17,8 @@ const Keyboard = {
     },
 
     init() {
+        const hash = window.location.hash.substr(1);
+
         // Create main elements
         this.elements.main = document.createElement("div");
         this.elements.keysContainer = document.createElement("div");
@@ -31,16 +33,12 @@ const Keyboard = {
         // Add to DOM
         this.elements.main.appendChild(this.elements.keysContainer);
         document.getElementById("keyboard").appendChild(this.elements.main);
-/*
-        // Automatically use keyboard for elements with .use-keyboard-input
-        document.querySelectorAll(".use-keyboard-input").forEach(element => {
-            element.addEventListener("focus", () => {
-                this.open(element.value, currentValue => {
-                    element.value = currentValue;
-                });
-            });
-        });
-	*/
+
+      if (hash) {
+        clip.value = `get ${hash}`
+        const tokens = ['get', hash]
+        parseTokens(tokens)
+      }
     },
 
     _createKeys() {

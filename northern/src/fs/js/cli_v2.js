@@ -3,7 +3,18 @@ var myCodeMirror,myCodeMirror2
 window.addEventListener("DOMContentLoaded", function () {
   myCodeMirror = document.getElementById("text")
   myCodeMirror2 = document.getElementById("text2")
+  addKeyListener()
 })
+
+function addKeyListener() {
+  document.getElementById("clip").addEventListener('keydown', function(e) {
+     if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      runCursor();
+    }
+  })
+
+}
 
 function getLine(textarea){
   let line = textarea.value.substr(0, textarea.selectionStart).split("\n").length-1
@@ -96,9 +107,18 @@ function follow (){
 
 function runCursor(){
   let line = getCmdLine()
-  let lineTxt = clip.value.split("\n")[line];
+  let lines = clip.value.split("\n");
+  let lineTxt = lines[line];
   let tokens = lineTxt.split(' ');
   parseTokens(tokens);
+  /*
+  if ( line === (lines.length - 1) ) {
+    lines.push("");
+  } else {
+    lines.splice(line+1, 0, "");
+  }
+  clip.value = lines.join("\n");
+  */
 }
   
 function parseTokens(tokens){
