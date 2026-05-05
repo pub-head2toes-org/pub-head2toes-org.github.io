@@ -14,6 +14,21 @@ function addKeyListener() {
     }
   })
 
+  document.getElementById("text").addEventListener('keydown', function(e) {
+     if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      doEval();
+    }
+  })
+}
+
+function doEval () {
+    let data = myCodeMirror.value
+    try{
+    	eval(data)
+    } catch (err){
+    	footer.innerHTML =`eval err: ${err}`
+    }
 }
 
 function getLine(textarea){
