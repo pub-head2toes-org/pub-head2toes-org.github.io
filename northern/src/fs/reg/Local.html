@@ -1,0 +1,103 @@
+<link rel="stylesheet" media="screen" href="style.css">
+    <script type="text/javascript" src="sjcl.js"></script>
+    <script type="text/javascript" src="cookies.js"></script>
+ 
+<body onLoad = "init();">
+
+  <div class="page-wrapper">
+        <section class="intro" id="zen-intro">
+            <header role="banner">
+                <h1>head2toes</h1>
+                <h2>Local Sign In</h2>
+            </header>
+        </section>
+        <section>
+          <div><label>Local pairing code: </label><span id="pairing"></span></div>
+          <div><label>Remote: </label><input id="pass" type="password"></div>
+          <div id="secure"><button class="menu-item" onclick="secureSignIn()">Secure</button></div>
+        </section>
+  </div>
+</body>
+
+<script src="./oo.js"></script>
+<script>
+
+async function secureSignIn () {
+      const secure = document.getElementById('secure')
+      const local = this.keys.pairing
+      const remote = document.getElementById('pass').value
+      /*
+      * Note: Consider using only remote for url, and local for connection security
+      */
+      //const url = `/sub/simon/${remote}.${local}`
+      const url = `/sub/simon/crtl.${remote}`
+      secure.innerHTML = `Waiting on remote...`
+      
+      const simon = {}
+      simon.key = await oo.idme(`ctrl.${remote}.${local}.ltrc`)
+      const events = new EventSource(url);
+      events.onmessage = async (event) => {
+        let data = event.data
+        if (simon.key){
+          data = await oo.decrypt(oo.str2ab(data), simon.key)
+        }
+        let payload = JSON.parse(data);
+
+        if (payload.s){
+          bakeCookie(payload.s);
+          window.location.href = getNextURL();
+        }
+      }
+
+}//secureSignIn
+
+function rand(min,max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}//rand
+
+function pairing (){
+  const res = []
+  for (let i=0; i<4; i++){
+    res.push(String.fromCharCode(rand(97,122)))
+  }
+  return res.join('')
+}
+
+async function init() {
+  try { 
+
+    var localStorage = window.localStorage;
+    this.keys = {};
+    var ssId = "";
+    const ts = new Date().getTime();
+ 
+    if (localStorage.pub && localStorage.pub !== "notloggedin"){
+
+      keys.pairing = pairing()
+      const channel = document.getElementById('pairing')
+      channel.innerHTML = keys.pairing
+
+    } else {
+
+      window.location.href = `/fs/get/reg/Reg.html#${getNextURL()}`;
+    }
+
+  } catch(e) {
+   console.log(e);
+  }
+}
+
+function bakeCookie (val){
+  setCookie ('ssid', val, 1);
+}
+
+function getNextURL () {
+    const nextURL = window.location.hash.substr(1);
+    let href = "/fs/get/home.html";
+    if (nextURL){
+      href = nextURL;
+    }
+    return href;
+}
+      
+</script>

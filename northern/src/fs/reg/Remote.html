@@ -1,0 +1,124 @@
+<link rel="stylesheet" media="screen" href="style.css">
+    <script type="text/javascript" src="sjcl.js"></script>
+    <script type="text/javascript" src="cookies.js"></script>
+ 
+<body onLoad = "init();">
+
+  <div class="page-wrapper">
+        <section class="intro" id="zen-intro">
+            <header role="banner">
+                <h1>head2toes</h1>
+                <h2>Remote Control</h2>
+            </header>
+        </section>
+        <section>
+          <div><label>Remote pairing code: </label><span id="pairing"></span></div>
+          <div><label>Local: </label><input id="pass" type="password"></div>
+          <div id="secure"><button class="menu-item" onclick="secureSignIn()">Secure sign in</button></div>
+        </section>
+  </div>
+</body>
+
+<script src="./oo.js"></script>
+<script>
+
+async function secureSignIn () {
+  const secure = document.getElementById('secure')
+  const remote = this.keys.pairing
+  const local = document.getElementById('pass').value
+  //const url = `/sub/simon/${remote}.${local}`
+  url = `/sub/simon/crtl.${remote}`
+  const data = JSON.stringify({s: this.keys.cookie})
+  const key = await oo.idme(`ctrl.${remote}.${local}.ltrc`)
+  const payload = oo.ab2b64(await oo.encrypt(data, key))
+  send ("PUT", url, payload)
+  document.getElementById('secure').innerHTML = "Done."
+}//secureSignIn
+
+function send(httpMethod, url, data, headers={}) {
+  let hdrs = new Headers(headers);
+  
+  let fetchData = { 
+    method: httpMethod, 
+    body: data,
+    headers: hdrs
+  }
+  fetch(url, fetchData).then(function(response) {
+    response.text().then(function (text) {
+      return text;
+    });
+  }).catch(function(error) {
+    console.log('Looks like there was a problem: \n', error);
+    return undefined;
+  });
+
+}//send
+
+function rand(min,max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}//rand
+
+function pairing (){
+  const res = []
+  for (let i=0; i<4; i++){
+    res.push(String.fromCharCode(rand(97,122)))
+  }
+  return res.join('')
+}
+
+async function init() {
+  try { 
+
+    var localStorage = window.localStorage;
+    this.keys = {};
+    var ssId = "";
+    const ts = new Date().getTime();
+ 
+    if (localStorage.pub && localStorage.pub !== "notloggedin"){
+      keys.pub = new sjcl.ecc.ecdsa.publicKey(
+          sjcl.ecc.curves.c256,
+          sjcl.codec.base64.toBits(localStorage.pub)
+      );
+      
+      keys.sec = new sjcl.ecc.ecdsa.secretKey(
+          sjcl.ecc.curves.c256,
+          sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
+      );
+
+      ssId = 
+        localStorage.pub +
+        "." + 
+        ts;
+     
+      var sig = keys.sec.sign(sjcl.hash.sha256.hash(ssId))
+      var sigb64 = sjcl.codec.base64.fromBits(sig);
+
+      keys.cookie = ssId + "." + sigb64;
+      keys.pairing = pairing()
+      const channel = document.getElementById('pairing')
+      channel.innerHTML = keys.pairing
+
+    } else {
+
+      window.location.href = `/fs/get/reg/Reg.html#${getNextURL()}`;
+    }
+
+  } catch(e) {
+   console.log(e);
+  }
+}
+
+function bakeCookie (val){
+  setCookie ('ssid', val, 1);
+}
+
+function getNextURL () {
+    const nextURL = window.location.hash.substr(1);
+    let href = "/fs/get/home.html";
+    if (nextURL){
+      href = nextURL;
+    }
+    return href;
+}
+      
+</script>

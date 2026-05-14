@@ -69,3 +69,12 @@ textarea {
 #msg {
   height: 300px;
 }
+
+input {
+    color: #0f0;
+    background-color: #000;
+    box-sizing: border-box;
+    padding: 10px;
+    margin: 10px;
+}
+
