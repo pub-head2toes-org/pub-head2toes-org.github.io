@@ -24,6 +24,11 @@ async function init() {
     var ssId = "";
     const ts = new Date().getTime();
  
+    if (localStorage.remotectrl){
+
+      window.location.href = getNextURL();
+    }
+
     if (localStorage.pub && localStorage.pub !== "notloggedin"){
       keys.pub = new sjcl.ecc.ecdsa.publicKey(
           sjcl.ecc.curves.c256,

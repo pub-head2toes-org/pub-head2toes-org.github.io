@@ -102,6 +102,12 @@ async function init() {
     const msg = document.getElementById("msg");
     const next = document.getElementById("next");
     next.href = getNextURL();   
+ 
+    if (localStorage.remotectrl){
+
+      window.location.href = getNextURL();
+    }
+
 
     if (localStorage.pub && localStorage.pub !== "notloggedin"){
 

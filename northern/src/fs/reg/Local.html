@@ -22,14 +22,12 @@
 <script src="./oo.js"></script>
 <script>
 
+const REMOTE_CTRL = "remotectrl"
+
 async function secureSignIn () {
       const secure = document.getElementById('secure')
       const local = this.keys.pairing
       const remote = document.getElementById('pass').value
-      /*
-      * Note: Consider using only remote for url, and local for connection security
-      */
-      //const url = `/sub/simon/${remote}.${local}`
       const url = `/sub/simon/crtl.${remote}`
       secure.innerHTML = `Waiting on remote...`
       
@@ -45,6 +43,7 @@ async function secureSignIn () {
 
         if (payload.s){
           bakeCookie(payload.s);
+          localStorage.setItem(REMOTE_CTRL, "ON")
           window.location.href = getNextURL();
         }
       }
@@ -67,20 +66,14 @@ async function init() {
   try { 
 
     var localStorage = window.localStorage;
+    localStorage.removeItem(REMOTE_CTRL)
     this.keys = {};
     var ssId = "";
     const ts = new Date().getTime();
  
-    if (localStorage.pub && localStorage.pub !== "notloggedin"){
-
       keys.pairing = pairing()
       const channel = document.getElementById('pairing')
       channel.innerHTML = keys.pairing
-
-    } else {
-
-      window.location.href = `/fs/get/reg/Reg.html#${getNextURL()}`;
-    }
 
   } catch(e) {
    console.log(e);
