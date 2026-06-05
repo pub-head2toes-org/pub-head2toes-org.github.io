@@ -1,11 +1,10 @@
 var cacheName = 'yambino-v2026.06.04';
 var filesToCache = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/manifest.json',
-  '/sw.js'
+  './index.html',
+  './style.css',
+  './app.js',
+  './manifest.json',
+  './sw.js'
 ];
 
 self.addEventListener('install', function(e) {
