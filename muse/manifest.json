@@ -1,0 +1,18 @@
+{
+  "name": "Muse",
+  "short_name": "Muse",
+  "description": "Keyboard-driven CSV table search",
+  "icons": [{
+    "src": "https://pub.head2toes.org/static/prj-cat-192x192.png",
+    "type": "image/png",
+    "sizes": "192x192"
+  }, {
+    "src": "https://pub.head2toes.org/static/prj-cat-512x512.png",
+    "type": "image/png",
+    "sizes": "512x512"
+  }],
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#1e1e1e"
+}

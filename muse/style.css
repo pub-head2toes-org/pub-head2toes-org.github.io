@@ -1,0 +1,122 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #1e1e1e;
+  color: #e6e6e6;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding: 8px;
+}
+
+#keyword {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #2b2b2b;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  font-size: 16px;
+  min-height: 22px;
+  white-space: nowrap;
+  overflow-x: auto;
+  color: #8ec6ff;
+}
+
+#keyword .label { color: #777; margin-right: 8px; }
+#keyword .term {
+  display: inline-block;
+  background: #143b5c;
+  color: #cce6ff;
+  border-radius: 4px;
+  padding: 1px 8px;
+  margin-right: 6px;
+}
+#keyword .caret { color: #e6e6e6; }
+#keyword .hint { color: #666; }
+
+#results, #detail, #commands {
+  flex: 1 1 auto;
+  width: 100%;
+  resize: none;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #232323;
+  color: #e6e6e6;
+  font-family: "SF Mono", "Consolas", "Menlo", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  outline: none;
+  white-space: pre;
+  overflow: auto;
+}
+
+#results::selection, #detail::selection, #commands::selection {
+  background: #2f6db3;
+  color: #ffffff;
+}
+
+.status {
+  flex: 0 0 auto;
+  padding: 6px 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+/* Upload / edit pages */
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  height: 100dvh;
+  padding: 20px;
+  text-align: center;
+}
+
+h1 { font-weight: 600; letter-spacing: 1px; }
+.muse-logo { color: #8ec6ff; }
+.sub { color: #888; font-size: 14px; margin-bottom: 24px; }
+
+input[type="file"], input[type="text"], .btn {
+  font-size: 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #3a3a3a;
+  background: #2b2b2b;
+  color: #e6e6e6;
+  margin: 8px 0;
+}
+
+input[type="text"] { width: 100%; max-width: 480px; }
+
+.btn {
+  cursor: pointer;
+  background: #143b5c;
+  color: #cce6ff;
+  border-color: #1f5c8f;
+}
+.btn:hover { background: #1a4a72; }
+
+.field-box {
+  width: 100%;
+  max-width: 560px;
+  text-align: left;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: #2b2b2b;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+}
+.field-box .col { color: #8ec6ff; font-weight: 600; }
+.field-box .val { color: #e6e6e6; word-break: break-word; }
