@@ -22,6 +22,14 @@
     return cfg.editableColumns.indexOf(colName) !== -1;
   }
 
+  function isURL(v) {
+    return /^https?:\/\/\S+$/i.test((v || '').trim());
+  }
+
+  function selectedValue() {
+    return (selected < values.length) ? values[selected] : '';
+  }
+
   function render() {
     var lines = [];
     for (var i = 0; i < headers.length; i++) {
@@ -86,7 +94,12 @@
       move(-1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      openEdit();
+      var val = selectedValue();
+      if (isURL(val)) {
+        window.open(val.trim(), '_blank', 'noopener');
+      } else {
+        openEdit();
+      }
     }
   });
 
