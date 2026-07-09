@@ -49,10 +49,13 @@
       if (nl === -1) { start = text.length; break; }
       start = nl + 1;
     }
-    var end = text.indexOf('\n', start);
-    if (end === -1) { end = text.length; }
+    // select only the current column value, not the "HEADER : " prefix or ✎ mark
+    var prefix = headers[selected] + ' : ';
+    var val = (selected < values.length) ? values[selected] : '';
+    var valStart = start + prefix.length;
+    var valEnd = valStart + val.length;
     detailEl.focus();
-    detailEl.setSelectionRange(start, end);
+    detailEl.setSelectionRange(valStart, valEnd);
     scrollSelectedIntoView();
   }
 
