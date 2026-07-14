@@ -211,6 +211,29 @@
     setTimeout(function () { resultsEl.focus(); }, 0);
   });
 
+  // Click / touch on a result line sets the selection to that line, so a
+  // subsequent up/down arrow starts from there.
+  function selectClickedLine() {
+    if (results.length === 0) { return; }
+    var caret = resultsEl.selectionStart; // caret lands where the user tapped
+    var text = resultsEl.value;
+    var lineIdx = 0;
+    for (var i = 0; i < caret && i < text.length; i++) {
+      if (text[i] === '\n') { lineIdx++; }
+    }
+    selected = Math.min(results.length - 1, Math.max(0, lineIdx));
+    highlightSelected();
+    saveState();
+  }
+
+  // caret position is settled after the click/touch completes
+  resultsEl.addEventListener('mouseup', function () {
+    setTimeout(selectClickedLine, 0);
+  });
+  resultsEl.addEventListener('touchend', function () {
+    setTimeout(selectClickedLine, 0);
+  });
+
   renderKeyword();
   runSearch();
   resultsEl.focus();

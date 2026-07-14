@@ -1,4 +1,4 @@
-var cacheName = 'muse-v2026.07.09-5';
+var cacheName = 'muse-v2026.07.14-6';
 var filesToCache = [
   './index.html',
   './index.js',
