@@ -14,6 +14,9 @@ Progressive Web Application (PWA) Joint
   * The next section is input for the `game_name`
   * The next section is input for the `game_url`
   * The next section is a button: `Enter Lobby`
+  * Actions
+    * On page rendering check if any relevant HTTP parameters are present in the request: `[organizer, game_name, game_url, comm_channel]`
+    * Fill in the values if parameters are present
 * `organize.html` page
   * On page load generate the comm channel
     * Implement a function that can generate the comm channel string
@@ -42,10 +45,10 @@ Progressive Web Application (PWA) Joint
         * const participants = []
         * add to the list the participant from the request parameters
       * calculate the invite link
-        * Example: `https://git.head2toes.org/pwa/joint/lobby.html?organizer=<>&participant=<>&game_name=<>&game_url=<>&comm_channel=<>`
+        * Example: `https://git.head2toes.org/pwa/joint/join.html?organizer=<>&game_name=<>&game_url=<>&comm_channel=<>`
         * Host: `https://git.head2toes.org` or `http://localhost`
-        * Base URL: `/pwa/joint/lobby.html`
-        * Parameters: [organizer, participant, game_name, game_url, comm_channel]
+        * Base URL: `/pwa/joint/join.html`
+        * Parameters: `[organizer, game_name, game_url, comm_channel]`
         * All parameter values need to be URL encoded
       * calculate the SSE link
         * Example: `https://pub.head2toes.org/sub/joint/<COMM_CHANNEL>`

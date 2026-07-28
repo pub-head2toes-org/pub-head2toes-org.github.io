@@ -23,9 +23,12 @@ conventions (`fabric`, `muse`): per-page `.html` files, one shared
 
 - `generateCommChannel()` -> `YYYY-MM-DD-N` (today + random int 1-64), e.g. `2026-07-28-17`.
 - `getParams()` -> parse `URLSearchParams`.
-- `buildInviteLink({organizer,participant,game_name,game_url,comm_channel})`
-  -> `window.location.origin` as host (covers `git.head2toes.org` and
-  `localhost`) + base `/pwa/joint/lobby.html`, all values `encodeURIComponent`'d.
+- `buildLobbyLink(data)` -> "Enter Lobby" link: `/pwa/joint/lobby.html` with all
+  5 lobby params. `window.location.origin` as host (covers `git.head2toes.org`
+  and `localhost`), all values `encodeURIComponent`'d.
+- `buildInviteLink(data)` -> shareable invite link: `/pwa/joint/join.html` with
+  `[organizer, game_name, game_url, comm_channel]` (no participant - invitee
+  fills in their own name on the join page).
 - `buildSseLink(comm_channel)` -> `https://pub.head2toes.org/sub/joint/<COMM_CHANNEL>` (constant `SUB_HOST`).
 - `sendMessage(sseLink, participant, m)` -> `fetch(sseLink, {method:'PUT', body: JSON.stringify({participant, m})})`.
 - `registerSW()`.
@@ -37,7 +40,9 @@ conventions (`fabric`, `muse`): per-page `.html` files, one shared
 
 **join.html** - Title `Joint`; sub-header `Joining the party:`; inputs
 `Organizer`, `Comm Channel`, `Participant`, `game_name`, `game_url`; button
-`Enter Lobby` -> `lobby.html?` with all 5 params.
+`Enter Lobby` -> `lobby.html?` with all 5 params. On load, prefill
+`[organizer, game_name, game_url, comm_channel]` from any incoming params
+(so invite links land pre-filled).
 
 **organize.html** - On load `generateCommChannel()` fills a hidden `comm_channel`
 input. Title `Joint`; inputs `organizer`, `game_name`, `game_url`, hidden
@@ -50,8 +55,8 @@ input. Title `Joint`; inputs `organizer`, `game_name`, `game_url`, hidden
 2. UI: Title `Joint`; sub-header `Lobby`; read-only `<textarea id="msg_board">`;
    span with text input `msg` + `Send` button; div with two rows: read-only
    invite-link input, and `Start` button.
-3. Init: `const participants = []`, push request `participant`; compute invite
-   link (fill read-only input) and SSE link.
+3. Init: `const participants = []`, push request `participant`; compute the
+   shareable invite link to `join.html` (fill read-only input) and SSE link.
 4. `EventSource(sseLink)`; on message: JSON-parse `{participant,m}`, add
    participant if new, append `PARTICIPANT: MSG` to `msg_board`.
 5. After listener set up, PUT entry confirmation `{participant, m:"Entered the Lobby"}`.

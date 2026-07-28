@@ -56,6 +56,14 @@
   <script>
     registerSW();
 
+    // Prefill fields from invite-link parameters if present.
+    const incoming = getParams();
+    ['organizer', 'game_name', 'game_url', 'comm_channel'].forEach((key) => {
+      if (incoming[key]) {
+        document.getElementById(key).value = incoming[key];
+      }
+    });
+
     document.getElementById('join-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const data = {
@@ -65,7 +73,7 @@
         game_name: document.getElementById('game_name').value.trim(),
         game_url: document.getElementById('game_url').value.trim(),
       };
-      location.href = buildInviteLink(data);
+      location.href = buildLobbyLink(data);
     });
   </script>
 </body>
