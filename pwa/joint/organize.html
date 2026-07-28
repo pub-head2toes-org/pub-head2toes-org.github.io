@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#005E7A">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Joint | Organize</title>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>Joint</h1>
+    </section>
+
+    <form id="organize-form" class="stack">
+      <section>
+        <label for="organizer">organizer</label>
+        <input type="text" id="organizer" name="organizer" required>
+      </section>
+
+      <section>
+        <label for="game_name">game_name</label>
+        <input type="text" id="game_name" name="game_name" required>
+      </section>
+
+      <section>
+        <label for="game_url">game_url</label>
+        <input type="text" id="game_url" name="game_url" required>
+      </section>
+
+      <!-- comm_channel is generated on page load and kept hidden -->
+      <input type="text" id="comm_channel" name="comm_channel" class="hidden">
+
+      <section>
+        <button type="submit">Enter Lobby</button>
+      </section>
+    </form>
+
+    <a class="back" href="./index.html">&larr; Back</a>
+  </main>
+
+  <script src="./joint.js"></script>
+  <script>
+    registerSW();
+
+    // Generate the comm channel on page load.
+    document.getElementById('comm_channel').value = generateCommChannel();
+
+    document.getElementById('organize-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const organizer = document.getElementById('organizer').value.trim();
+      const data = {
+        organizer: organizer,
+        // The organizer is also a participant, so participant == organizer.
+        participant: organizer,
+        game_name: document.getElementById('game_name').value.trim(),
+        game_url: document.getElementById('game_url').value.trim(),
+        comm_channel: document.getElementById('comm_channel').value.trim(),
+      };
+      location.href = buildInviteLink(data);
+    });
+  </script>
+</body>
+</html>

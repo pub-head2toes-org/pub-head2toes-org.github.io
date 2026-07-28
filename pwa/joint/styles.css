@@ -1,0 +1,131 @@
+:root {
+  --theme: #005E7A;
+  --theme-dark: #00455a;
+  --bg: #f5f7f9;
+  --panel: #ffffff;
+  --border: #d4dde2;
+  --text: #1c2b33;
+  --muted: #5c6b73;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 16px;
+}
+
+main {
+  width: 100%;
+  max-width: 520px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+h1 {
+  margin: 0;
+  color: var(--theme);
+  font-size: 2rem;
+  letter-spacing: 0.5px;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+h2 {
+  margin: 20px 0 8px;
+  font-size: 1.15rem;
+  color: var(--text);
+}
+
+section { margin-top: 16px; }
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
+input[readonly],
+textarea[readonly] {
+  background: #eef2f4;
+  color: var(--muted);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 180px;
+}
+
+button {
+  padding: 11px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--theme);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+button:hover { background: var(--theme-dark); }
+
+button:disabled {
+  background: #b7c3c9;
+  cursor: not-allowed;
+}
+
+.buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.buttons button { flex: 1; }
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.row input[type="text"] { flex: 1; }
+
+.stack { display: flex; flex-direction: column; gap: 10px; }
+
+.hidden { display: none; }
+
+a.back {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--theme);
+  text-decoration: none;
+}
+
+a.back:hover { text-decoration: underline; }

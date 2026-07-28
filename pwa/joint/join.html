@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#005E7A">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Joint | Join</title>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>Joint</h1>
+    </section>
+
+    <section>
+      <h2>Joining the party:</h2>
+    </section>
+
+    <form id="join-form" class="stack">
+      <section>
+        <label for="organizer">Organizer</label>
+        <input type="text" id="organizer" name="organizer" required>
+      </section>
+
+      <section>
+        <label for="comm_channel">Comm Channel</label>
+        <input type="text" id="comm_channel" name="comm_channel" required>
+      </section>
+
+      <section>
+        <label for="participant">Participant</label>
+        <input type="text" id="participant" name="participant" required>
+      </section>
+
+      <section>
+        <label for="game_name">game_name</label>
+        <input type="text" id="game_name" name="game_name" required>
+      </section>
+
+      <section>
+        <label for="game_url">game_url</label>
+        <input type="text" id="game_url" name="game_url" required>
+      </section>
+
+      <section>
+        <button type="submit">Enter Lobby</button>
+      </section>
+    </form>
+
+    <a class="back" href="./index.html">&larr; Back</a>
+  </main>
+
+  <script src="./joint.js"></script>
+  <script>
+    registerSW();
+
+    document.getElementById('join-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const data = {
+        organizer: document.getElementById('organizer').value.trim(),
+        comm_channel: document.getElementById('comm_channel').value.trim(),
+        participant: document.getElementById('participant').value.trim(),
+        game_name: document.getElementById('game_name').value.trim(),
+        game_url: document.getElementById('game_url').value.trim(),
+      };
+      location.href = buildInviteLink(data);
+    });
+  </script>
+</body>
+</html>

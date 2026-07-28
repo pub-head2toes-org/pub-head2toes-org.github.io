@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#005E7A">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Joint | Lobby</title>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>Joint</h1>
+    </section>
+
+    <section>
+      <h2>Lobby</h2>
+    </section>
+
+    <section>
+      <label for="msg_board">msg_board</label>
+      <textarea id="msg_board" readonly></textarea>
+    </section>
+
+    <section>
+      <span class="row">
+        <input type="text" id="msg" placeholder="msg">
+        <button type="button" id="send-btn">Send</button>
+      </span>
+    </section>
+
+    <section>
+      <div class="stack">
+        <div>
+          <label for="invite_link">Invite link</label>
+          <input type="text" id="invite_link" readonly>
+        </div>
+        <div>
+          <button type="button" id="start-btn" class="hidden">Start</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./joint.js"></script>
+  <script>
+    registerSW();
+
+    const params = getParams();
+
+    // Verify required parameters are present.
+    const missing = LOBBY_PARAMS.some((key) => !params[key]);
+    if (missing) {
+      location.replace('./error.html');
+    } else {
+      initLobby();
+    }
+
+    function initLobby() {
+      const msgBoard = document.getElementById('msg_board');
+      const msgInput = document.getElementById('msg');
+      const sendBtn = document.getElementById('send-btn');
+      const startBtn = document.getElementById('start-btn');
+      const inviteInput = document.getElementById('invite_link');
+
+      const { organizer, participant, game_name, game_url, comm_channel } = params;
+
+      // Start the list of all participants with the request participant.
+      const participants = [];
+      participants.push(participant);
+
+      // Calculate and display the invite link.
+      const inviteLink = buildInviteLink(params);
+      inviteInput.value = inviteLink;
+
+      // Calculate the SSE link.
+      const sseLink = buildSseLink(comm_channel);
+
+      function appendMessage(who, text) {
+        msgBoard.value += `${who}: ${text}\n`;
+        msgBoard.scrollTop = msgBoard.scrollHeight;
+      }
+
+      // Start listening for SSE messages.
+      const source = new EventSource(sseLink);
+      source.onmessage = (event) => {
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch (err) {
+          console.warn('Ignoring non-JSON SSE message', event.data);
+          return;
+        }
+        if (!data || !data.participant) {
+          return;
+        }
+        if (!participants.includes(data.participant)) {
+          participants.push(data.participant);
+        }
+        appendMessage(data.participant, data.m);
+      };
+      source.onerror = (err) => {
+        console.warn('SSE connection error', err);
+      };
+
+      // Send lobby entry confirmation message to the comm channel.
+      sendMessage(sseLink, participant, 'Entered the Lobby')
+        .catch((err) => console.warn('Failed to send entry confirmation', err));
+
+      // Send button handler.
+      function doSend() {
+        const text = msgInput.value.trim();
+        if (!text) {
+          return;
+        }
+        sendMessage(sseLink, participant, text)
+          .catch((err) => console.warn('Failed to send message', err));
+        msgInput.value = '';
+        msgInput.focus();
+      }
+      sendBtn.addEventListener('click', doSend);
+      msgInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          doSend();
+        }
+      });
+
+      // Start button is only available if organizer == participant.
+      if (organizer === participant) {
+        startBtn.classList.remove('hidden');
+        startBtn.addEventListener('click', () => {
+          const query = [
+            `participants=${encodeURIComponent(participants.join(','))}`,
+            `organizer=${encodeURIComponent(organizer)}`,
+            `sse_link=${encodeURIComponent(sseLink)}`,
+          ].join('&');
+          const sep = game_url.includes('?') ? '&' : '?';
+          window.open(`${game_url}${sep}${query}`, '_blank');
+        });
+      }
+    }
+  </script>
+</body>
+</html>
