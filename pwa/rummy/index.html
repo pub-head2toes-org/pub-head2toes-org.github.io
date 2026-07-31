@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#005E7A">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Rummy</title>
+</head>
+<body>
+  <main>
+    <!-- Section 1: header -->
+    <section class="header">
+      <h1>Rummy</h1>
+      <div class="header-meta">
+        <span>Player: <strong id="player_name">-</strong></span>
+        <span>Role: <strong id="role">-</strong></span>
+        <button type="button" id="pause_btn" class="organizer-only">Pause</button>
+      </div>
+    </section>
+
+    <!-- Section 2: info -->
+    <section class="info">
+      <div class="field">
+        <label for="participants_list">Participants</label>
+        <textarea id="participants_list" readonly rows="5"></textarea>
+      </div>
+      <div class="info-side" aria-live="polite">
+        <div>Turn: <strong id="current_turn">-</strong></div>
+        <div>Phase: <strong id="phase">-</strong></div>
+        <div>Clock: <strong id="clock">2:00</strong></div>
+      </div>
+      <div class="field organizer-only">
+        <label for="organizer_log">Commands / audit</label>
+        <div class="buttons">
+          <button type="button" id="deal_btn">Deal cards</button>
+          <button type="button" id="start_btn">Start turn</button>
+          <button type="button" id="endgame_btn">End game</button>
+        </div>
+        <textarea id="organizer_log" readonly rows="4"></textarea>
+      </div>
+    </section>
+
+    <!-- Section 3: chat -->
+    <section class="chat">
+      <label for="chat_board">Chat</label>
+      <textarea id="chat_board" readonly rows="5"></textarea>
+      <span class="row">
+        <input type="text" id="chat_input" placeholder="message">
+        <button type="button" id="send_btn">Send</button>
+      </span>
+    </section>
+
+    <!-- Section 4: decks -->
+    <section class="decks">
+      <div class="field">
+        <label for="table_deck">Table</label>
+        <textarea id="table_deck" readonly rows="8"></textarea>
+      </div>
+      <div class="field">
+        <label for="selection_deck">Selection</label>
+        <textarea id="selection_deck" readonly rows="8"></textarea>
+      </div>
+      <div class="field">
+        <label for="hand_deck">Hand</label>
+        <textarea id="hand_deck" readonly rows="8"></textarea>
+      </div>
+    </section>
+
+    <!-- Section 5: deck action buttons -->
+    <section class="deck-actions buttons" aria-label="Card arrangement">
+      <button type="button" id="up_btn" aria-label="Move selection up">Up</button>
+      <button type="button" id="down_btn" aria-label="Move selection down">Down</button>
+      <button type="button" id="pick_btn" aria-label="Pick card into selection">Pick</button>
+      <button type="button" id="streak_btn" aria-label="Pick run into selection">Streak</button>
+      <button type="button" id="line_btn" aria-label="Insert streak separator">Line</button>
+      <button type="button" id="lay_btn" aria-label="Lay selection into deck">Lay</button>
+      <button type="button" id="esc_btn" aria-label="Cancel selection">Esc</button>
+    </section>
+
+    <!-- Section 6: turn controls -->
+    <section class="turn-actions buttons">
+      <button type="button" id="abort_btn">Abort play</button>
+      <button type="button" id="end_turn_btn">End turn</button>
+    </section>
+  </main>
+
+  <script src="./rummy.js"></script>
+</body>
+</html>
