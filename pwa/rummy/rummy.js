@@ -39,6 +39,7 @@ let game = null;        // redacted view everyone renders from
 let myHand = [];        // this player's own cards (private)
 let work = null;        // local uncommitted arrangement for my turn
 let lastVersion = null; // last applied state version (ordering guard)
+let bellRungFor = null;  // turnEndsAt value the expiry bell already rang for
 
 const seen = new Set(); // de-duplication of message ids
 const seenQ = [];
@@ -214,10 +215,11 @@ function commitTurn(msg) {
   }
 
   state0.table = groups;
+  // The hand keeps any '' separators the player added (Update: don't remove them).
   state0.hands[msg.player] = msg.hand || state0.hands[msg.player] || [];
   audit('commit_turn', { player: msg.player });
 
-  if (state0.hands[msg.player].length === 0) {
+  if (handCards(state0.hands[msg.player]).length === 0) {
     const scores = {};
     state0.participants.forEach((p) => { scores[p] = handPoints(state0.hands[p]); });
     state0.winner = msg.player;
@@ -226,7 +228,10 @@ function commitTurn(msg) {
     const summary = state0.participants.map((p) => `${p}=${scores[p]}`).join(', ');
     put({ type: 'chat', m: `🏆 ${msg.player} wins! Deadwood: ${summary}` });
   } else {
-    start_next_turn();
+    // Update: the player who just finished draws one card from the deck.
+    state0.hands[msg.player] = state0.hands[msg.player].concat(drawFromDeck(1));
+    audit('deal_1_card', { player: msg.player });
+    start_next_turn(); // broadcasts the new state
   }
 }
 
@@ -290,11 +295,16 @@ function cardPoints(card) {
   return v >= 11 ? 10 : v;
 }
 
-function handPoints(cards) { return (cards || []).reduce((a, c) => a + cardPoints(c), 0); }
+function handPoints(cards) {
+  return (cards || []).filter((c) => c !== '').reduce((a, c) => a + cardPoints(c), 0);
+}
+
+/** A hand may hold '' streak separators the player added; count only cards. */
+function handCards(hand) { return (hand || []).filter((c) => c !== ''); }
 
 function countHands(hands) {
   const out = {};
-  for (const p in hands) out[p] = hands[p].length;
+  for (const p in hands) out[p] = handCards(hands[p]).length;
   return out;
 }
 
@@ -457,6 +467,38 @@ function updateClock() {
     ? (game.pauseRemainingMs || 0)
     : Math.max(0, game.turnEndsAt - Date.now());
   el.textContent = formatClock(remaining);
+
+  // Ring the bell once when a running turn clock hits zero.
+  if (!game.paused && remaining <= 0 && game.phase === 'playing'
+      && bellRungFor !== game.turnEndsAt) {
+    bellRungFor = game.turnEndsAt;
+    playBell();
+  }
+}
+
+/** Synthesize a short two-tone bell (no external asset; CSP-safe). */
+function playBell() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ac = playBell._ac || (playBell._ac = new Ctx());
+    if (ac.state === 'suspended') ac.resume();
+    const now = ac.currentTime;
+    [880, 1320].forEach((freq, i) => {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      const t = now + i * 0.15;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+      osc.start(t);
+      osc.stop(t + 0.85);
+    });
+  } catch (e) { /* audio unavailable */ }
 }
 
 /* ------------------------------------------------------------------ *
@@ -627,7 +669,7 @@ function endTurn() {
     name: 'commit_turn',
     player: ctx.player,
     table: linesToGroups(work.table),
-    hand: work.hand.filter((l) => l !== ''),
+    hand: work.hand, // keep the player's '' separators (dividers) intact
   });
 }
 
