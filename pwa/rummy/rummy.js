@@ -25,6 +25,9 @@ const RANK_VALUE = {
 };
 const DECK_ELEM = { table: 'table_deck', selection: 'selection_deck', hand: 'hand_deck' };
 const SEEN_MAX = 500;
+// Streak separator: 10 blank characters (visible/selectable, unlike an empty line).
+const SEP = '          ';
+function isSep(l) { return typeof l === 'string' && l.trim() === ''; }
 
 /* ------------------------------------------------------------------ *
  * Runtime context + module state
@@ -296,11 +299,11 @@ function cardPoints(card) {
 }
 
 function handPoints(cards) {
-  return (cards || []).filter((c) => c !== '').reduce((a, c) => a + cardPoints(c), 0);
+  return (cards || []).filter((c) => !isSep(c)).reduce((a, c) => a + cardPoints(c), 0);
 }
 
-/** A hand may hold '' streak separators the player added; count only cards. */
-function handCards(hand) { return (hand || []).filter((c) => c !== ''); }
+/** A hand may hold streak separators the player added; count only cards. */
+function handCards(hand) { return (hand || []).filter((c) => !isSep(c)); }
 
 function countHands(hands) {
   const out = {};
@@ -513,7 +516,7 @@ function isMyTurn() {
 
 function groupsToLines(groups) {
   const lines = [];
-  (groups || []).forEach((g, i) => { if (i > 0) lines.push(''); g.forEach((c) => lines.push(c)); });
+  (groups || []).forEach((g, i) => { if (i > 0) lines.push(SEP); g.forEach((c) => lines.push(c)); });
   return lines;
 }
 
@@ -521,7 +524,7 @@ function linesToGroups(lines) {
   const groups = [];
   let cur = [];
   for (const l of lines) {
-    if (l === '') { if (cur.length) { groups.push(cur); cur = []; } }
+    if (isSep(l)) { if (cur.length) { groups.push(cur); cur = []; } }
     else cur.push(l);
   }
   if (cur.length) groups.push(cur);
@@ -530,8 +533,8 @@ function linesToGroups(lines) {
 
 function trimSeps(lines) {
   let a = 0, b = lines.length;
-  while (a < b && lines[a] === '') a++;
-  while (b > a && lines[b - 1] === '') b--;
+  while (a < b && isSep(lines[a])) a++;
+  while (b > a && isSep(lines[b - 1])) b--;
   return lines.slice(a, b);
 }
 
@@ -590,7 +593,7 @@ function pick() {
   const deck = work.active;
   const i = work.cursor[deck];
   const card = work[deck][i];
-  if (card === undefined || card === '') return;
+  if (card === undefined || isSep(card)) return;
   work[deck].splice(i, 1);
   work.selection.push(card);
   work.dirty = true;
@@ -604,11 +607,11 @@ function streak() {
   const deck = work.active;
   const lines = work[deck];
   const i = work.cursor[deck];
-  if (lines[i] === undefined || lines[i] === '') return;
+  if (lines[i] === undefined || isSep(lines[i])) return;
   let n = 0;
-  while (i + n < lines.length && lines[i + n] !== '') n++;
+  while (i + n < lines.length && !isSep(lines[i + n])) n++;
   const run = lines.splice(i, n);
-  if (work.selection.length && work.selection[work.selection.length - 1] !== '') work.selection.push('');
+  if (work.selection.length && !isSep(work.selection[work.selection.length - 1])) work.selection.push(SEP);
   run.forEach((c) => work.selection.push(c));
   work.dirty = true;
   clampCursor(deck);
@@ -616,12 +619,19 @@ function streak() {
   render();
 }
 
+/** Toggle a streak separator at the cursor: remove it if present, else add one. */
 function line() {
   if (!isMyTurn() || !work) return;
   const deck = work.active;
+  const arr = work[deck];
   const i = work.cursor[deck];
-  work[deck].splice(i, 0, '');
-  work.cursor[deck] = i + 1;
+  if (isSep(arr[i])) {
+    arr.splice(i, 1);            // remove the separator already here
+    clampCursor(deck);
+  } else {
+    arr.splice(i, 0, SEP);       // add a separator, advancing past it
+    work.cursor[deck] = i + 1;
+  }
   work.dirty = true;
   audit('line', { deck });
   render();
@@ -641,16 +651,6 @@ function lay() {
   render();
 }
 
-function esc() {
-  if (!isMyTurn() || !work) return;
-  const cards = work.selection.filter((l) => l !== '');
-  work.hand.push(...cards);
-  work.selection = [];
-  work.dirty = true;
-  audit('esc', { returned: cards.length });
-  render();
-}
-
 function abortPlay() {
   if (!isMyTurn() || !work) { render(); return; }
   startWork();
@@ -661,7 +661,7 @@ function abortPlay() {
 function endTurn() {
   if (!isMyTurn() || !work) return;
   if (work.selection.length) {
-    work.hand.push(...work.selection.filter((l) => l !== ''));
+    work.hand.push(...work.selection.filter((l) => !isSep(l)));
     work.selection = [];
   }
   put({
@@ -693,7 +693,6 @@ function wireControls() {
   $('streak_btn').addEventListener('click', streak);
   $('line_btn').addEventListener('click', line);
   $('lay_btn').addEventListener('click', lay);
-  $('esc_btn').addEventListener('click', esc);
 
   Object.keys(DECK_ELEM).forEach((deck) => {
     $(DECK_ELEM[deck]).addEventListener('click', () => focusDeck(deck));
