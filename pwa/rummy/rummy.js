@@ -569,6 +569,19 @@ function highlightActive() {
   const end = start + ((lines[work.cursor[deck]] || '').length);
   ta.focus();
   ta.setSelectionRange(start, end);
+  scrollLineIntoView(ta, work.cursor[deck], lines.length);
+}
+
+/** Scroll a textarea so the given line index is visible. */
+function scrollLineIntoView(ta, lineIndex, totalLines) {
+  if (!totalLines || !ta.scrollHeight || !ta.clientHeight) return;
+  const lineH = ta.scrollHeight / totalLines;
+  const top = lineIndex * lineH;
+  if (top < ta.scrollTop) {
+    ta.scrollTop = top;
+  } else if (top + lineH > ta.scrollTop + ta.clientHeight) {
+    ta.scrollTop = top + lineH - ta.clientHeight;
+  }
 }
 
 function focusDeck(deck) {
@@ -643,12 +656,13 @@ function lay() {
   const deck = work.active;
   const i = work.cursor[deck];
   const cards = trimSeps(work.selection);
+  if (cards.length === 0) return;
   work[deck].splice(i, 0, ...cards);
   work.selection = [];
-  work.cursor[deck] = i + cards.length;
+  work.cursor[deck] = i + cards.length - 1; // rest on the last inserted line
   work.dirty = true;
   audit('lay', { deck, count: cards.length });
-  render();
+  render(); // renders + scrolls the last inserted line into view
 }
 
 function abortPlay() {
