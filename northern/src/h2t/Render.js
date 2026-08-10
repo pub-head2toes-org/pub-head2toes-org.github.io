@@ -44,7 +44,8 @@ export default class Render {
     renderFromFS(path, res){
         let data = {};
         data.filePath = pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/'));
-        data.value = fs.readFileSync (pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/'))).toString();
+        data.value = fs.readFileSync (pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/')));
+        //data.value = fs.readFileSync (pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/'))).toString();
         data.type = this.getType(path);
         this.renderData (data, res);
     }
@@ -208,6 +209,9 @@ export default class Render {
             res.end(data.value);
 	} else if(data.type && data.type === 'png'){
 	    res.writeHead(200, {'Content-Type': 'image/png'});
+	    res.end(data.value);
+	} else if(data.type && data.type === 'jpg'){
+	    res.writeHead(200, {'Content-Type': 'image/jpeg'});
 	    res.end(data.value);
 	} else if(data.type && data.type === 'jpeg'){
 	    res.writeHead(200, {'Content-Type': 'image/jpeg'});
