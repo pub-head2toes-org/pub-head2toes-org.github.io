@@ -1,8 +1,9 @@
-const CACHE_NAME = 'lol-v1';
+const CACHE_NAME = 'lol-v2';
 const urlsToCache = [
   './index.html',
   './error.html',
   './lol.js',
+  './bots.js',
   './styles.css',
   './manifest.json',
   './icon-192.png',

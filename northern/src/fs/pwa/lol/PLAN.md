@@ -96,3 +96,135 @@ other asset, so install stays fast.
 - `sendMessage`/`EventSource` wiring is adapted directly from `joint.js`
   (`sse_link` arrives pre-built from `joint`, so no `buildSseLink` needed
   here — just PUT + `EventSource` against it).
+
+## Phase 2 addendum — SSE-only state sync + in-page NPC bot
+
+Per `UPDATE_1.md`, revised by `UPDATE_2.md`. The KV DB is explicitly
+deferred ("can be developed at some later phase") and movement stays
+SSE-only this phase. NPC bots are simplified to a single in-page example
+bot (`Winnie`) rather than a standalone client — this supersedes the
+DB-backed and Node-bot design from the original addendum below.
+
+### Architecture decisions
+
+11. **No KV DB this phase.** All state sync — including catching up a late
+    joiner — happens over the existing SSE channel. No persistence layer,
+    no organizer authority; still peer-broadcast only.
+12. **Late-joiner catch-up via a `state_request` envelope.** A joining
+    client sends `{type: 'state_request', from, ts}` right after its `join`.
+    Every existing peer, on receiving a `state_request`, immediately
+    re-emits its own current `move` envelope — bypassing the normal
+    throttle — so the new joiner converges within one round trip instead of
+    waiting on the next natural update. (This envelope shape isn't spelled
+    out verbatim in `UPDATE_2.md`, just implied by "late comers could ask
+    for state update over the SSE channel and receive updates... sent by
+    each participant" — flagged as my proposed mechanism, see Open
+    assumptions.)
+13. **Idle heartbeat, independent of movement.** Today a stationary player
+    broadcasts nothing after its final stop `move`. Per `UPDATE_2.md`'s
+    500ms ceiling, add a heartbeat: any participant (human or bot) that
+    hasn't broadcast in the last `HEARTBEAT_MS` (< 500ms, e.g. 400) re-sends
+    its current `move` even while `walking: false`. This generalizes
+    cleanly alongside the existing move-throttle, sharing the same
+    `lastBroadcastTs` bookkeeping per participant.
+14. **"All disconnect → state resets" needs no code.** It's already the
+    natural consequence of no persistence — confirms the peer-only model is
+    intentional, not a build task.
+15. **NPC bots are in-page objects, not a separate process.** `bots.js`
+    defines a global `Bot` namespace (`Bot.Winnie = { init(ctx), move(ctx)
+    }`), loaded via `<script src="./bots.js"></script>` in `index.html`
+    *before* `lol.js`'s own script tag so the namespace exists before the
+    game loop wires up. Both are plain non-module scripts sharing one
+    global scope — `bots.js` calls `lol.js`'s existing globals (`state`,
+    `calcDir`, `clamp`, movement constants, `sendEnvelope`) directly; no
+    Node, no `eventsource` package, no separate shared/build module needed.
+16. **Bot activation gated by the `participants` list**, pattern
+    `Bot.<name>`. On `enterGame()`, scan `state.participants` for entries
+    matching `/^Bot\.(.+)$/`; for each match, resolve `window.Bot[name]`;
+    skip with a `console.warn` if not found. **The `Bot.` prefix is
+    stripped for the broadcast/display name** — `Bot.Winnie` in
+    `participants` becomes player name `Winnie` in `join`/`move` envelopes
+    and the on-screen label, so it renders identically to a human player
+    with zero special-casing elsewhere (confirmed).
+16a. **Only the organizer's tab runs bots** (`isOrganizer(): state.player
+    === state.organizer`). Every participant's tab independently parses
+    `participants`, so without this gate each human's tab would spawn its
+    own copy of the same bot and race to broadcast under the same name.
+    Non-organizer tabs never call `registerBots()`/the bot `setInterval`
+    loop — they just see the bot as an ordinary remote player over SSE,
+    same as any human.
+17. **Two loops, two responsibilities — not one.** The existing
+    `requestAnimationFrame` tick keeps doing per-frame stepping + throttled
+    broadcast + heartbeat, generalized from `updateLocalPlayer(dt, now)`
+    into a per-participant step function reused for the human player *and*
+    every active bot each frame. A **separate** `setInterval` — the "game
+    loop" `UPDATE_2.md` describes — calls each registered bot's `init` once
+    and `move(ctx)` on a coarser, regular cadence. `move()`'s job is only to
+    **decide/update the bot's target** (`targetX`/`targetY`, `walking`); the
+    per-frame step function still owns actual movement + broadcast, so bots
+    and the human player can never drift onto different movement/broadcast
+    code paths. (Flagged as my interpretation of "call move... in regular
+    intervals" — see Open assumptions.)
+18. **`ctx` is the integration seam** passed into `init`/`move`: the bot's
+    own name, its live sub-state (`state.players[name]`, the same map
+    everyone else uses, so bots render on canvas/minimap with no extra
+    code), map bounds, and a read-only view of `state.players` to decide
+    from. No transport/stepping logic is duplicated inside `bots.js`.
+19. **Winnie's behavior lives entirely in `move()`** — no separate state
+    machine module needed for a single bot. Roam / remember visited places
+    & players / pick-and-seek a favorite / follow / randomly switch
+    (`UPDATE_1.md`'s "pet robot" example) all read/write a small memory
+    object `init` attaches via closure or `ctx`, and just update the target
+    each tick.
+
+### Files
+
+- `bots.js` — new. `window.Bot = { Winnie: { init(ctx), move(ctx) } }`,
+  Winnie's roam/remember/favorite/follow logic inside `move`.
+- `index.html` — add `<script src="./bots.js"></script>` before the
+  existing `<script src="./lol.js"></script>` tag.
+- `lol.js` — add: generalize `updateLocalPlayer` into a per-participant
+  step function (human + bots) with heartbeat; `state_request` send-after-
+  join and reply-on-receive in `handleEnvelope`; bot registration in
+  `enterGame()` (parse `Bot.<name>` out of `participants`, strip prefix,
+  look up in `window.Bot`, seed `state.players[name]`, call `init`); the
+  `setInterval` bot-decision loop calling `move(ctx)` per registered bot.
+
+### Build order (Phase 2)
+
+1. Generalize `updateLocalPlayer` into a per-participant step function; add
+   the idle heartbeat timer. Regression-check against Phase 1 (human-only
+   movement/broadcast behavior unchanged).
+2. Add the `state_request` envelope: send after `join`; reply-on-receive in
+   `handleEnvelope`.
+3. Add `bots.js` with `Bot.Winnie` (`init`/`move`); include it in
+   `index.html` ahead of `lol.js`.
+4. Wire bot registration in `enterGame()`: parse `Bot.<name>` entries,
+   strip the prefix, look up in `window.Bot`, seed `state.players[name]`,
+   call `init(ctx)`.
+5. Wire the `setInterval` bot-decision loop calling `move(ctx)` per
+   registered bot; confirm the target it sets feeds into the same
+   per-participant step function from step 1, so stepping/broadcast/
+   heartbeat stays single-sourced between bots and humans.
+6. Manual test: single tab with `...&participants=You,Bot.Winnie` — confirm
+   Winnie renders/moves labeled "Winnie" with no user input; second tab
+   without the bot entry — confirm it still sees Winnie via SSE; join a
+   third tab mid-session and confirm `state_request` + heartbeat catch it
+   up without a DB.
+
+### Open assumptions (Phase 2)
+
+- `state_request`/reply is my proposed mechanism for `UPDATE_2.md`'s "late
+  comers could ask for state update over the SSE channel" line, not a
+  shape given verbatim in either update doc — confirm before build step 2.
+- Heartbeat interval defaulted to ~400ms (under the required 500ms
+  ceiling); exact value tunable.
+- `move()` is assumed to only retarget the bot, with actual stepping/
+  broadcast reused from the human player's per-frame function (decision
+  17). `UPDATE_2.md`'s "call move... in regular intervals" could also be
+  read as `move()` owning full per-tick movement itself — revisit if that's
+  not the intended shape once bots.js is being built.
+- Bot decision-tick interval (how often `move()` fires) isn't specified
+  beyond "regular intervals" — this is separate from the <500ms heartbeat,
+  which governs idle broadcast, not retargeting frequency. Defaulting to
+  something coarser (~1.5–2.5s), tunable.
