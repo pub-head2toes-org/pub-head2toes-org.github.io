@@ -3,28 +3,18 @@
 import sqlite3 from 'sqlite3';
 import path from 'node:path';
 const __dirname = import.meta.dirname;
-import HttpClient from './httpClient.js';
-const httpClient = new HttpClient(); //require('./httpClient');
-var info = {};
 
 
 export default class SqliteDB {
     constructor(dbFilePath) {
         this.dbPath = dbFilePath;
         this.db = new sqlite3.Database(path.join(__dirname + "/" + dbFilePath));
-        this.db.run("CREATE TABLE IF NOT EXISTS abcd (path TEXT, type TEXT, value TEXT, counter INTEGER, author TEXT, public TEXT)");  
+        this.db.run("CREATE TABLE IF NOT EXISTS abcd (path TEXT, type TEXT, value TEXT, counter INTEGER, author TEXT, public TEXT)");
         this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS PathUniqueIndex ON abcd (path)")
-        this.get("/info", "public", "public", function(err,data){
-            if(data){
-                let parsed = JSON.parse (data.value);
-                info.replicaSet = parsed.replicaSet;
-                info.nodeSet = parsed.nodeSet;
-            }
-        });
     }
 
     getDBPath (){
-        return dbPath;
+        return this.dbPath;
     }
 
     insert (path, type, value, author, group, cb){
@@ -60,11 +50,8 @@ export default class SqliteDB {
                 cb(result);
             });   
             stmt.finalize();
-            
-            // _this.insertReplicas(path,type,value); 
-                
-            
-      }); 
+
+      });
     } catch (err){
         cb(err);
       }
@@ -86,54 +73,59 @@ export default class SqliteDB {
         }); 
       }
 
-      increment (path, cb){
+      increment (path, author, group, cb){
         let _this = this;
         this.db.serialize(function() {
             try {
-            var stmt = _this.db.prepare("UPDATE abcd set counter = counter + 1, type = 'counter' where path = ?");  
+            var stmt = _this.db.prepare("UPDATE abcd set counter = counter + 1, type = 'counter' where path = ?");
             stmt.run( path, function (err, row){
                 if (err){
-                    _this.insert(path, 'counter', 0, cb);
+                    cb(err);
                     return;
                 } else {
                     if (this.changes === 1){
                         cb( {status:'OK', path:path, lastID:this.lastID});
                         return;
                     } else {
-                        _this.insert(path, 'counter', 0, cb);
+                        _this.createCounter(path, author, group, cb);
                         return;
                     }
                 }
-            });   
+            });
             stmt.finalize();
-                
+
             } catch (err) {
                 cb(err);
             }
-        }); 
+        });
       }
 
-    insertReplicas (path, type, value){
-        try{
-            for(i=0; replicaSet && i<replicaSet.length; i++){
-                let options = {
-                    host : replicaSet[i].host,
-                    port : 9090,
-                    path : '/db/insert?path='+path+'&type='+type+'&value='+value,
-                    method : 'GET' 
-                };
-            httpClient.execute(options, function (err, data){
-                if(err){
-                    //TODO set sync trigger
-                    console.log(err);
+      // First hit on a counter key: create the row already counting this one.
+      // Counters do not go through insert(), whose duplicate key fallback is
+      // the versioning scheme and would be wrong here.
+      createCounter (path, author, group, cb){
+        let _this = this;
+        this.db.run("INSERT INTO abcd VALUES (?,'counter','',1,?,?)", [path, author, group], function(err){
+            if (!err){
+                cb({status:'OK', path:path, counter:1});
+                return;
+            }
+            if (err.code !== 'SQLITE_CONSTRAINT'){
+                console.log(err);
+                cb(err);
+                return;
+            }
+            // Another request created the same counter in between - count on theirs.
+            _this.db.run("UPDATE abcd set counter = counter + 1, type = 'counter' where path = ?", [path], function(updateErr){
+                if (updateErr){
+                    console.log(updateErr);
+                    cb(updateErr);
+                } else {
+                    cb({status:'OK', path:path});
                 }
             });
-            }
-        } catch (err){
-            //TODO set sync trigger
-            console.log(err);
-        }
-    }
+        });
+      }
 
     get (path, author, group, cb){
         let _this = this;

@@ -1,0 +1,1284 @@
+ ▐▛███▜▌   Claude Code v2.1.227
+▝▜█████▛▘  Sonnet 5 · Claude Pro
+  ▘▘ ▝▝    ~/git/pub-head2toes-org.github.io/northern
+
+   Tackle your toughest work with Opus 5. Switch anytime with /model.
+   +1 more · /status
+
+❯ Read `/src/fs/pwa/lol/UPDATE_1.md` with consideratioms for next phase of PWA  
+  LoL                                                                           
+
+  Searched for 5 patterns, read 5 files (ctrl+o to expand)
+
+● Read UPDATE_1.md plus the current Phase 1 implementation (lol.js, PLAN.md) to
+  see what's already in place. Two of the three Phase 2 asks are largely
+  satisfied already: move/join envelopes over PUT+SSE and a per-instance state
+  object are exactly what Phase 1 built. The genuinely new pieces are the
+  persistent KV DB (nothing in joint/rummy uses it yet — this is a fresh
+  integration) and NPC bots.
+
+  Key considerations:
+
+  - Late-joiner gap the KV DB should fix: Phase 1's peer-broadcast model means a
+  client only learns about other players from live SSE messages — if you join
+  mid-session, you don't see anyone until they move again. The new REST DB
+  (POST/PUT/GET, path-as-key) is the natural fix: each client also writes its
+  own location to a durable key (e.g. /lol/<sse-channel>/players/<name>) on
+  join/move, and a joining client does a GET over that namespace to seed
+  state.players immediately, with SSE staying the live-update path. That keeps
+  the current "no organizer authority" model intact — each client still only
+  ever writes its own record.
+  - /fs/get is read-only server-file data, not a fit for dynamic player state —
+  probably more relevant later for static config like NPC definitions or map
+  metadata.
+  - NPC bots run outside the browser: "standalone HTTP and SSE client" means
+  Node, not another browser tab. Node has global fetch but not EventSource —
+  needs the eventsource package (or similar). The bot should reuse the exact
+  same join/move envelope shape Phase 1 already emits, so existing clients
+  render it with zero special-casing.
+  - Bot behavior (roam/remember/favorite/follow/switch) is a small local state
+  machine keyed off the same SSE stream a real client listens to — no new
+  server-side concept needed, just a client that decides its own target instead
+  of taking pointer input.
+
+  Want me to draft this as a PLAN.md addendum (Phase 2 section) before touching
+  code, or go straight to scoping/building the DB-backed player-state bootstrap
+  first?
+
+✻ Cooked for 1m 3s
+
+❯ Draft this as a PLAN.md addendum before touching code                         
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(src/fs/pwa/lol/PLAN.md)
+  ⎿  Added 110 lines
+       96  - `sendMessage`/`EventSource` wiring is adapted directly from 
+           `joint.js`
+       97    (`sse_link` arrives pre-built from `joint`, so no `buildSseL
+           ink` needed
+       98    here — just PUT + `EventSource` against it).
+       99 +                                                              
+      100 +## Phase 2 addendum — persistent player state + NPC bots      
+      101 +                                                              
+      102 +Per `UPDATE_1.md`. Two of its three asks (movement PUT, per-in
+          +stance `state`                                                
+      103 +object) are already how Phase 1 works. What's actually new: a 
+          +durable KV                                                    
+      104 +store to fix the late-joiner blind spot, and NPC bots as stand
+          +alone                                                         
+      105 +HTTP+SSE clients.                                             
+      106 +                                                              
+      107 +### Architecture decisions                                    
+      108 +                                                              
+      109 +11. **KV DB is a bootstrap/recovery layer, not a replacement f
+          +or SSE.** SSE                                                 
+      110 +    stays the source of live truth for movement. The KV store 
+          +exists purely                                                 
+      111 +    so a client that joins mid-session isn't blind until other
+          + players                                                      
+      112 +    happen to move again — each client additionally persists i
+          +ts own                                                        
+      113 +    latest `{x, y, dir, walking, ts}` under its own key. No or
+          +ganizer                                                       
+      114 +    authority is introduced; every client still only ever writ
+          +es its own                                                    
+      115 +    record, consistent with Phase 1's peer-broadcast model.   
+      116 +12. **KV path convention:** `${DB_HOST}/lol/<channel-id>/playe
+          +rs/<name>`,                                                   
+      117 +    where `<channel-id>` is the last path segment of `sse_link
+          +` (e.g.                                                       
+      118 +    `.../sub/joint/lol-test-1` → `lol-test-1`), so each game s
+          +ession gets                                                   
+      119 +    its own KV namespace with no extra ID plumbing. `DB_HOST` 
+          +is assumed to                                                 
+      120 +    be the same origin as `sse_link` (`SUB_HOST` in `joint.js`
+          +) — **this is                                                 
+      121 +    unverified and must be confirmed against the real server b
+          +efore any                                                     
+      122 +    code is written** (see Open assumptions).                 
+      123 +13. **Bootstrap-on-join GET:** immediately after parsing `sse_
+          +link` and                                                     
+      124 +    before the `join` envelope is sent, `GET                  
+      125 +    ${DB_HOST}/lol/<channel-id>/players` to seed `state.player
+          +s` with                                                       
+      126 +    everyone's last-known position. Assumes the DB supports a 
+          +collection                                                    
+      127 +    GET over a path prefix; if it doesn't, fall back to one GE
+          +T per name in                                                 
+      128 +    the `participants` URL param.                             
+      129 +14. **Audit writes piggyback on the existing throttle.** The K
+          +V `PUT` fires                                                 
+      130 +    alongside the existing SSE `PUT` inside `sendEnvelope`'s c
+          +all sites, on                                                 
+      131 +    the same `MOVE_BROADCAST_MS` cadence already in place for 
+          +movement — no                                                 
+      132 +    new throttle timer, no doubling of write-frequency logic. 
+      133 +15. **NPC bots are standalone Node clients, not browser code.*
+          +* Per the                                                     
+      134 +    prompt ("can be run as standalone HTTP and SSE client"), a
+          + bot is a                                                     
+      135 +    Node script: global `fetch` for `PUT`, the `eventsource` n
+          +pm package                                                    
+      136 +    for `EventSource` (not built into Node). It joins/moves us
+          +ing the exact                                                 
+      137 +    same envelope shape a browser client emits, so existing cl
+          +ients render                                                  
+      138 +    it as just another player with zero special-casing.       
+      139 +16. **Shared movement logic, not duplicated.** Extract the pur
+          +e bits                                                        
+      140 +    `lol.js` already has — `MOVE_SPEED`, `MOVE_BROADCAST_MS`, 
+          +`calcDir`,                                                    
+      141 +    `clamp`, envelope shape — into `shared.js`, loaded by both
+          + the browser                                                  
+      142 +    page and the Node bot runtime, so bot movement can't drift
+          + from human                                                   
+      143 +    movement behavior over time.                              
+      144 +17. **Bot behavior is a small state machine driven off the sam
+          +e SSE                                                         
+      145 +    stream** a real client listens to: `ROAM` (random waypoint
+          +, remembers                                                   
+      146 +    recently-visited points to avoid immediately backtracking)
+          +, `SEEK`                                                      
+      147 +    (favorite player known but not close — head toward their l
+          +ast-reported                                                  
+      148 +    position), `FOLLOW` (close to favorite — mirror their move
+          +ment with a                                                   
+      149 +    lag), plus a random timer that drops the current favorite 
+          +and picks a                                                   
+      150 +    new one from currently-known players. This directly implem
+          +ents the                                                      
+      151 +    prompt's "pet robot" example.                             
+      152 +18. **Bot join/spawn mirrors human join** — picks its own star
+          +t position                                                    
+      153 +    (default: random point along the same bottom-edge band Pha
+          +se 1 uses,                                                    
+      154 +    overridable via CLI arg), sends a `join` envelope, then ru
+          +ns the same                                                   
+      155 +    tick/move/broadcast loop as the browser client, just drive
+          +n by                                                          
+      156 +    `setInterval` instead of `requestAnimationFrame`.         
+      157 +                                                              
+      158 +### Files                                                     
+      159 +                                                              
+      160 +- `shared.js` — movement constants, `calcDir`, `clamp`, envelo
+          +pe-shape                                                      
+      161 +  helpers, extracted from `lol.js`; consumed by both `lol.js` 
+          +and the bot                                                   
+      162 +  runtime (refactor only, no behavior change).                
+      163 +- `lol.js` — add: KV `PUT` alongside the existing SSE `PUT` on
+          + `join`/`move`;                                               
+      164 +  bootstrap `GET` on entering the game, before the `join` enve
+          +lope is sent.                                                 
+      165 +- `bots/npc-client.js` — base bot runtime: SSE connect, `PUT` 
+          +sender, tick                                                  
+      166 +  loop, a `memory` object (visited points, known players), and
+          + a pluggable                                                  
+      167 +  `decide(state, memory) -> {targetX, targetY}` hook so behavi
+          +ors can be                                                    
+      168 +  swapped without touching the transport/loop code.           
+      169 +- `bots/pet-robot.js` — the example behavior from `UPDATE_1.md
+          +` built on                                                    
+      170 +  `npc-client.js`: roam / remember places & players / favorite
+          +-seek /                                                       
+      171 +  follow / random-switch. Run via `node bots/pet-robot.js --ss
+          +e_link=...                                                    
+      172 +  --name=...`.                                                
+      173 +                                                              
+      174 +### Build order (Phase 2)                                     
+      175 +                                                              
+      176 +1. Confirm the DB's base URL, path semantics, and whether coll
+          +ection GET                                                    
+      177 +   over a prefix is supported — a manual `curl PUT`/`GET`/`POS
+          +T` against the                                                
+      178 +   real server, before any code lands. This is the one blockin
+          +g unknown.                                                    
+      179 +2. Extract `shared.js` out of `lol.js` (pure refactor, verify 
+          +Phase 1                                                       
+      180 +   behavior is unchanged).                                    
+      181 +3. Wire the KV `PUT` alongside the existing SSE `PUT` for `joi
+          +n`/`move` in                                                  
+      182 +   `lol.js`.                                                  
+      183 +4. Wire the bootstrap `GET` on entering the game, before `join
+          +` is sent.                                                    
+      184 +5. Build `npc-client.js`: SSE connect (`eventsource` pkg) + `f
+          +etch` PUT +                                                   
+      185 +   tick loop + `memory` + pluggable `decide()`.               
+      186 +6. Build `pet-robot.js` on top of it: roam/remember/favorite/f
+          +ollow/switch.                                                 
+      187 +7. Manual test: run one or more bots against a real `sse_link`
+          + alongside a                                                  
+      188 +   browser client — confirm bots render as ordinary players (a
+          +vatar,                                                        
+      189 +   minimap) in the browser, and that a late-joining browser cl
+          +ient sees                                                     
+      190 +   already-present players immediately via the bootstrap GET. 
+      191 +                                                              
+      192 +### Open assumptions (Phase 2)                                
+      193 +                                                              
+      194 +- `DB_HOST` and the `/lol/<channel-id>/players/<name>` path sh
+          +ape,                                                          
+      195 +  including whether prefix-based collection GET is supported, 
+          +are                                                           
+      196 +  unverified against the real server — the single biggest unkn
+          +own blocking                                                  
+      197 +  this phase (see build step 1).                              
+      198 +- Channel-id derivation from `sse_link`'s last path segment as
+          +sumes a                                                       
+      199 +  stable URL shape from `joint`'s hand-off; verify against wha
+          +t `joint`                                                     
+      200 +  actually produces in practice.                              
+      201 +- Node + `eventsource` package is assumed available for bots. 
+          +If bots must                                                  
+      202 +  run without npm installs, the alternative is a hidden headle
+          +ss-browser                                                    
+      203 +  tab reusing `lol.js` instead of a Node script — flag which i
+          +s preferred                                                   
+      204 +  before build step 5.                                        
+      205 +- Whether bots should be visually distinguishable from humans 
+          +(name tag,                                                    
+      206 +  icon) isn't specified in `UPDATE_1.md`. Default here: indist
+          +inguishable,                                                  
+      207 +  "just another player." An `isBot` flag on the `join` envelop
+          +e is a                                                        
+      208 +  non-breaking addition if that's wanted later.               
+
+● Appended a "Phase 2 addendum" section to PLAN.md covering architecture
+  decisions (11–18), new files, build order, and open assumptions — the biggest
+  of which is that the DB's real base URL and path semantics are unverified and
+  need a manual curl check before any code lands (build step 1). Let me know
+  when you want to move on that, or if any of the assumptions should be resolved
+  differently first.
+
+✻ Crunched for 1m 15s
+
+※ recap: We're planning Phase 2 of the LoL PWA (persistent player state + NPC bots) and just wrote the design as a PLAN.md addendum. Next step: verify the real DB's URL and path behavior with curl before writing any code. (disable recaps in /config)
+
+❯ Read `/src/fs/pwa/lol/UPDATE_2.md` with additional consideratioms and         
+  clarifications                                                                
+
+  Read 1 file (ctrl+o to expand)
+
+● UPDATE_2.md substantially revises the Phase 2 design I already drafted into
+  PLAN.md — worth flagging the contradictions before we touch code again:
+
+  - KV DB deferred entirely. "DB to be used only for specific use-cases...
+  persisting game state in KV DB can be developed at some later phase." This
+  kills addendum decisions 11–14 and build steps 1/3/4 — no bootstrap GET, no
+  per-player PUT to a KV path, no DB_HOST/path-convention questions to resolve.
+  Movement stays SSE-only this phase, confirmed explicitly ("Movement updates to
+  be shared only through the SSE channel in this phase").
+  - Late-joiner bootstrap moves to SSE itself, not a DB read. UPDATE_2 offers
+  two mechanisms: a joining client can ask over the SSE channel for a state
+  update and get replies from each participant as SSE events, or just wait for
+  the new periodic heartbeat below. This needs a new envelope type (e.g.
+  state_request, answered by each peer with its current move) — I hadn't
+  designed this in the addendum.
+  - New requirement: idle heartbeat. Today updateLocalPlayer only broadcasts
+  while walking (throttled) plus one final stop message — a stationary player
+  goes silent. UPDATE_2 requires periodic re-emission of current position even
+  while stationary, with the gap between updates under 500ms. This is a real
+  change to the broadcast loop, not just a new envelope type.
+  - "All participants disconnect → state resets" isn't something to build — it's
+  confirming the no-persistence peer-only model is intentional (nothing
+  survives a full dropout, and that's fine since there's no DB backing it this
+  phase). Just a clarification, not a task.
+  - NPC bots are a much simpler, different shape than I drafted. UPDATE_2 wants
+  them in-browser, not a standalone Node/eventsource client:
+    - One example bot, "Winnie," in bots.js at the lol/ root, <script>-included
+  in index.html.
+    - Bot "prototype" is a plain object with init/move functions, namespaced as
+  Bot.Winnie.
+    - The page's own game loop (a setInterval) calls init once and move
+  periodically for any bot whose Bot.<name> pattern appears in the participants
+  list — so a bot runs inside the same tab as a second virtual participant, not
+  as a separate process.
+
+  This replaces addendum decisions 15–18 and the bots/npc-client.js +
+  bots/pet-robot.js file plan wholesale — no Node, no eventsource package, no
+  separate CLI-driven process, no generic pluggable-behavior base class (at
+  least not yet, with only one bot to support).
+
+  One open question this raises that UPDATE_2 doesn't fully resolve: when
+  Bot.Winnie is in participants and the game loop spawns it, what name does it
+  broadcast as in join/move envelopes — "Bot.Winnie" verbatim, or "Winnie" with
+  the Bot. prefix stripped for the on-map label? I'd default to stripping it for
+  the visible name, but worth confirming before I bake it into the addendum.
+
+  Want me to revise the PLAN.md Phase 2 addendum now to match this (drop the
+  DB/Node-bot sections, add the SSE state-request + heartbeat design and the
+  in-page bots.js design)?
+
+✻ Worked for 51s
+
+❯ Yes, strip the "Bot.". Continue and revise the plan.                          
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I'll replace this whole addendum with the revised design matching
+  UPDATE_2's clarifications.
+
+● Update(src/fs/pwa/lol/PLAN.md)
+  ⎿  Added 111 lines, removed 96 lines
+       97    (`sse_link` arrives pre-built from `joint`, so no `buildSseL
+           ink` needed
+       98    here — just PUT + `EventSource` against it).
+       99  
+      100 -## Phase 2 addendum — persistent player state + NPC bots      
+      100 +## Phase 2 addendum — SSE-only state sync + in-page NPC bot   
+      101  
+      102 -Per `UPDATE_1.md`. Two of its three asks (movement PUT, per-in
+          -stance `state`                                                
+      103 -object) are already how Phase 1 works. What's actually new: a 
+          -durable KV                                                    
+      104 -store to fix the late-joiner blind spot, and NPC bots as stand
+          -alone                                                         
+      105 -HTTP+SSE clients.                                             
+      102 +Per `UPDATE_1.md`, revised by `UPDATE_2.md`. The KV DB is expl
+          +icitly                                                        
+      103 +deferred ("can be developed at some later phase") and movement
+          + stays                                                        
+      104 +SSE-only this phase. NPC bots are simplified to a single in-pa
+          +ge example                                                    
+      105 +bot (`Winnie`) rather than a standalone client — this supersed
+          +es the                                                        
+      106 +DB-backed and Node-bot design from the original addendum below
+          +.                                                             
+      107  
+      108  ### Architecture decisions
+      109  
+      109 -11. **KV DB is a bootstrap/recovery layer, not a replacement f
+          -or SSE.** SSE                                                 
+      110 -    stays the source of live truth for movement. The KV store 
+          -exists purely                                                 
+      111 -    so a client that joins mid-session isn't blind until other
+          - players                                                      
+      112 -    happen to move again — each client additionally persists i
+          -ts own                                                        
+      113 -    latest `{x, y, dir, walking, ts}` under its own key. No or
+          -ganizer                                                       
+      114 -    authority is introduced; every client still only ever writ
+          -es its own                                                    
+      115 -    record, consistent with Phase 1's peer-broadcast model.   
+      116 -12. **KV path convention:** `${DB_HOST}/lol/<channel-id>/playe
+          -rs/<name>`,                                                   
+      117 -    where `<channel-id>` is the last path segment of `sse_link
+          -` (e.g.                                                       
+      118 -    `.../sub/joint/lol-test-1` → `lol-test-1`), so each game s
+          -ession gets                                                   
+      119 -    its own KV namespace with no extra ID plumbing. `DB_HOST` 
+          -is assumed to                                                 
+      120 -    be the same origin as `sse_link` (`SUB_HOST` in `joint.js`
+          -) — **this is                                                 
+      121 -    unverified and must be confirmed against the real server b
+          -efore any                                                     
+      122 -    code is written** (see Open assumptions).                 
+      123 -13. **Bootstrap-on-join GET:** immediately after parsing `sse_
+          -link` and                                                     
+      124 -    before the `join` envelope is sent, `GET                  
+      125 -    ${DB_HOST}/lol/<channel-id>/players` to seed `state.player
+          -s` with                                                       
+      126 -    everyone's last-known position. Assumes the DB supports a 
+          -collection                                                    
+      127 -    GET over a path prefix; if it doesn't, fall back to one GE
+          -T per name in                                                 
+      128 -    the `participants` URL param.                             
+      129 -14. **Audit writes piggyback on the existing throttle.** The K
+          -V `PUT` fires                                                 
+      130 -    alongside the existing SSE `PUT` inside `sendEnvelope`'s c
+          -all sites, on                                                 
+      131 -    the same `MOVE_BROADCAST_MS` cadence already in place for 
+          -movement — no                                                 
+      132 -    new throttle timer, no doubling of write-frequency logic. 
+      133 -15. **NPC bots are standalone Node clients, not browser code.*
+          -* Per the                                                     
+      134 -    prompt ("can be run as standalone HTTP and SSE client"), a
+          - bot is a                                                     
+      135 -    Node script: global `fetch` for `PUT`, the `eventsource` n
+          -pm package                                                    
+      136 -    for `EventSource` (not built into Node). It joins/moves us
+          -ing the exact                                                 
+      137 -    same envelope shape a browser client emits, so existing cl
+          -ients render                                                  
+      138 -    it as just another player with zero special-casing.       
+      139 -16. **Shared movement logic, not duplicated.** Extract the pur
+          -e bits                                                        
+      140 -    `lol.js` already has — `MOVE_SPEED`, `MOVE_BROADCAST_MS`, 
+          -`calcDir`,                                                    
+      141 -    `clamp`, envelope shape — into `shared.js`, loaded by both
+          - the browser                                                  
+      142 -    page and the Node bot runtime, so bot movement can't drift
+          - from human                                                   
+      143 -    movement behavior over time.                              
+      144 -17. **Bot behavior is a small state machine driven off the sam
+          -e SSE                                                         
+      145 -    stream** a real client listens to: `ROAM` (random waypoint
+          -, remembers                                                   
+      146 -    recently-visited points to avoid immediately backtracking)
+          -, `SEEK`                                                      
+      147 -    (favorite player known but not close — head toward their l
+          -ast-reported                                                  
+      148 -    position), `FOLLOW` (close to favorite — mirror their move
+          -ment with a                                                   
+      149 -    lag), plus a random timer that drops the current favorite 
+          -and picks a                                                   
+      150 -    new one from currently-known players. This directly implem
+          -ents the                                                      
+      151 -    prompt's "pet robot" example.                             
+      152 -18. **Bot join/spawn mirrors human join** — picks its own star
+          -t position                                                    
+      153 -    (default: random point along the same bottom-edge band Pha
+          -se 1 uses,                                                    
+      154 -    overridable via CLI arg), sends a `join` envelope, then ru
+          -ns the same                                                   
+      155 -    tick/move/broadcast loop as the browser client, just drive
+          -n by                                                          
+      156 -    `setInterval` instead of `requestAnimationFrame`.         
+      110 +11. **No KV DB this phase.** All state sync — including catchi
+          +ng up a late                                                  
+      111 +    joiner — happens over the existing SSE channel. No persist
+          +ence layer,                                                   
+      112 +    no organizer authority; still peer-broadcast only.        
+      113 +12. **Late-joiner catch-up via a `state_request` envelope.** A
+          + joining                                                      
+      114 +    client sends `{type: 'state_request', from, ts}` right aft
+          +er its `join`.                                                
+      115 +    Every existing peer, on receiving a `state_request`, immed
+          +iately                                                        
+      116 +    re-emits its own current `move` envelope — bypassing the n
+          +ormal                                                         
+      117 +    throttle — so the new joiner converges within one round tr
+          +ip instead of                                                 
+      118 +    waiting on the next natural update. (This envelope shape i
+          +sn't spelled                                                  
+      119 +    out verbatim in `UPDATE_2.md`, just implied by "late comer
+          +s could ask                                                   
+      120 +    for state update over the SSE channel and receive updates.
+          +.. sent by                                                    
+      121 +    each participant" — flagged as my proposed mechanism, see 
+          +Open                                                          
+      122 +    assumptions.)                                             
+      123 +13. **Idle heartbeat, independent of movement.** Today a stati
+          +onary player                                                  
+      124 +    broadcasts nothing after its final stop `move`. Per `UPDAT
+          +E_2.md`'s                                                     
+      125 +    500ms ceiling, add a heartbeat: any participant (human or 
+          +bot) that                                                     
+      126 +    hasn't broadcast in the last `HEARTBEAT_MS` (< 500ms, e.g.
+          + 400) re-sends                                                
+      127 +    its current `move` even while `walking: false`. This gener
+          +alizes                                                        
+      128 +    cleanly alongside the existing move-throttle, sharing the 
+          +same                                                          
+      129 +    `lastBroadcastTs` bookkeeping per participant.            
+      130 +14. **"All disconnect → state resets" needs no code.** It's al
+          +ready the                                                     
+      131 +    natural consequence of no persistence — confirms the peer-
+          +only model is                                                 
+      132 +    intentional, not a build task.                            
+      133 +15. **NPC bots are in-page objects, not a separate process.** 
+          +`bots.js`                                                     
+      134 +    defines a global `Bot` namespace (`Bot.Winnie = { init(ctx
+          +), move(ctx)                                                  
+      135 +    }`), loaded via `<script src="./bots.js"></script>` in `in
+          +dex.html`                                                     
+      136 +    *before* `lol.js`'s own script tag so the namespace exists
+          + before the                                                   
+      137 +    game loop wires up. Both are plain non-module scripts shar
+          +ing one                                                       
+      138 +    global scope — `bots.js` calls `lol.js`'s existing globals
+          + (`state`,                                                    
+      139 +    `calcDir`, `clamp`, movement constants, `sendEnvelope`) di
+          +rectly; no                                                    
+      140 +    Node, no `eventsource` package, no separate shared/build m
+          +odule needed.                                                 
+      141 +16. **Bot activation gated by the `participants` list**, patte
+          +rn                                                            
+      142 +    `Bot.<name>`. On `enterGame()`, scan `state.participants` 
+          +for entries                                                   
+      143 +    matching `/^Bot\.(.+)$/`; for each match, resolve `window.
+          +Bot[name]`;                                                   
+      144 +    skip with a `console.warn` if not found. **The `Bot.` pref
+          +ix is                                                         
+      145 +    stripped for the broadcast/display name** — `Bot.Winnie` i
+          +n                                                             
+      146 +    `participants` becomes player name `Winnie` in `join`/`mov
+          +e` envelopes                                                  
+      147 +    and the on-screen label, so it renders identically to a hu
+          +man player                                                    
+      148 +    with zero special-casing elsewhere (confirmed).           
+      149 +17. **Two loops, two responsibilities — not one.** The existin
+          +g                                                             
+      150 +    `requestAnimationFrame` tick keeps doing per-frame steppin
+          +g + throttled                                                 
+      151 +    broadcast + heartbeat, generalized from `updateLocalPlayer
+          +(dt, now)`                                                    
+      152 +    into a per-participant step function reused for the human 
+          +player *and*                                                  
+      153 +    every active bot each frame. A **separate** `setInterval` 
+          +— the "game                                                   
+      154 +    loop" `UPDATE_2.md` describes — calls each registered bot'
+          +s `init` once                                                 
+      155 +    and `move(ctx)` on a coarser, regular cadence. `move()`'s 
+          +job is only to                                                
+      156 +    **decide/update the bot's target** (`targetX`/`targetY`, `
+          +walking`); the                                                
+      157 +    per-frame step function still owns actual movement + broad
+          +cast, so bots                                                 
+      158 +    and the human player can never drift onto different moveme
+          +nt/broadcast                                                  
+      159 +    code paths. (Flagged as my interpretation of "call move...
+          + in regular                                                   
+      160 +    intervals" — see Open assumptions.)                       
+      161 +18. **`ctx` is the integration seam** passed into `init`/`move
+          +`: the bot's                                                  
+      162 +    own name, its live sub-state (`state.players[name]`, the s
+          +ame map                                                       
+      163 +    everyone else uses, so bots render on canvas/minimap with 
+          +no extra                                                      
+      164 +    code), map bounds, and a read-only view of `state.players`
+          + to decide                                                    
+      165 +    from. No transport/stepping logic is duplicated inside `bo
+          +ts.js`.                                                       
+      166 +19. **Winnie's behavior lives entirely in `move()`** — no sepa
+          +rate state                                                    
+      167 +    machine module needed for a single bot. Roam / remember vi
+          +sited places                                                  
+      168 +    & players / pick-and-seek a favorite / follow / randomly s
+          +witch                                                         
+      169 +    (`UPDATE_1.md`'s "pet robot" example) all read/write a sma
+          +ll memory                                                     
+      170 +    object `init` attaches via closure or `ctx`, and just upda
+          +te the target                                                 
+      171 +    each tick.                                                
+      172  
+      173  ### Files
+      174  
+      160 -- `shared.js` — movement constants, `calcDir`, `clamp`, envelo
+          -pe-shape                                                      
+      161 -  helpers, extracted from `lol.js`; consumed by both `lol.js` 
+          -and the bot                                                   
+      162 -  runtime (refactor only, no behavior change).                
+      163 -- `lol.js` — add: KV `PUT` alongside the existing SSE `PUT` on
+          - `join`/`move`;                                               
+      164 -  bootstrap `GET` on entering the game, before the `join` enve
+          -lope is sent.                                                 
+      165 -- `bots/npc-client.js` — base bot runtime: SSE connect, `PUT` 
+          -sender, tick                                                  
+      166 -  loop, a `memory` object (visited points, known players), and
+          - a pluggable                                                  
+      167 -  `decide(state, memory) -> {targetX, targetY}` hook so behavi
+          -ors can be                                                    
+      168 -  swapped without touching the transport/loop code.           
+      169 -- `bots/pet-robot.js` — the example behavior from `UPDATE_1.md
+          -` built on                                                    
+      170 -  `npc-client.js`: roam / remember places & players / favorite
+          --seek /                                                       
+      171 -  follow / random-switch. Run via `node bots/pet-robot.js --ss
+          -e_link=...                                                    
+      172 -  --name=...`.                                                
+      175 +- `bots.js` — new. `window.Bot = { Winnie: { init(ctx), move(c
+          +tx) } }`,                                                     
+      176 +  Winnie's roam/remember/favorite/follow logic inside `move`. 
+      177 +- `index.html` — add `<script src="./bots.js"></script>` befor
+          +e the                                                         
+      178 +  existing `<script src="./lol.js"></script>` tag.            
+      179 +- `lol.js` — add: generalize `updateLocalPlayer` into a per-pa
+          +rticipant                                                     
+      180 +  step function (human + bots) with heartbeat; `state_request`
+          + send-after-                                                  
+      181 +  join and reply-on-receive in `handleEnvelope`; bot registrat
+          +ion in                                                        
+      182 +  `enterGame()` (parse `Bot.<name>` out of `participants`, str
+          +ip prefix,                                                    
+      183 +  look up in `window.Bot`, seed `state.players[name]`, call `i
+          +nit`); the                                                    
+      184 +  `setInterval` bot-decision loop calling `move(ctx)` per regi
+          +stered bot.                                                   
+      185  
+      186  ### Build order (Phase 2)
+      187  
+      176 -1. Confirm the DB's base URL, path semantics, and whether coll
+          -ection GET                                                    
+      177 -   over a prefix is supported — a manual `curl PUT`/`GET`/`POS
+          -T` against the                                                
+      178 -   real server, before any code lands. This is the one blockin
+          -g unknown.                                                    
+      179 -2. Extract `shared.js` out of `lol.js` (pure refactor, verify 
+          -Phase 1                                                       
+      180 -   behavior is unchanged).                                    
+      181 -3. Wire the KV `PUT` alongside the existing SSE `PUT` for `joi
+          -n`/`move` in                                                  
+      182 -   `lol.js`.                                                  
+      183 -4. Wire the bootstrap `GET` on entering the game, before `join
+          -` is sent.                                                    
+      184 -5. Build `npc-client.js`: SSE connect (`eventsource` pkg) + `f
+          -etch` PUT +                                                   
+      185 -   tick loop + `memory` + pluggable `decide()`.               
+      186 -6. Build `pet-robot.js` on top of it: roam/remember/favorite/f
+          -ollow/switch.                                                 
+      187 -7. Manual test: run one or more bots against a real `sse_link`
+          - alongside a                                                  
+      188 -   browser client — confirm bots render as ordinary players (a
+          -vatar,                                                        
+      189 -   minimap) in the browser, and that a late-joining browser cl
+          -ient sees                                                     
+      190 -   already-present players immediately via the bootstrap GET. 
+      188 +1. Generalize `updateLocalPlayer` into a per-participant step 
+          +function; add                                                 
+      189 +   the idle heartbeat timer. Regression-check against Phase 1 
+          +(human-only                                                   
+      190 +   movement/broadcast behavior unchanged).                    
+      191 +2. Add the `state_request` envelope: send after `join`; reply-
+          +on-receive in                                                 
+      192 +   `handleEnvelope`.                                          
+      193 +3. Add `bots.js` with `Bot.Winnie` (`init`/`move`); include it
+          + in                                                           
+      194 +   `index.html` ahead of `lol.js`.                            
+      195 +4. Wire bot registration in `enterGame()`: parse `Bot.<name>` 
+          +entries,                                                      
+      196 +   strip the prefix, look up in `window.Bot`, seed `state.play
+          +ers[name]`,                                                   
+      197 +   call `init(ctx)`.                                          
+      198 +5. Wire the `setInterval` bot-decision loop calling `move(ctx)
+          +` per                                                         
+      199 +   registered bot; confirm the target it sets feeds into the s
+          +ame                                                           
+      200 +   per-participant step function from step 1, so stepping/broa
+          +dcast/                                                        
+      201 +   heartbeat stays single-sourced between bots and humans.    
+      202 +6. Manual test: single tab with `...&participants=You,Bot.Winn
+          +ie` — confirm                                                 
+      203 +   Winnie renders/moves labeled "Winnie" with no user input; s
+          +econd tab                                                     
+      204 +   without the bot entry — confirm it still sees Winnie via SS
+          +E; join a                                                     
+      205 +   third tab mid-session and confirm `state_request` + heartbe
+          +at catch it                                                   
+      206 +   up without a DB.                                           
+      207  
+      208  ### Open assumptions (Phase 2)
+      209  
+      194 -- `DB_HOST` and the `/lol/<channel-id>/players/<name>` path sh
+          -ape,                                                          
+      195 -  including whether prefix-based collection GET is supported, 
+          -are                                                           
+      196 -  unverified against the real server — the single biggest unkn
+          -own blocking                                                  
+      197 -  this phase (see build step 1).                              
+      198 -- Channel-id derivation from `sse_link`'s last path segment as
+          -sumes a                                                       
+      199 -  stable URL shape from `joint`'s hand-off; verify against wha
+          -t `joint`                                                     
+      200 -  actually produces in practice.                              
+      201 -- Node + `eventsource` package is assumed available for bots. 
+          -If bots must                                                  
+      202 -  run without npm installs, the alternative is a hidden headle
+          -ss-browser                                                    
+      203 -  tab reusing `lol.js` instead of a Node script — flag which i
+          -s preferred                                                   
+      204 -  before build step 5.                                        
+      205 -- Whether bots should be visually distinguishable from humans 
+          -(name tag,                                                    
+      206 -  icon) isn't specified in `UPDATE_1.md`. Default here: indist
+          -inguishable,                                                  
+      207 -  "just another player." An `isBot` flag on the `join` envelop
+          -e is a                                                        
+      208 -  non-breaking addition if that's wanted later.               
+      210 +- `state_request`/reply is my proposed mechanism for `UPDATE_2
+          +.md`'s "late                                                  
+      211 +  comers could ask for state update over the SSE channel" line
+          +, not a                                                       
+      212 +  shape given verbatim in either update doc — confirm before b
+          +uild step 2.                                                  
+      213 +- Heartbeat interval defaulted to ~400ms (under the required 5
+          +00ms                                                          
+      214 +  ceiling); exact value tunable.                              
+      215 +- `move()` is assumed to only retarget the bot, with actual st
+          +epping/                                                       
+      216 +  broadcast reused from the human player's per-frame function 
+          +(decision                                                     
+      217 +  17). `UPDATE_2.md`'s "call move... in regular intervals" cou
+          +ld also be                                                    
+      218 +  read as `move()` owning full per-tick movement itself — revi
+          +sit if that's                                                 
+      219 +  not the intended shape once bots.js is being built.         
+      220 +- Bot decision-tick interval (how often `move()` fires) isn't 
+          +specified                                                     
+      221 +  beyond "regular intervals" — this is separate from the <500m
+          +s heartbeat,                                                  
+      222 +  which governs idle broadcast, not retargeting frequency. Def
+          +aulting to                                                    
+      223 +  something coarser (~1.5–2.5s), tunable.                     
+
+● Revised the Phase 2 addendum in PLAN.md: dropped the KV DB and Node-bot
+  sections entirely, replaced with SSE-only late-joiner catch-up
+  (state_request), an idle heartbeat under 500ms, and the in-page
+  bots.js/Bot.Winnie design with the Bot. prefix stripped for the
+  broadcast/display name. Flagged as open assumptions the two things UPDATE_2
+  doesn't fully pin down: the exact state_request envelope shape, and whether
+  move() should own full per-tick stepping itself vs. just retargeting (I went
+  with retargeting-only, reusing the human player's step/broadcast/heartbeat
+  code for bots too).
+
+✻ Sautéed for 1m 53s
+
+❯ Now build bots.js and wire it into lol.js                                     
+
+  Read 2 files (ctrl+o to expand)
+
+● Write(src/fs/pwa/lol/bots.js)  ⎿  Wrote 79 lines to src/fs/pwa/lol/bots.js
+       1 /* LoL PWA - bots.js: Bot.<name> objects, each { init(ctx), move
+         (ctx) }.
+       3    registration and move() on a regular interval for every bot l
+         isted in
+       4    the participants URL param as `Bot.<name>`. */
+       6 
+       7 window.Bot = window.Bot || {};
+       8 
+      10   const ROAM_MARGIN = 200;             // world px kept clear of
+          map edges when picking a roam point
+     … +92 lines (ctrl+o to expand)
+
+● Now the lol.js changes — constants, sendEnvelope, bot registration,
+  generalized per-participant stepping with heartbeat, and state_request
+  handling.
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 2 lines
+       6  
+       7  const MOVE_SPEED = 220;              // world px / second
+       8  const MOVE_BROADCAST_MS = 200;       // throttle for in-motion 
+          position PUTs
+       9 +const HEARTBEAT_MS = 400;            // max gap between broadca
+         +sts while idle (< 500ms per spec)                              
+      10 +const BOT_TICK_MS = 2000;            // how often a registered 
+         +bot's move() is called                                         
+      11  const START_MARGIN = 300;            // world px from the botto
+          m-left corner
+      12  const ZOOM_MIN = 500;
+      13  const ZOOM_MAX = 3000;
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 4 lines, removed 3 lines
+      23    return out;
+      24  }
+      25  
+      26 -/** Send an envelope to the shared channel via HTTP PUT. */    
+      27 -function sendEnvelope(sseLink, type, extra) {                  
+      28 -  const body = Object.assign({ type, from: state.player, ts: Da
+         -te.now() }, extra);                                            
+      26 +/** Send an envelope to the shared channel via HTTP PUT, on beh
+         +alf of `from`                                                  
+      27 + *  (the local player's name, or a registered bot's name). */  
+      28 +function sendEnvelope(sseLink, type, from, extra) {            
+      29 +  const body = Object.assign({ type, from, ts: Date.now() }, ex
+         +tra);                                                          
+      30    return fetch(sseLink, {
+      31      method: 'PUT',
+      32      headers: { 'Content-Type': 'application/json' },
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 2 lines, removed 2 lines
+      72    mapW: 0,
+      73    mapH: 0,
+      74  
+      75 -  players: {},          // name -> { x, y, dir, walking }      
+      75 +  players: {},          // name -> { x, y, dir, walking, lastBr
+         +oadcastTs, ... }                                               
+      76 +  bots: [],             // [{ name, def }] registered `Bot.<nam
+         +e>` participants                                               
+      77    zoomSpan: ZOOM_DEFAULT,
+      78  
+      79    canvas: null,
+     ...
+      82    minimapCtx: null,
+      83  
+      84    lastFrameTs: 0,
+      84 -  lastBroadcastTs: 0,                                          
+      85    animT: 0,
+      86  
+      87    view: { srcX: 0, srcY: 0, worldViewW: 0, worldViewH: 0, mapSc
+          ale: 1 },
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 1 line
+      139    setupZoomControls();
+      140    setupChat();
+      141    setupSSE();
+      142 +  setupBotLoop();                                             
+      143    loadMap();
+      144  
+      145    requestAnimationFrame(tick);
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 77 lines, removed 2 lines
+      185      const startY = state.mapH - START_MARGIN;
+      186      state.players[state.player] = {
+      187        x: startX, y: startY, targetX: startX, targetY: startY,
+      188 -      dir: 'down', walking: false,                            
+      188 +      dir: 'down', walking: false, lastBroadcastTs: 0,        
+      189      };
+      190  
+      191      state.mapReady = true;
+      192 -    sendEnvelope(state.sseLink, 'join', { x: startX, y: startY
+          - });                                                          
+      192 +    sendEnvelope(state.sseLink, 'join', state.player, { x: sta
+          +rtX, y: startY });                                            
+      193 +    state.players[state.player].lastBroadcastTs = performance.
+          +now();                                                        
+      194 +                                                              
+      195 +    registerBots();                                           
+      196 +                                                              
+      197 +    // Ask peers already on the channel to re-announce their p
+          +osition, so we                                                
+      198 +    // (and every bot we just registered) catch up without wai
+          +ting on the                                                   
+      199 +    // idle heartbeat or the next natural move.               
+      200 +    sendEnvelope(state.sseLink, 'state_request', state.player,
+          + {});                                                         
+      201    };
+      202    state.mapImg.onerror = () => console.error('Failed to load m
+           ap image', MAP_SRC);
+      203    state.mapImg.src = MAP_SRC;
+      204  }
+      205  
+      206  // -----------------------------------------------------------
+           ----------------
+      207 +// NPC bots (Bot.<name> in `participants` → bots.js's `Bot[nam
+          +e]`)                                                          
+      208 +// -----------------------------------------------------------
+          +----------------                                              
+      209 +                                                              
+      210 +/** Names of participants driven locally by this tab: the huma
+          +n player plus                                                 
+      211 + *  every registered bot. Used to step/broadcast them each fra
+          +me and to                                                     
+      212 + *  recognize (and ignore) our own envelopes echoed back over 
+          +SSE. */                                                       
+      213 +function getLocalParticipantNames() {                         
+      214 +  const names = [];                                           
+      215 +  if (state.player) names.push(state.player);                 
+      216 +  for (const bot of state.bots) names.push(bot.name);         
+      217 +  return names;                                               
+      218 +}                                                             
+      219 +                                                              
+      220 +function makeBotCtx(name) {                                   
+      221 +  return { name, self: state.players[name], mapW: state.mapW, 
+          +mapH: state.mapH, players: state.players };                   
+      222 +}                                                             
+      223 +                                                              
+      224 +/** Resolve `Bot.<name>` entries in `participants` against bot
+          +s.js's `Bot`                                                  
+      225 + *  namespace, spawn each as a local participant, and run its 
+          +`init`. The                                                   
+      226 + *  `Bot.` prefix is stripped: a bot broadcasts and renders un
+          +der its plain                                                 
+      227 + *  name, indistinguishable from a human player. */           
+      228 +function registerBots() {                                     
+      229 +  for (const entry of state.participants) {                   
+      230 +    const match = /^Bot\.(.+)$/.exec(entry);                  
+      231 +    if (!match) continue;                                     
+      232 +    const name = match[1];                                    
+      233 +    const def = window.Bot && window.Bot[name];               
+      234 +    if (!def || typeof def.init !== 'function' || typeof def.m
+          +ove !== 'function') {                                         
+      235 +      console.warn(`LoL: bot "${name}" not found in Bot namesp
+          +ace (bots.js)`);                                              
+      236 +      continue;                                               
+      237 +    }                                                         
+      238 +    if (state.players[name]) continue;                        
+      239 +                                                              
+      240 +    const startX = clamp(START_MARGIN + Math.random() * 200, 0
+          +, state.mapW);                                                
+      241 +    const startY = clamp(state.mapH - START_MARGIN - Math.rand
+          +om() * 200, 0, state.mapH);                                   
+      242 +    state.players[name] = {                                   
+      243 +      x: startX, y: startY, targetX: startX, targetY: startY, 
+      244 +      dir: 'down', walking: false, lastBroadcastTs: 0, isBot: 
+          +true,                                                         
+      245 +    };                                                        
+      246 +                                                              
+      247 +    def.init(makeBotCtx(name));                               
+      248 +                                                              
+      249 +    const p = state.players[name];                            
+      250 +    sendEnvelope(state.sseLink, 'join', name, { x: p.x, y: p.y
+          + });                                                          
+      251 +    p.lastBroadcastTs = performance.now();                    
+      252 +                                                              
+      253 +    state.bots.push({ name, def });                           
+      254 +  }                                                           
+      255 +}                                                             
+      256 +                                                              
+      257 +/** Separate, coarser loop from the per-frame render/step tick
+          +: calls each                                                  
+      258 + *  registered bot's move() on a regular interval so it can pi
+          +ck a new                                                      
+      259 + *  target. Actual stepping toward that target and broadcastin
+          +g happens in                                                  
+      260 + *  stepParticipant(), same as the human player - move() only 
+          +decides. */                                                   
+      261 +function setupBotLoop() {                                     
+      262 +  setInterval(() => {                                         
+      263 +    for (const bot of state.bots) {                           
+      264 +      try {                                                   
+      265 +        bot.def.move(makeBotCtx(bot.name));                   
+      266 +      } catch (err) {                                         
+      267 +        console.warn('LoL: bot move() failed', bot.name, err);
+      268 +      }                                                       
+      269 +    }                                                         
+      270 +  }, BOT_TICK_MS);                                            
+      271 +}                                                             
+      272 +                                                              
+      273 +// -----------------------------------------------------------
+          +----------------                                              
+      274  // Movement / animation loop
+      275  // -----------------------------------------------------------
+           ----------------
+      276  
+
+● Now the tick loop and updateLocalPlayer → stepParticipant generalization with
+  heartbeat:
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 26 lines, removed 18 lines
+      280    state.animT += dt;
+      281  
+      282    if (state.mapReady) {
+      283 -    updateLocalPlayer(dt, now);                               
+      283 +    for (const name of getLocalParticipantNames()) stepPartici
+          +pant(name, dt, now);                                          
+      284      render();
+      285      renderMinimap();
+      286    } else {
+     ...
+      290    requestAnimationFrame(tick);
+      291  }
+      292  
+      293 -function updateLocalPlayer(dt, now) {                         
+      294 -  const me = state.players[state.player];                     
+      295 -  if (!me) return;                                            
+      293 +/** Advance one locally-owned participant (the human player, o
+          +r a bot) toward                                               
+      294 + *  its target and broadcast as needed: throttled while walkin
+          +g, plus one                                                   
+      295 + *  final message on arrival, plus an idle heartbeat (< HEARTB
+          +EAT_MS gap)                                                   
+      296 + *  so a stationary participant still keeps peers - and late j
+          +oiners -                                                      
+      297 + *  caught up without a KV store. */                          
+      298 +function stepParticipant(name, dt, now) {                     
+      299 +  const p = state.players[name];                              
+      300 +  if (!p) return;                                             
+      301  
+      297 -  if (me.walking) {                                           
+      298 -    const dx = me.targetX - me.x;                             
+      299 -    const dy = me.targetY - me.y;                             
+      302 +  if (p.walking) {                                            
+      303 +    const dx = p.targetX - p.x;                               
+      304 +    const dy = p.targetY - p.y;                               
+      305      const dist = Math.hypot(dx, dy);
+      306      const step = MOVE_SPEED * dt;
+      307  
+      308      if (dist <= step || dist < 1) {
+      304 -      me.x = me.targetX;                                      
+      305 -      me.y = me.targetY;                                      
+      306 -      me.walking = false;                                     
+      307 -      sendEnvelope(state.sseLink, 'move', { x: me.x, y: me.y, 
+          -dir: me.dir, walking: false });                               
+      308 -      state.lastBroadcastTs = now;                            
+      309 +      p.x = p.targetX;                                        
+      310 +      p.y = p.targetY;                                        
+      311 +      p.walking = false;                                      
+      312 +      sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p
+          +.y, dir: p.dir, walking: false });                            
+      313 +      p.lastBroadcastTs = now;                                
+      314      } else {
+      310 -      me.dir = calcDir(dx, dy);                               
+      311 -      me.x += (dx / dist) * step;                             
+      312 -      me.y += (dy / dist) * step;                             
+      313 -      if (now - state.lastBroadcastTs > MOVE_BROADCAST_MS) {  
+      314 -        sendEnvelope(state.sseLink, 'move', { x: me.x, y: me.y
+          -, dir: me.dir, walking: true });                              
+      315 -        state.lastBroadcastTs = now;                          
+      315 +      p.dir = calcDir(dx, dy);                                
+      316 +      p.x += (dx / dist) * step;                              
+      317 +      p.y += (dy / dist) * step;                              
+      318 +      if (now - p.lastBroadcastTs > MOVE_BROADCAST_MS) {      
+      319 +        sendEnvelope(state.sseLink, 'move', name, { x: p.x, y:
+          + p.y, dir: p.dir, walking: true });                           
+      320 +        p.lastBroadcastTs = now;                              
+      321        }
+      322      }
+      323 +  } else if (now - p.lastBroadcastTs > HEARTBEAT_MS) {        
+      324 +    sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p.y
+          +, dir: p.dir, walking: false });                              
+      325 +    p.lastBroadcastTs = now;                                  
+      326    }
+      327  }
+      328  
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 1 line, removed 1 line
+      485    const doSend = () => {
+      486      const m = input.value.trim();
+      487      if (!m) return;
+      488 -    sendEnvelope(state.sseLink, 'chat', { m });               
+      488 +    sendEnvelope(state.sseLink, 'chat', state.player, { m }); 
+      489      input.value = '';
+      490    };
+      491    sendBtn.addEventListener('click', doSend);
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 9 lines, removed 3 lines
+      520      return;
+      521    }
+      522  
+      523 -  // Local player's own position is client-predicted; ignore e
+          -choes of it                                                   
+      524 -  // to avoid overwriting a more up-to-date locally-simulated 
+          -position.                                                     
+      525 -  if (data.from === state.player) return;                     
+      523 +  if (data.type === 'state_request') {                        
+      524 +    handleStateRequest(data);                                 
+      525 +    return;                                                   
+      526 +  }                                                           
+      527  
+      528 +  // Locally-owned participants' positions are client-predicte
+          +d; ignore                                                     
+      529 +  // echoes of them to avoid overwriting a more up-to-date loc
+          +ally-simulated                                                
+      530 +  // position.                                                
+      531 +  if (getLocalParticipantNames().includes(data.from)) return; 
+      532 +                                                              
+      533    if (data.type === 'join') {
+      534      state.players[data.from] = {
+      535        x: data.x, y: data.y, targetX: data.x, targetY: data.y, 
+           dir: 'down', walking: false,
+
+● Now add the handleStateRequest function right after handleEnvelope:
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 16 lines
+      542    }
+      543  }
+      544  
+      545 +/** A peer (late joiner) asked the channel for a state catch-u
+          +p: re-announce                                                
+      546 + *  every locally-owned participant's current position immedia
+          +tely,                                                         
+      547 + *  bypassing the normal broadcast throttle. */               
+      548 +function handleStateRequest(data) {                           
+      549 +  const localNames = getLocalParticipantNames();              
+      550 +  if (localNames.includes(data.from)) return;                 
+      551 +                                                              
+      552 +  const now = performance.now();                              
+      553 +  for (const name of localNames) {                            
+      554 +    const p = state.players[name];                            
+      555 +    if (!p) continue;                                         
+      556 +    sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p.y
+          +, dir: p.dir, walking: p.walking });                          
+      557 +    p.lastBroadcastTs = now;                                  
+      558 +  }                                                           
+      559 +}                                                             
+      560 +                                                              
+      561  // -----------------------------------------------------------
+           ----------------
+      562  // Boot
+      563  // -----------------------------------------------------------
+           ----------------
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● All call sites are consistent. Now wire bots.js into index.html and sw.js.
+
+● Update(src/fs/pwa/lol/index.html)
+  ⎿  Added 1 line
+      65      </div>
+      66    </div>
+      67  
+      68 +  <script src="./bots.js"></script>                            
+      69    <script src="./lol.js"></script>
+      70  </body>
+      71  </html>
+
+● Update(src/fs/pwa/lol/sw.js)
+  ⎿  Added 2 lines, removed 1 line
+      1 -const CACHE_NAME = 'lol-v1';                                    
+      1 +const CACHE_NAME = 'lol-v2';                                    
+      2  const urlsToCache = [
+      3    './index.html',
+      4    './error.html',
+      5    './lol.js',
+      6 +  './bots.js',                                                  
+      7    './styles.css',
+      8    './manifest.json',
+      9    './icon-192.png',
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now let's view the full updated lol.js to sanity-check the wiring end-to-end.
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+● Good — working directory persisted, so the server was serving from the lol/
+  folder and all files (including the new bots.js) resolve correctly. Both files
+  pass node --check syntax validation and index.html now loads bots.js before
+  lol.js.
+
+  Summary of what's wired:
+
+  - bots.js (new) — window.Bot.Winnie = { init, move }. move() only retargets
+  (roam/remember/favorite-seek/follow/random-switch); no transport code.
+  - lol.js — sendEnvelope now takes an explicit from; updateLocalPlayer
+  generalized into stepParticipant(name, dt, now) with the new idle heartbeat
+  (HEARTBEAT_MS=400, under the 500ms ceiling), reused for the human player and
+  every bot each frame; registerBots() parses Bot.<name> out of participants,
+  strips the prefix, spawns it in state.players, calls init, sends its join;
+  setupBotLoop() is a separate setInterval (BOT_TICK_MS=2000) calling move() per
+  bot; state_request is sent once after the local join/bot registration and
+  answered by every peer via handleStateRequest (bypasses throttle, skips
+  self-echoes).
+  - index.html — bots.js script tag added ahead of lol.js.
+  - sw.js — bots.js added to the precache list, cache bumped to lol-v2.
+
+  Not yet done: an actual browser test (multi-tab, participants=...,Bot.Winnie)
+  — no connected browser tool in this session, so
+  movement/heartbeat/state_request/bot rendering are implemented per the plan
+  but unverified live. Want me to spin up the server and give you a URL to try,
+  or walk through it with claude-in-chrome if you connect it?
+
+✻ Brewed for 4m 21s
+
+※ recap: We're building Phase 2 of the LoL PWA (SSE state sync + NPC bots): I just wired bots.js into lol.js and index.html and verified the files load and pass syntax checks. Next: test it live in a browser with a Bot.Winnie participant. (disable recaps in /config)
+❯ Looks good. One question: Is the bot loop started in each instance of the     
+  PWA? Actually, the bot game loop should only be running in the PWA instance   
+  that organizer is running.                                                    
+
+● Good catch — right now every tab that enters the game parses participants and
+  independently spawns/runs Winnie locally, so with two human tabs open on the
+  same session you'd get two independent "Winnie" instances both broadcasting
+  under the same name from different clients, stepping on each other. Only the
+  organizer's tab should run the bot loop.
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 9 lines, removed 1 line
+      139    setupZoomControls();
+      140    setupChat();
+      141    setupSSE();
+      142 -  setupBotLoop();                                             
+      142 +  if (isOrganizer()) setupBotLoop();                          
+      143    loadMap();
+      144  
+      145    requestAnimationFrame(tick);
+      146  }
+      147  
+      148 +/** Only the organizer's tab runs NPC bots — otherwise every p
+          +articipant's                                                  
+      149 + *  tab would independently spawn and broadcast the same bot n
+          +ame, racing                                                   
+      150 + *  each other. Every other tab still sees bots normally, as o
+          +rdinary                                                       
+      151 + *  remote players received over SSE. */                      
+      152 +function isOrganizer() {                                      
+      153 +  return !!state.player && state.player === state.organizer;  
+      154 +}                                                             
+      155 +                                                              
+      156  function setupCanvas() {
+      157    state.canvas = document.getElementById('game_canvas');
+      158    state.ctx = state.canvas.getContext('2d');
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 3 lines, removed 3 lines
+      200      sendEnvelope(state.sseLink, 'join', state.player, { x: sta
+           rtX, y: startY });
+      201      state.players[state.player].lastBroadcastTs = performance.
+           now();
+      202  
+      203 -    registerBots();                                           
+      203 +    if (isOrganizer()) registerBots();                        
+      204  
+      205      // Ask peers already on the channel to re-announce their p
+           osition, so we
+      206 -    // (and every bot we just registered) catch up without wai
+          -ting on the                                                   
+      207 -    // idle heartbeat or the next natural move.               
+      206 +    // (and every bot the organizer's tab just registered) cat
+          +ch up without                                                 
+      207 +    // waiting on the idle heartbeat or the next natural move.
+      208      sendEnvelope(state.sseLink, 'state_request', state.player,
+            {});
+      209    };
+      210    state.mapImg.onerror = () => console.error('Failed to load m
+           ap image', MAP_SRC);
+
+● Update(src/fs/pwa/lol/lol.js)
+  ⎿  Added 3 lines, removed 1 line
+      232  /** Resolve `Bot.<name>` entries in `participants` against bot
+           s.js's `Bot`
+      233   *  namespace, spawn each as a local participant, and run its 
+           `init`. The
+      234   *  `Bot.` prefix is stripped: a bot broadcasts and renders un
+           der its plain
+      235 - *  name, indistinguishable from a human player. */           
+      235 + *  name, indistinguishable from a human player. Only called o
+          +n the                                                         
+      236 + *  organizer's tab (see isOrganizer()) — every other particip
+          +ant just sees                                                 
+      237 + *  the bot as an ordinary remote player over SSE. */         
+      238  function registerBots() {
+      239    for (const entry of state.participants) {
+      240      const match = /^Bot\.(.+)$/.exec(entry);
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now updating the PLAN.md addendum to record this constraint:
+
+● Update(src/fs/pwa/lol/PLAN.md)
+  ⎿  Added 7 lines
+      146      `participants` becomes player name `Winnie` in `join`/`mov
+           e` envelopes
+      147      and the on-screen label, so it renders identically to a hu
+           man player
+      148      with zero special-casing elsewhere (confirmed).
+      149 +16a. **Only the organizer's tab runs bots** (`isOrganizer(): s
+          +tate.player                                                   
+      150 +    === state.organizer`). Every participant's tab independent
+          +ly parses                                                     
+      151 +    `participants`, so without this gate each human's tab woul
+          +d spawn its                                                   
+      152 +    own copy of the same bot and race to broadcast under the s
+          +ame name.                                                     
+      153 +    Non-organizer tabs never call `registerBots()`/the bot `se
+          +tInterval`                                                    
+      154 +    loop — they just see the bot as an ordinary remote player 
+          +over SSE,                                                     
+      155 +    same as any human.                                        
+      156  17. **Two loops, two responsibilities — not one.** The existin
+           g
+      157      `requestAnimationFrame` tick keeps doing per-frame steppin
+           g + throttled
+      158      broadcast + heartbeat, generalized from `updateLocalPlayer
+           (dt, now)`
+
+● Fixed: added isOrganizer() (state.player === state.organizer) and gated both
+  registerBots() and the setInterval bot-decision loop behind it. Non-organizer
+  tabs no longer spawn a local Winnie at all — they just receive her join/move
+  broadcasts over SSE and render her like any other remote player, so there's
+  exactly one authoritative instance of each bot per session. Also recorded this
+  as decision 16a in the PLAN.md addendum. Syntax-checked, no other changes
+  needed since registerBots/the bot loop were already self-contained.
+
+✻ Churned for 52s
+
+❯ /exit                                                                         
+
+❯ /agents                                                                       
+  ⎿  The /agents wizard has been removed.
+
+     Ask Claude to create or update subagents for you (e.g. "create a code-reviewer subagent that ..."),
+     or edit the files directly:
+       • .claude/agents/       (this project)
+       • ~/.claude/agents/     (all projects)
+
+     Docs: https://code.claude.com/docs/en/sub-agents
