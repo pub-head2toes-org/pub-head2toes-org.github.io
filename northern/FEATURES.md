@@ -94,7 +94,7 @@ start-up read (REFACTORING #9). The module is now `src/h2t/SqliteDB.js`.
 | # | Feature | Code | Tests |
 | --- | --- | --- | --- |
 | F1 | The `ssid` cookie is parsed out of the `Cookie` header | `Cookie.js:4` | `Cookie.test.js` |
-| F2 | An ssid is `<public key>.<timestamp>.<signature>` — an ECDSA P-256 signature over `sha256(pubkey.timestamp)`, verified with the vendored SJCL. Keys are generated in the browser and never leave it | `Crypto.js:9-41`, `src/fs/reg/*` | `Crypto.test.js` |
+| F2 | An ssid is `<public key>.<timestamp>.<signature>` — an ECDSA P-256 signature over `sha256(pubkey.timestamp)`, verified with the vendored SJCL. Keys are generated in the browser, never leave it, and are never stored by it (see J6) | `Crypto.js:9-41`, `src/fs/reg/*` | `Crypto.test.js` |
 | F3 | The verified public key *is* the author identity; an absent or invalid signature falls back to the shared author `public` | `Server.js:80-96` | `Crypto.test.js`, `Server.test.js` › files anonymous writes under the public author |
 | F4 | Writes are scoped: private to the author by default, `?isPublic=true` for everybody, `?isGroup=<name>` for a named group | `Server.js:87-92` | `Server.test.js` › group scoping |
 | F5 | An RSA branch for Windows Hello — present but dead code | `Crypto.js:35-40` | `Crypto.test.js` (todo) |
@@ -119,7 +119,7 @@ boundaries, and testing them would need a browser harness (see REFACTORING #14).
 | # | Feature | Code |
 | --- | --- | --- |
 | I1 | Console + editor: a command line (`get`, `put`, `put2`, `post`, `search`, `match`, `last`, `open`, `eval`, `llm`, `llmo`, `s`) over the Fetch API, with a two-pane editor, an on-screen keyboard and Ctrl+Enter execution | `fs/keyboard.html`, `fs/js/cli_v2.js`, `fs/js/keyboard.js`, `fs/js/keyboard-helper.js` |
-| I2 | Registration and sign-in: generates the ECDSA key pair, stores it locally, builds the `ssid` cookie | `fs/reg/*`, `fs/Reg.html`, `fs/Signin.html`, `fs/Logout.html` |
+| I2 | Registration and sign-in: generates the ECDSA key pair, stores it locally with the user name, builds the `ssid` cookie, registers the ID Card, and downloads it as a file — optionally AES-256 encrypted under a passphrase (see J below) | `fs/reg/Reg.html`, `fs/reg/idcard.js`, `fs/reg/oo.js`, `fs/Signin.html`, `fs/Logout.html` |
 | I3 | Admin console, sharing pages, home page, manifesto, RSS feed | `fs/AdminConsole.html`, `fs/Share.html`, `fs/Shared.html`, `fs/home.html`, `fs/rss.xml` |
 | I4 | PWAs backed by the SSE pub/sub: `lol` (multiplayer map game with bots), `rummy`, `joint` — each with a manifest, service worker and offline page | `fs/pwa/lol/*`, `fs/pwa/rummy/*`, `fs/pwa/joint/*` |
 | I5 | Music and game pages: chord player, musical grids, go board, tonal.js, audio samples | `fs/games/*`, `fs/simon/*` |
@@ -127,9 +127,43 @@ boundaries, and testing them would need a browser harness (see REFACTORING #14).
 
 ---
 
+## J. The ID Card (browser side, `src/fs/reg`)
+
+The identity a user carries between devices. Held in `localStorage`, registered
+in the database as a public record, and saved to a file the user keeps.
+
+| # | Feature | Code | Tests |
+| --- | --- | --- | --- |
+| J1 | The card holds the user name alongside the key pair, in local storage (`pub`, `priv`, `pub_name`) and in the file | `reg/idcard.js:26-46`, `reg/Reg.html` | `idcard.test.js`, `Reg.test.js` › user name |
+| J2 | Registering posts only the public half — `{pub, pub_name}` — to `/id/<ts>/<pub>.json?isPublic=true`. The private key never leaves the device | `reg/idcard.js:publicRecord`, `reg/Reg.html:saveIdCard` | `idcard.test.js` › publicRecord, `Reg.test.js` › never sends the private key |
+| J3 | The downloaded file is named after the user: `alice.20260814T103000.id.txt` | `reg/idcard.js:fileName` | `idcard.test.js` › fileName, `Reg.test.js` › download |
+| J4 | An optional passphrase encrypts the file with AES-256-CBC, keyed by PBKDF2-SHA256 through `oo.js`. The file name is marked with `*`: `alice*.20260814T103000.id.txt`. The passphrase is typed twice, and the encrypted file is decrypted once before it is handed over, so an unreadable card cannot be produced | `reg/idcard.js:encrypt,toFile`, `reg/oo.js:idme` | `idcard.test.js` › encryption, `Reg.test.js` › passphrase |
+| J6 | **The private key is never stored.** It lives in a closure inside `session.js` for the life of the page and nowhere else; local storage holds only `pub` and `pub_name`. A key left in local storage by an earlier version is taken into memory and scrubbed the first time `session.js` loads | `reg/session.js` | `browserIdentity.test.js`, `Reg.test.js` › the private key never reaches local storage |
+| J7 | Because the key is not stored, a page can only mint a cookie while an ID Card is loaded. The cookie lasts a day; when it expires the user loads their ID Card again. `A.html` and `Remote.html` ride on the live cookie and redirect to `Reg.html` when there is none | `reg/session.js`, `reg/A.html`, `reg/Remote.html` | `browserIdentity.test.js` › reg/A.html, reg/Remote.html |
+| J8 | A newly generated identity exists only in the page until its ID Card is downloaded, so Reg.html points Continue at the download and warns before the page is left | `reg/Reg.html` | `Reg.test.js` › first visit |
+| J5 | Uploading accepts all three formats — encrypted envelope, plain v2 JSON, and the original v1 `<pub>.<priv>` — restores the user name, and mints a fresh session cookie. A bad file or wrong passphrase is reported without disturbing the stored identity | `reg/idcard.js:open,parse`, `reg/Reg.html` | `idcard.test.js` › open, `Reg.test.js` › upload |
+
+File formats:
+
+```
+v1  <pub>.<priv>
+v2  {"v":2,"username":"alice","pub":"<base64>","priv":"<base64>"}
+v2* {"v":2,"enc":"AES-256-CBC","kdf":"PBKDF2-SHA256-1000","ct":"<base64>"}
+```
+
+Where the identity lives:
+
+```
+the ID Card file  the private key, kept by the user
+the page          the private key while a card is loaded (session.js closure)
+local storage     pub, pub_name — never the private key
+the cookie        <pub>.<timestamp>.<signature>, one day
+the database      {pub, pub_name} at /id/<ts>/<pub>.json
+```
+
 ## Test suite
 
-`npm test` (`node --test`) — 142 tests over 6 files:
+`npm test` (`node --test`) — 235 tests over 10 files:
 
 | File | Covers |
 | --- | --- |
@@ -139,6 +173,10 @@ boundaries, and testing them would need a browser harness (see REFACTORING #14).
 | `tests/SqliteDB.test.js` | D1–D10 |
 | `tests/httpClient.test.js` | H1 |
 | `tests/Server.test.js` | A2, B1–B10, D2, D10, E1–E3, F3, F4, G1 |
+| `tests/idcard.test.js` | J1–J5 (the ID Card format, in isolation) |
+| `tests/Reg.test.js` | J1–J8 through the real `Reg.html`, loaded into a DOM stub |
+| `tests/Signin.test.js` | J5–J6 through the real `Signin.html` |
+| `tests/browserIdentity.test.js` | J6–J7: the no-stored-key invariant across every file in `src/fs`, plus `A.html` and `Remote.html` |
 | `tests/Example.test.js` | pre-existing placeholder, tests a function defined inside itself |
 
 The four remaining `todo` tests describe behaviour the code is meant to have but

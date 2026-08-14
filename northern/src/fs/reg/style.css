@@ -78,3 +78,26 @@ input {
     margin: 10px;
 }
 
+label {
+    display: block;
+    margin: 10px 10px 0;
+    color: #0f0;
+}
+
+input[type="text"],
+input[type="password"] {
+    display: block;
+    width: calc(100% - 20px);
+    border: 1px solid #0f0;
+}
+
+.hint {
+    margin: 10px;
+    color: #0a0;
+    font-size: 0.9em;
+}
+
+.hint code {
+    color: #0f0;
+}
+

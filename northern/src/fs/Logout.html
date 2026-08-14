@@ -3,10 +3,13 @@
 <link rel="stylesheet" media="screen" href="style.css">
 
 <script>
-    try {  
+    try {
         var localStorage = window.localStorage;
         localStorage.pub = "notloggedin";
-        localStorage.priv = "notloggedin";
+        // A private key is no longer kept in storage; clear any left by an older
+        // version, along with the user name and the session cookie.
+        delete localStorage.priv;
+        delete localStorage.pub_name;
         setCookie ('ssid', "", -1);
     } catch (err){
         console.log(err);

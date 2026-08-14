@@ -5,8 +5,9 @@ damage they can do. Each numbered entry is referenced from the test that
 documents it, where one exists.
 
 Verified against the running code. **#3 and #6 — the two ways a single request
-could kill the server — have been fixed, and #9's dead replication code has been
-removed**; those entries record what was done. Everything else is still open.
+could kill the server — have been fixed, #9's dead replication code has been
+removed, and the browser no longer stores the private key (#24)**; those entries
+record what was done. Everything else is still open.
 
 ---
 
@@ -217,6 +218,55 @@ seed it by hand (`tests/Crypto.test.js`).
 verify P-256 with `crypto.verify` — Node has supported it natively for years,
 and 110 lines of minified vendor code would leave the repository.
 
+### 22. The ID Card passphrase derivation is weak
+`oo.idme` (`src/fs/reg/oo.js:68`) derives the AES-256 key from the passphrase
+with PBKDF2-SHA256 at **1000 iterations** and a salt that is *the passphrase
+reversed*. The cipher is AES-256-CBC with the IV also taken from the derivation,
+so it is deterministic: the same passphrase always produces the same key, IV,
+and therefore the same ciphertext for the same card.
+
+That is what UPDATE_2 asked for ("use `oo.js` as an example"), and it is what
+the new ID Card encryption uses, so this is a known limitation rather than a
+surprise. What it means in practice: an attacker holding a downloaded
+`*.id.txt` can attack the passphrase far faster than they should be able to,
+and can tell when two files hold the same card.
+
+**Fix** (a format bump, since old files must still open): a random 16-byte salt
+and a random IV stored in the envelope, PBKDF2 at 600k iterations or Argon2id,
+and AES-GCM so the file is authenticated — a wrong passphrase would then fail
+cleanly instead of relying on the CBC padding check. The envelope already
+carries `v` and `kdf` fields to make that migration readable.
+
+### 23. `*` in the ID Card file name is not portable
+`alice*.20260814T103000.id.txt` marks an encrypted card, as UPDATE_2 asked.
+`*` is a legal file name character on Linux and macOS, but is **reserved on
+Windows**: browsers there will silently rewrite it (usually to `_`) when the
+file is saved, so the marker survives the download but not necessarily the file
+system. Nothing breaks — the format is detected from the file's contents, not
+its name — but on Windows the visual cue can be lost.
+
+**If that matters**: use a suffix the marker cannot lose, e.g.
+`alice.enc.20260814T103000.id.txt`, and keep `*` only in the page's own listing.
+
+### 24. The identity is only as safe as the page that holds it
+The private key is no longer written to local storage (see FEATURES J6): it
+lives in a closure in `reg/session.js` for the life of the page. That removes
+the at-rest copy an attacker could read later, but it does not make the key
+untouchable — script running on the page can still call `session.card()` or
+`session.mintCookie()` while a card is loaded.
+
+Worth doing next, roughly in order of value:
+
+* a Content Security Policy on the served pages, since XSS is now the only way
+  to reach the key at all — and `cli_v2.js` runs `eval` on editor content;
+* `HttpOnly`/`Secure`/`SameSite` on the ssid cookie — it is set from JavaScript
+  today, so it cannot be `HttpOnly` without moving cookie minting to the server;
+* a non-extractable WebCrypto key in IndexedDB for browsers that do not need to
+  re-export their ID Card, which would put the key out of reach of script
+  entirely. The signatures stay compatible: WebCrypto ECDSA P-256 over SHA-256
+  produces the same `r||s` the server already verifies, and the public key is
+  the raw export minus its leading `0x04` byte.
+
 ---
 
 ## Structure and maintainability
@@ -238,6 +288,12 @@ default 9443 — `Cluster.js` is unaffected), and `init` stores `this.httpServer
 in `src/` is untouched.
 
 ### 14. Browser code has no module boundary
+**Partly addressed for registration**: the ID Card format now lives in
+`src/fs/reg/idcard.js`, a DOM-free script that `tests/idcard.test.js` exercises
+directly, and `tests/helpers/regPage.js` runs the real `Reg.html` in a vm with
+a DOM stub so the page's own wiring is covered too. The same two techniques
+apply to everything below.
+
 `src/fs/js/cli_v2.js` and friends are top-level scripts that reach for
 `document` and globals like `clip` and `footer`, so the command parser, the
 token handling and the fetch calls cannot be tested without a DOM. Extracting

@@ -1,7 +1,10 @@
 <link rel="stylesheet" media="screen" href="style.css">
     <script type="text/javascript" src="sjcl.js"></script>
     <script type="text/javascript" src="cookies.js"></script>
- 
+    <script type="text/javascript" src="oo.js"></script>
+    <script type="text/javascript" src="idcard.js"></script>
+    <script type="text/javascript" src="session.js"></script>
+
 <body onLoad = "init();">
 
   <div class="page-wrapper">
@@ -20,35 +23,23 @@ async function init() {
   try { 
 
     var localStorage = window.localStorage;
-    var keys = {};
-    var ssId = "";
-    const ts = new Date().getTime();
- 
+
     if (localStorage.remotectrl){
 
       window.location.href = getNextURL();
+      return;
     }
 
-    if (localStorage.pub && localStorage.pub !== "notloggedin"){
-      keys.pub = new sjcl.ecc.ecdsa.publicKey(
-          sjcl.ecc.curves.c256,
-          sjcl.codec.base64.toBits(localStorage.pub)
-      );
-      
-      keys.sec = new sjcl.ecc.ecdsa.secretKey(
-          sjcl.ecc.curves.c256,
-          sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
-      );
+    // The private key is not kept in storage, so this page can only refresh the
+    // cookie when a key happens to be in memory (adopted from an older version).
+    // Otherwise a live cookie carries the session, and if there is none the user
+    // is sent to Reg.html to load their ID Card.
+    if (session.unlocked()){
 
-      ssId = 
-        localStorage.pub +
-        "." + 
-        ts;
-     
-      var sig = keys.sec.sign(sjcl.hash.sha256.hash(ssId))
-      var sigb64 = sjcl.codec.base64.fromBits(sig);
+      session.mintCookie();
+      window.location.href = getNextURL();
 
-      bakeCookie(ssId + "." + sigb64);
+    } else if (session.signedIn()){
 
       window.location.href = getNextURL();
 
