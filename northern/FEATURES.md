@@ -134,13 +134,15 @@ in the database as a public record, and saved to a file the user keeps.
 
 | # | Feature | Code | Tests |
 | --- | --- | --- | --- |
-| J1 | The card holds the user name alongside the key pair, in local storage (`pub`, `priv`, `pub_name`) and in the file | `reg/idcard.js:26-46`, `reg/Reg.html` | `idcard.test.js`, `Reg.test.js` › user name |
+| J1 | The card holds the user name alongside the key pair, in local storage (`pub`, `pub_name` — never `priv`, see J6) and in the file. A visitor who types no name is stored, registered and named in the file as `UNKNOWN`; an unnamed v1 card keeps the stored name only when it belongs to that same public key | `reg/idcard.js:26-46`, `reg/Reg.html` | `idcard.test.js`, `Reg.test.js` › user name |
 | J2 | Registering posts only the public half — `{pub, pub_name}` — to `/id/<ts>/<pub>.json?isPublic=true`. The private key never leaves the device | `reg/idcard.js:publicRecord`, `reg/Reg.html:saveIdCard` | `idcard.test.js` › publicRecord, `Reg.test.js` › never sends the private key |
 | J3 | The downloaded file is named after the user: `alice.20260814T103000.id.txt` | `reg/idcard.js:fileName` | `idcard.test.js` › fileName, `Reg.test.js` › download |
 | J4 | An optional passphrase encrypts the file with AES-256-CBC, keyed by PBKDF2-SHA256 through `oo.js`. The file name is marked with `*`: `alice*.20260814T103000.id.txt`. The passphrase is typed twice, and the encrypted file is decrypted once before it is handed over, so an unreadable card cannot be produced | `reg/idcard.js:encrypt,toFile`, `reg/oo.js:idme` | `idcard.test.js` › encryption, `Reg.test.js` › passphrase |
 | J6 | **The private key is never stored.** It lives in a closure inside `session.js` for the life of the page and nowhere else; local storage holds only `pub` and `pub_name`. A key left in local storage by an earlier version is taken into memory and scrubbed the first time `session.js` loads | `reg/session.js` | `browserIdentity.test.js`, `Reg.test.js` › the private key never reaches local storage |
 | J7 | Because the key is not stored, a page can only mint a cookie while an ID Card is loaded. The cookie lasts a day; when it expires the user loads their ID Card again. `A.html` and `Remote.html` ride on the live cookie and redirect to `Reg.html` when there is none | `reg/session.js`, `reg/A.html`, `reg/Remote.html` | `browserIdentity.test.js` › reg/A.html, reg/Remote.html |
-| J8 | A newly generated identity exists only in the page until its ID Card is downloaded, so Reg.html points Continue at the download and warns before the page is left | `reg/Reg.html` | `Reg.test.js` › first visit |
+| J8 | A newly generated identity exists only in the page until its ID Card is downloaded, so `Save Id Card & Continue` is the only way on from a first visit and the page warns before it is left | `reg/Reg.html` | `Reg.test.js` › first visit |
+| J9 | Reg.html is one page of three sections under a single `pub.head2toes.org` banner: a read-only, full-width **message board** carrying everything the page has to say; **Sign in**, with its own optional passphrase and one `Load Id Card & Continue` control; and **Reg**, with the user name, the passphrase typed twice, the generated public key in a read-only field, and `Save Id Card & Continue`. Each button carries the visitor on to the fragment path. The Sign in section also carries a `Continue as <name>` button for a visitor whose session cookie is still live, since they need no file; it stays hidden while a freshly generated identity is unsaved, when leaving would lose the key (J8) | `reg/Reg.html`, `reg/style.css` | `Reg.test.js` › layout, returning visitor |
+| J10 | The Reg section drafts a key pair on every visit and offers its public half, so `Save Id Card & Continue` always has something to write — a live session cookie is not a loaded key, and before this the button failed for anyone signed in without their card. The draft belongs to nobody until the card is built: saving it downloads the card, makes the pair this browser's identity, re-signs the cookie and registers it, replacing whoever was signed in (whose own ID Card file still opens). With a card loaded, Save saves that card instead | `reg/session.js:draft,adopt`, `reg/Reg.html:currentDraft,currentIdCard` | `Reg.test.js` › saving without a card loaded |
 | J5 | Uploading accepts all three formats — encrypted envelope, plain v2 JSON, and the original v1 `<pub>.<priv>` — restores the user name, and mints a fresh session cookie. A bad file or wrong passphrase is reported without disturbing the stored identity | `reg/idcard.js:open,parse`, `reg/Reg.html` | `idcard.test.js` › open, `Reg.test.js` › upload |
 
 File formats:
@@ -163,7 +165,7 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 
 ## Test suite
 
-`npm test` (`node --test`) — 235 tests over 10 files:
+`npm test` (`node --test`) — 257 tests over 10 files:
 
 | File | Covers |
 | --- | --- |
@@ -174,7 +176,7 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 | `tests/httpClient.test.js` | H1 |
 | `tests/Server.test.js` | A2, B1–B10, D2, D10, E1–E3, F3, F4, G1 |
 | `tests/idcard.test.js` | J1–J5 (the ID Card format, in isolation) |
-| `tests/Reg.test.js` | J1–J8 through the real `Reg.html`, loaded into a DOM stub |
+| `tests/Reg.test.js` | J1–J10 through the real `Reg.html`, loaded into a DOM stub |
 | `tests/Signin.test.js` | J5–J6 through the real `Signin.html` |
 | `tests/browserIdentity.test.js` | J6–J7: the no-stored-key invariant across every file in `src/fs`, plus `A.html` and `Remote.html` |
 | `tests/Example.test.js` | pre-existing placeholder, tests a function defined inside itself |

@@ -267,6 +267,24 @@ Worth doing next, roughly in order of value:
   produces the same `r||s` the server already verifies, and the public key is
   the raw export minus its leading `0x04` byte.
 
+### 25. A signed-in visitor on Reg.html has no way forward — fixed
+UPDATE_3 removed the standalone `Continue` link: the page now moves on when the
+visitor loads an ID Card or saves one, and each of those buttons says so. That
+covers both reasons anyone is sent here — a new identity, or an expired session
+— because the server only redirects writes that carry no `ssid` cookie
+(`Server.js:109`).
+
+What it did not cover was somebody who opens `/fs/get/reg/Reg.html#<path>` by
+hand while their cookie is still live: the message board told them they were
+signed in, but both controls needed a file.
+
+**Fixed** with one `Continue as <name>` button in the Sign in section
+(`Reg.html:showContinue`), shown only while `session.signedIn()` holds and the
+page is not sitting on an unsaved new identity — that second condition is what
+keeps J8 true, since a generated key that is never downloaded cannot be
+recovered. Redirecting automatically would have been wrong: a signed-in user
+may well be here on purpose, to save a fresh copy of their card.
+
 ---
 
 ## Structure and maintainability

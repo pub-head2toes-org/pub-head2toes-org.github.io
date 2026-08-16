@@ -2,7 +2,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadRegPage } from './helpers/regPage.js';
+
+const REG_DIR = path.join(import.meta.dirname, '..', 'src', 'fs', 'reg');
+const HTML = fs.readFileSync(path.join(REG_DIR, 'Reg.html'), 'utf8');
+const CSS = fs.readFileSync(path.join(REG_DIR, 'style.css'), 'utf8');
 
 const PUB = 'JaCSWcLSex79JkDmRHekEX33avJ9L9/dsTdWqBYk4WPSVy5mKRvFNTx+fqCHIHWba2Yr+8lVX938wQn3HHDkww==';
 const PRIV = 'Q0oPz9y8DzB1Ux1S2vJk0jHFPBOTFAn7l2QolO+FvGE=';
@@ -92,7 +98,7 @@ describe('Reg.html first visit', () => {
         const page = loadRegPage();
         await page.init();
 
-        assert.match(page.element('msg').innerHTML, /NOT saved in the browser/);
+        assert.match(page.element('msg').value, /NOT saved in the browser/);
     });
 
     it('warns before leaving while the new identity is unsaved', async () => {
@@ -110,11 +116,28 @@ describe('Reg.html first visit', () => {
         assert.strictEqual(page.warnsOnLeave(), false);
     });
 
-    it('points Continue at the download, so the identity cannot be lost by clicking through', async () => {
+    it('shows the new public key in the Reg section, and only the public one', async () => {
         const page = loadRegPage();
         await page.init();
 
-        assert.match(page.element('next').href, /saveToNamedFile/);
+        assert.strictEqual(page.element('pubkey').value, page.localStorage.pub);
+        assert.notStrictEqual(page.element('pubkey').value, page.session.card().priv);
+    });
+
+    it('leaves saving the ID Card as the only way on, so the identity cannot be lost by clicking through', async () => {
+        const page = loadRegPage();
+        await page.init();
+
+        assert.strictEqual(page.window.location.href, '', 'nothing has navigated away yet');
+        assert.strictEqual(page.warnsOnLeave(), true);
+    });
+
+    it('hides Continue while the new identity is unsaved, cookie or no cookie', async () => {
+        const page = loadRegPage();
+        await page.init();
+
+        assert.ok(page.cookie().startsWith('ssid='), 'the session is live');
+        assert.strictEqual(page.element('continue').hidden, true, 'but leaving now would lose the key');
     });
 });
 
@@ -132,14 +155,14 @@ describe('Reg.html returning visitor', () => {
         const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
         await page.init();
 
-        assert.match(page.element('msg').innerHTML, /Signed in as alice/);
+        assert.match(page.element('msg').value, /Signed in as alice/);
     });
 
     it('asks for the ID Card when the session has expired, keeping the same identity', async () => {
         const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }) });
         await page.init();
 
-        assert.match(page.element('msg').innerHTML, /session has expired/);
+        assert.match(page.element('msg').value, /session has expired/);
         assert.strictEqual(page.localStorage.pub, PUB, 'the identity is not replaced');
         assert.strictEqual(page.cookie(), '', 'and no cookie is minted without the key');
     });
@@ -151,11 +174,56 @@ describe('Reg.html returning visitor', () => {
         assert.strictEqual(page.element('username').value, 'alice');
     });
 
-    it('sends the visitor on to the path in the fragment', async () => {
+    it('sends the visitor on to the path in the fragment once the ID Card is loaded', async () => {
         const page = loadRegPage({ hash: '#/fs/get/keyboard.html', localStorage: known(), cookie: liveCookie() });
         await page.init();
+        assert.strictEqual(page.window.location.href, '', 'not before that');
 
-        assert.strictEqual(page.element('next').href, '/fs/get/keyboard.html');
+        await page.upload(CARD);
+
+        assert.strictEqual(page.window.location.href, '/fs/get/keyboard.html');
+    });
+
+    // A live cookie is not a loaded key: the Reg section can only offer a new pair
+    it('shows the key it would save, which is not the one it cannot reach', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
+        await page.init();
+
+        const shown = page.element('pubkey').value;
+        assert.ok(shown, 'a key is offered');
+        assert.notStrictEqual(shown, PUB, 'not the signed-in one, whose private half is not here');
+        assert.strictEqual(page.localStorage.pub, PUB, 'and the stored identity is left alone');
+    });
+
+    it('offers Continue as the user, so a live session needs no file', async () => {
+        const page = loadRegPage({ hash: '#/fs/get/keyboard.html', localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
+        await page.init();
+
+        const button = page.element('continue');
+        assert.strictEqual(button.hidden, false);
+        assert.strictEqual(button.textContent, 'Continue as alice');
+        assert.strictEqual(button.href, '/fs/get/keyboard.html');
+    });
+
+    it('names an unnamed visitor by the head of their public key', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+
+        assert.strictEqual(page.element('continue').textContent, `Continue as ${PUB.substr(0, 8)}...`);
+    });
+
+    it('offers it to a browser whose key came from an older version', async () => {
+        const page = loadRegPage({ localStorage: { pub: PUB, priv: PRIV, pub_name: 'alice' } });
+        await page.init();
+
+        assert.strictEqual(page.element('continue').hidden, false, 'the adopted key minted a cookie');
+    });
+
+    it('hides it when the session has expired, since there is nothing to continue', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }) });
+        await page.init();
+
+        assert.strictEqual(page.element('continue').hidden, true);
     });
 });
 
@@ -169,12 +237,12 @@ describe('Reg.html user name', () => {
         assert.strictEqual(page.localStorage.pub_name, 'alice');
     });
 
-    it('forgets the user name when the field is cleared', async () => {
+    it('calls a visitor who types no name UNKNOWN', async () => {
         const page = await signedIn();
         page.element('username').value = '';
-        page.rememberUserName();
 
-        assert.ok(!('pub_name' in page.localStorage));
+        assert.strictEqual(page.rememberUserName(), 'UNKNOWN');
+        assert.strictEqual(page.localStorage.pub_name, 'UNKNOWN');
     });
 
     it('registers the user name with the ID Card in the database', async () => {
@@ -242,23 +310,93 @@ describe('Reg.html ID Card download', () => {
         assert.strictEqual(page.requests.length, 1);
     });
 
-    it('falls back to a timestamped name when no user name is given', async () => {
+    it('names the file for UNKNOWN when no user name is given', async () => {
         const page = await signedIn();
         page.element('username').value = '';
 
         await page.saveToNamedFile();
 
-        assert.match(page.downloads[0].name, /^\d{8}T\d{6}\.id\.txt$/);
+        assert.match(page.downloads[0].name, /^UNKNOWN\.\d{8}T\d{6}\.id\.txt$/);
+    });
+});
+
+// The bug: a live cookie is not a loaded key, and Save had nothing to write
+describe('Reg.html saving without a card loaded', () => {
+    it('saves the pair drafted on this visit', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        page.element('username').value = 'bob';
+
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.downloads.length, 1);
+        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        assert.strictEqual(card.username, 'bob');
+        assert.ok(card.priv, 'with the private half in it, which is the point');
+        assert.notStrictEqual(card.pub, PUB, 'a new identity, since the old key is not here');
     });
 
-    it('cannot save a card the page does not hold the key for', async () => {
+    it('saves the key it showed in the Reg section', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const offered = page.element('pubkey').value;
+
+        await page.saveToNamedFile();
+
+        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        assert.strictEqual(card.pub, offered);
+    });
+
+    it('makes that pair the identity: stored, registered and signing the cookie', async () => {
         const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
         await page.init();
 
         await page.saveToNamedFile();
 
+        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        assert.strictEqual(page.localStorage.pub, card.pub);
+        assert.strictEqual(page.session.unlocked(), true);
+        assert.ok(page.cookie().startsWith(`ssid=${card.pub}.`), 'the cookie is re-signed by the new key');
+        assert.deepStrictEqual(JSON.parse(page.requests[0].body), { pub: card.pub, pub_name: 'UNKNOWN' });
+        assert.ok(!('priv' in page.localStorage));
+    });
+
+    it('changes nothing until the card is actually built', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
+        await page.init();
+        page.element('passphrase').value = 's3cret';
+        page.element('passphrase2').value = 'typo';
+
+        await page.saveToNamedFile();
+
         assert.strictEqual(page.downloads.length, 0);
-        assert.match(page.element('msg').innerHTML, /load your ID Card first/i);
+        assert.strictEqual(page.localStorage.pub, PUB, 'the signed-in identity is untouched');
+        assert.strictEqual(page.session.unlocked(), false);
+    });
+
+    it('also works for a visitor whose session has expired', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }) });
+        await page.init();
+
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.downloads.length, 1);
+        assert.ok(page.cookie().startsWith(`ssid=${page.localStorage.pub}.`));
+        assert.notStrictEqual(page.localStorage.pub, PUB);
+    });
+
+    it('keeps saving the loaded card once one is loaded, rather than the draft', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const drafted = page.element('pubkey').value;
+
+        await page.upload(CARD);
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.element('pubkey').value, PUB);
+        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        assert.strictEqual(card.pub, PUB);
+        assert.notStrictEqual(card.pub, drafted);
     });
 });
 
@@ -289,7 +427,7 @@ describe('Reg.html passphrase', () => {
 
         assert.strictEqual(page.downloads.length, 0, 'nothing is downloaded');
         assert.strictEqual(page.requests.length, 0, 'nothing is registered');
-        assert.match(page.element('msg').innerHTML, /do not match/);
+        assert.match(page.element('msg').value, /do not match/);
     });
 
     it('leaves the download unencrypted when no passphrase is set', async () => {
@@ -313,7 +451,7 @@ describe('Reg.html ID Card upload', () => {
         assert.strictEqual(page.localStorage.pub, PUB);
         assert.strictEqual(page.localStorage.pub_name, 'alice');
         assert.strictEqual(page.element('username').value, 'alice');
-        assert.match(page.element('msg').innerHTML, /ID loaded/);
+        assert.match(page.element('msg').value, /ID loaded/);
     });
 
     it('still loads a v1 "<pub>.<priv>" card saved before user names existed', async () => {
@@ -324,7 +462,26 @@ describe('Reg.html ID Card upload', () => {
 
         assert.strictEqual(page.localStorage.pub, PUB);
         assert.strictEqual(page.session.card().priv, PRIV);
-        assert.match(page.element('msg').innerHTML, /ID loaded/);
+        assert.match(page.element('msg').value, /ID loaded/);
+    });
+
+    it('does not put the last user name on an unnamed card belonging to someone else', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
+        await page.init();
+
+        await page.upload(`otherpub.${PRIV}`);
+
+        assert.strictEqual(page.localStorage.pub, 'otherpub');
+        assert.strictEqual(page.localStorage.pub_name, 'UNKNOWN');
+    });
+
+    it('keeps the name when the unnamed card is that same identity', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
+        await page.init();
+
+        await page.upload(`${PUB}.${PRIV}`);
+
+        assert.strictEqual(page.localStorage.pub_name, 'alice');
     });
 
     it('signs a fresh session cookie with the uploaded key', async () => {
@@ -351,7 +508,7 @@ describe('Reg.html ID Card upload', () => {
         const page = loadRegPage();
         await page.init();
         const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
-        page.element('passphrase').value = 's3cret';
+        page.element('signin_passphrase').value = 's3cret';
 
         await page.upload(envelope);
 
@@ -366,7 +523,7 @@ describe('Reg.html ID Card upload', () => {
 
         await page.upload(envelope);
 
-        assert.match(page.element('msg').innerHTML, /passphrase/);
+        assert.match(page.element('msg').value, /passphrase/);
         assert.strictEqual(page.session.unlocked(), false, 'nothing was unlocked');
     });
 
@@ -374,11 +531,11 @@ describe('Reg.html ID Card upload', () => {
         const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
         await page.init();
         const envelope = await page.idcard.encrypt(page.idcard.build('bob', 'otherpub', 'otherpriv'), 's3cret');
-        page.element('passphrase').value = 'wrong';
+        page.element('signin_passphrase').value = 'wrong';
 
         await page.upload(envelope);
 
-        assert.match(page.element('msg').innerHTML, /wrong passphrase/);
+        assert.match(page.element('msg').value, /wrong passphrase/);
         assert.strictEqual(page.localStorage.pub, PUB);
     });
 
@@ -388,7 +545,7 @@ describe('Reg.html ID Card upload', () => {
 
         await page.upload('this is just some text');
 
-        assert.match(page.element('msg').innerHTML, /not an ID Card/);
+        assert.match(page.element('msg').value, /not an ID Card/);
         assert.strictEqual(page.localStorage.pub, PUB);
     });
 
@@ -403,12 +560,72 @@ describe('Reg.html ID Card upload', () => {
 
         const loading = loadRegPage();
         await loading.init();
-        loading.element('passphrase').value = 'correct horse';
+        loading.element('signin_passphrase').value = 'correct horse';
         await loading.upload(content);
 
         assert.strictEqual(loading.localStorage.pub, PUB);
         assert.strictEqual(loading.localStorage.pub_name, 'alice');
         assert.strictEqual(loading.session.card().priv, PRIV);
         assert.ok(!('priv' in loading.localStorage));
+    });
+});
+
+// UPDATE_3: one title, three sections, and a passphrase in each place one is typed
+describe('Reg.html layout', () => {
+    it('names the site once, at the top', () => {
+        const titles = HTML.match(/<h1[^>]*>([\s\S]*?)<\/h1>/g) || [];
+
+        assert.strictEqual(titles.length, 1);
+        assert.match(titles[0], />\s*pub\.head2toes\.org\s*</);
+    });
+
+    it('has a Messages, a Sign in and a Reg section, in that order', () => {
+        const headings = [...HTML.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)].map(m => m[1].trim());
+
+        assert.deepStrictEqual(headings, ['Messages', 'Sign in', 'Reg']);
+    });
+
+    it('makes the message board a read only text area of its own', () => {
+        const board = HTML.match(/<textarea[^>]*id="msg"[^>]*>/);
+
+        assert.ok(board, 'the message area is a textarea in the markup, not built by script');
+        assert.match(board[0], /\breadonly\b/);
+        assert.ok(!/innerHTML/.test(HTML), 'and messages are written to it as text');
+    });
+
+    it('gives the Sign in section its own passphrase, apart from the one used to save', () => {
+        assert.match(HTML, /id="signin_passphrase"[\s\S]*type="file" id="fileinput"/);
+        assert.match(HTML, /idcard\.open\(text, getSignInPassphrase\(\)\)/, 'loading uses it');
+        assert.match(HTML, /idcard\.toFile\(currentIdCard\(\), passphrase\)/, 'saving uses the other one');
+    });
+
+    it('loads and saves through one button each, with no separate Continue', () => {
+        assert.match(HTML, /Load Id Card &amp; Continue/);
+        assert.match(HTML, /Save Id Card &amp; Continue/);
+        assert.ok(!/id="next"/.test(HTML), 'the Continue link is gone from the Reg section');
+    });
+
+    it('keeps the live-session Continue in the Sign in section, hidden until it applies', () => {
+        const [sign, reg] = HTML.split(/<h2[^>]*>\s*Reg\s*<\/h2>/);
+        const button = sign.match(/<a[^>]*id="continue"[^>]*>/);
+
+        assert.ok(button, 'it belongs with Sign in, not with Reg');
+        assert.match(button[0], /\bhidden\b/, 'and starts hidden, for the visitors it does not apply to');
+        assert.ok(!/id="continue"/.test(reg));
+    });
+
+    // .menu-item sets a display, and an author display beats the browser's own
+    // [hidden] rule - without this the "hidden" button would be on screen.
+    it('makes hidden actually hide, given the class the button wears', () => {
+        assert.match(CSS, /\[hidden\]\s*{[^}]*display:\s*none\s*!important/);
+        assert.ok(CSS.indexOf('[hidden]') < CSS.indexOf('.menu-item {'), 'and says it before .menu-item');
+    });
+
+    it('shows the public key in a read only field, and never the private one', () => {
+        const field = HTML.match(/<input[^>]*id="pubkey"[^>]*>/);
+
+        assert.ok(field);
+        assert.match(field[0], /\breadonly\b/);
+        assert.ok(!/id="priv/.test(HTML), 'there is no field for the private key');
     });
 });

@@ -21,6 +21,8 @@ const session = (function () {
     const NAME = 'pub_name';
     const LEGACY_PRIV = 'priv';
     const LOGGED_OUT = 'notloggedin';
+    // Everybody is called something, even the visitor who would rather not be.
+    const UNKNOWN = 'UNKNOWN';
 
     // The private key, never written to storage.
     let held = null;
@@ -43,13 +45,10 @@ const session = (function () {
         return store()[NAME] || '';
     };
 
+    /** Stores the typed name, or UNKNOWN when nothing was typed. */
     api.rememberUserName = function (username) {
-        const clean = idcard.cleanName(username);
-        if (clean) {
-            store()[NAME] = clean;
-        } else {
-            delete store()[NAME];
-        }
+        const clean = idcard.cleanName(username) || UNKNOWN;
+        store()[NAME] = clean;
         return clean;
     };
 
@@ -74,24 +73,44 @@ const session = (function () {
         if (!card || !card.pub || !card.priv) {
             throw new Error('this ID Card has no key pair in it');
         }
+        // A v1 card carries no name. Keep the stored one only when it belongs to
+        // this same key, or the previous user's name would end up on it.
+        const sameIdentity = api.pub() === card.pub;
+
         held = { priv: card.priv, sec: secretKeyFrom(card.priv) };
         store()[PUB] = card.pub;
-        if (idcard.cleanName(card.username)) {
+        if (idcard.cleanName(card.username) || !sameIdentity) {
             api.rememberUserName(card.username);
         }
         return api;
     };
 
-    /** A brand new identity. It exists only in memory until its ID Card is saved. */
-    api.generate = function (username) {
+    /**
+     * A key pair that belongs to nobody yet: it is not held, not stored, and
+     * signs nothing until `adopt` makes it this browser's identity. Reg.html
+     * drafts one on every visit so the Save button always has a pair to save,
+     * whether or not an ID Card happens to be loaded.
+     */
+    api.draft = function () {
         const keys = sjcl.ecc.ecdsa.generateKeys(256);
-        const pub = sjcl.codec.base64.fromBits(keys.pub.get().x.concat(keys.pub.get().y));
-        const priv = sjcl.codec.base64.fromBits(keys.sec.get());
+        return {
+            pub: sjcl.codec.base64.fromBits(keys.pub.get().x.concat(keys.pub.get().y)),
+            priv: sjcl.codec.base64.fromBits(keys.sec.get()),
+            sec: keys.sec
+        };
+    };
 
-        held = { priv: priv, sec: keys.sec };
-        store()[PUB] = pub;
+    /** Takes a drafted pair as this browser's identity, replacing any other. */
+    api.adopt = function (draft, username) {
+        held = { priv: draft.priv, sec: draft.sec };
+        store()[PUB] = draft.pub;
         api.rememberUserName(username);
         return api.card();
+    };
+
+    /** A brand new identity. It exists only in memory until its ID Card is saved. */
+    api.generate = function (username) {
+        return api.adopt(api.draft(), username);
     };
 
     /** The ID Card for download. Needs the key, so the page must be unlocked. */

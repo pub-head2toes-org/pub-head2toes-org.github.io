@@ -4,11 +4,10 @@ body {
     color: #0f0;
     margin: 0;
     padding: 0;
-    overflow: hidden;
     display: flex;
     justify-content: center;
-    align-items: center;
-    height: 100vh;
+    align-items: flex-start;
+    min-height: 100vh;
     background-image:
         radial-gradient(circle at 10% 20%, rgba(0, 255, 0, 0.05) 0.5px, transparent 0.5px),
         radial-gradient(circle at 90% 80%, rgba(0, 255, 0, 0.03) 0.5px, transparent 0.5px),
@@ -42,6 +41,12 @@ textarea {
     overflow-x: auto;
 }
 
+/* An author `display` beats the browser's own [hidden] rule, and .menu-item
+   sets one - so hidden has to be said again, louder, or it is ignored. */
+[hidden] {
+    display: none !important;
+}
+
 .menu-item {
     display: inline-block;
     padding: 5px 10px;
@@ -66,8 +71,38 @@ textarea {
     transform: scale(0.98);
 }
 
-#msg {
-  height: 300px;
+/* Reg.html: one page-wide column of sections, the message board on top. */
+.page-wrapper {
+    width: 100%;
+    max-width: 720px;
+    box-sizing: border-box;
+    padding: 10px 10px 40px;
+}
+
+.site h1 {
+    margin: 20px 10px 0;
+}
+
+section.intro h2 {
+    margin: 30px 10px 0;
+    border-bottom: 1px solid #0f0;
+    padding-bottom: 5px;
+}
+
+/* The message board: read only, and the full width of the page. */
+.board textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 10px 0 0;
+    border: 1px solid #0f0;
+    padding: 10px;
+    resize: vertical;
+}
+
+input[readonly] {
+    color: #0a0;
+    border-style: dashed;
 }
 
 input {
