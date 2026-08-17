@@ -113,17 +113,20 @@ start-up read (REFACTORING #9). The module is now `src/h2t/SqliteDB.js`.
 
 ## I. Browser-side applications (served from `src/fs`, no server code)
 
-Not covered by the test suite — these are DOM programs with no module
+Mostly not covered by the test suite — these are DOM programs with no module
 boundaries, and testing them would need a browser harness (see REFACTORING #14).
+The exception is I7, whose logic was extracted into DOM-free scripts for exactly
+that reason.
 
-| # | Feature | Code |
-| --- | --- | --- |
-| I1 | Console + editor: a command line (`get`, `put`, `put2`, `post`, `search`, `match`, `last`, `open`, `eval`, `llm`, `llmo`, `s`) over the Fetch API, with a two-pane editor, an on-screen keyboard and Ctrl+Enter execution | `fs/keyboard.html`, `fs/js/cli_v2.js`, `fs/js/keyboard.js`, `fs/js/keyboard-helper.js` |
+| # | Feature | Code | Tests |
+| --- | --- | --- | --- |
+| I1 | Console + editor: a command line (`get`, `put`, `put2`, `post`, `search`, `match`, `last`, `open`, `eval`, `llm`, `llmo`, `s`) over the Fetch API, with a two-pane editor, an on-screen keyboard, Ctrl+Enter execution and undo/redo (I7) | `fs/keyboard.html`, `fs/js/cli_v2.js`, `fs/js/keyboard.js`, `fs/js/keyboard-helper.js` |
 | I2 | Registration and sign-in: generates the ECDSA key pair, stores it locally with the user name, builds the `ssid` cookie, registers the ID Card, and downloads it as a file — optionally AES-256 encrypted under a passphrase (see J below) | `fs/reg/Reg.html`, `fs/reg/idcard.js`, `fs/reg/oo.js`, `fs/Signin.html`, `fs/Logout.html` |
 | I3 | Admin console, sharing pages, home page, manifesto, RSS feed | `fs/AdminConsole.html`, `fs/Share.html`, `fs/Shared.html`, `fs/home.html`, `fs/rss.xml` |
 | I4 | PWAs backed by the SSE pub/sub: `lol` (multiplayer map game with bots), `rummy`, `joint` — each with a manifest, service worker and offline page | `fs/pwa/lol/*`, `fs/pwa/rummy/*`, `fs/pwa/joint/*` |
 | I5 | Music and game pages: chord player, musical grids, go board, tonal.js, audio samples | `fs/games/*`, `fs/simon/*` |
 | I6 | Diagnostics page | `fs/diagnostics/tests.html` |
+| I7 | Undo/redo in all three buffers of the keyboard page. Every write goes through one choke point (`textedit.setText`), because assigning `textarea.value` — which this page does for every on-screen key, every `get` and every `search` — wipes the browser's own undo stack. Each buffer keeps its own list of `{value, selection}` states: a typed run folds into one step (by ~500ms and by word boundary), a run of deletes is its own step, and every programmatic write is one step, so a `get` that replaces unsaved edits can be taken back. On Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and on two on-screen keys, for a device with no Ctrl | `fs/js/history.js`, `fs/js/textedit.js`, `fs/keyboard.html` | `textHistory.test.js`, `textedit.test.js` |
 
 ---
 
@@ -165,7 +168,7 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 
 ## Test suite
 
-`npm test` (`node --test`) — 257 tests over 10 files:
+`npm test` (`node --test`) — 297 tests over 12 files:
 
 | File | Covers |
 | --- | --- |
@@ -179,6 +182,8 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 | `tests/Reg.test.js` | J1–J10 through the real `Reg.html`, loaded into a DOM stub |
 | `tests/Signin.test.js` | J5–J6 through the real `Signin.html` |
 | `tests/browserIdentity.test.js` | J6–J7: the no-stored-key invariant across every file in `src/fs`, plus `A.html` and `Remote.html` |
+| `tests/textHistory.test.js` | I7: the undo history in isolation, no DOM |
+| `tests/textedit.test.js` | I7: the choke point, the key bindings and the on-screen keyboard path, in a DOM stub |
 | `tests/Example.test.js` | pre-existing placeholder, tests a function defined inside itself |
 
 The four remaining `todo` tests describe behaviour the code is meant to have but

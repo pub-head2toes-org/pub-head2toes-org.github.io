@@ -58,7 +58,7 @@ function timestampCursor(){
   let lines = clip.value.split("\n")
   let lineTxt = lines[line] + '/' + new Date().getTime()
   lines[line] = lineTxt
-  clip.value = lines.join('\n')
+  textedit.setText(clip, lines.join('\n'), {label: 'ts'})
   clip.focus()
 }
 
@@ -86,7 +86,7 @@ function block (){
   if (lineTxt.match(/"path".*:.*"/)){
     let tmpTokens = lineTxt.replace(/^.*"path".*: +/, '').split('"');
     if (tmpTokens && tmpTokens[1]){
-      	clip.value = clip.value + "\n" + " " + tmpTokens[1]
+      	textedit.setText(clip, clip.value + "\n" + " " + tmpTokens[1], {label: 'block'})
         clip.scrollTop = clip.scrollHeight
         clip.focus()
   		tokens.push(tmpTokens[1]);
@@ -109,7 +109,7 @@ function follow (){
   if (lineTxt.match(/"path".*:.*"/)){
     let tmpTokens = lineTxt.replace(/^.*"path".*: +/, '').split('"');
     if (tmpTokens && tmpTokens[1]){
-      	clip.value = clip.value + "\n" + "put2 " + tmpTokens[1]
+      	textedit.setText(clip, clip.value + "\n" + "put2 " + tmpTokens[1], {label: 'follow'})
   		tokens.push(tmpTokens[1]);
   		parseTokens(tokens);
     } else {
@@ -132,7 +132,7 @@ function runCursor(){
   } else {
     lines.splice(line+1, 0, "");
   }
-  clip.value = lines.join("\n");
+  textedit.setText(clip, lines.join("\n"), {label: 'run'});
   */
 }
   
@@ -142,7 +142,7 @@ function parseTokens(tokens){
   if ('get' == tokens[0]){
     fetch(tokens[1]).then(function(response) {
         response.text().then(function (text) {
-            myCodeMirror2.value = text
+            textedit.setText(myCodeMirror2, text, {label: 'get', caret: 0})
         });
     }).catch(function(error) {
         console.log('Looks like there was a problem: \n', error);
@@ -151,7 +151,7 @@ function parseTokens(tokens){
   if ('llmo' == tokens[0]){
     fetch(tokens[1]).then(function(response) {
         response.text().then(function (text) {
-            myCodeMirror2.value = JSON.parse(text).response
+            textedit.setText(myCodeMirror2, JSON.parse(text).response, {label: 'llmo', caret: 0})
         });
     }).catch(function(error) {
         console.log('Looks like there was a problem: \n', error);
@@ -163,7 +163,7 @@ function parseTokens(tokens){
         response.text().then(function (text) {
           	let jsonSearchRes = JSON.parse(text);
           	jsonSearchRes.sort((a,b)=>{a>b});
-            myCodeMirror.value = JSON.stringify(jsonSearchRes, null, 2)
+            textedit.setText(myCodeMirror, JSON.stringify(jsonSearchRes, null, 2), {label: 'search', caret: 0})
         });
     }).catch(function(error) {
         console.log('Looks like there was a problem: \n', error);
@@ -175,7 +175,7 @@ function parseTokens(tokens){
             let json = JSON.parse(text)
             let lastDate = new Date(Number(json[json.length-1].path.slice(-13))) 
             json[json.length-1].date = lastDate.toLocaleDateString("en-US")
-            myCodeMirror.value = JSON.stringify(json[json.length-1], null, 2)
+            textedit.setText(myCodeMirror, JSON.stringify(json[json.length-1], null, 2), {label: 'last', caret: 0})
         });
     }).catch(function(error) {
         console.log('Looks like there was a problem: \n', error);
@@ -256,7 +256,7 @@ function parseTokens(tokens){
     fetch(url, fetchData).then(function(response) {
       response.text().then(function (text) {
         footer.innerHTML = 'Ok'
-        myCodeMirror2.value = text
+        textedit.setText(myCodeMirror2, text, {label: 'post', caret: 0})
       });
     }).catch(function(error) {
       console.log('Looks like there was a problem: \n', error);
@@ -269,7 +269,7 @@ function parseTokens(tokens){
     }
     fetch(`${tokens[1]}?search=%&kwd=${tokens[2]}`).then(function(response) {
         response.text().then(function (text) {
-            myCodeMirror.value = JSON.stringify(JSON.parse(text), null, 2)
+            textedit.setText(myCodeMirror, JSON.stringify(JSON.parse(text), null, 2), {label: 'match', caret: 0})
         });
     }).catch(function(error) {
         console.log('Looks like there was a problem: \n', error);

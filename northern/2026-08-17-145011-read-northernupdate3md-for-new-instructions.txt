@@ -1,0 +1,1480 @@
+ ▐▛███▜▌   Claude Code v2.1.231
+▝▜█████▛▘  Opus 5 · Claude Pro
+  ▘▘ ▝▝    ~/git/pub-head2toes-org.github.io/northern
+
+ ▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+❯ Read northern/UPDATE_3.md for new instructions.                               
+
+● I'll read that file.
+
+  Read 9 files, listed 1 directory, ran 8 shell commands (ctrl+o to expand)
+
+● Now I'll rewrite the page.
+
+● Write(src/fs/reg/Reg.html)
+  ⎿  Added 74 lines, removed 49 lines
+      17  <body onLoad = "init();">
+      18  
+      19    <div class="page-wrapper">
+      20 -                <section class="intro" id="zen-intro">         
+      21 -                    <header role="banner">                     
+      22 -                        <h1>head2toes</h1>                     
+      23 -                        <h2>Sign In</h2>                       
+      24 -                    </header>                                  
+      20  
+      26 -                    <div></div>                                
+      27 -                                                               
+      28 -                    <div class="summary" id="zen-summary" role=
+         -"article">                                                     
+      29 -                            <label for="fileinput" class="menu-
+         -item">                                                         
+      30 -                                    Load Id Card               
+      31 -                                </label>                       
+      32 -                            <input class="button-hidden" type="
+         -file" id="fileinput" />                                        
+      33 -                            <p class="hint">An ID Card whose na
+         -me is marked with <code>*</code> is                            
+      34 -                               encrypted &mdash; type its passp
+         -hrase below before loading it.</p>                             
+      35 -                    </div>                                     
+      36 -                </section>                                     
+      37 -    <section class="intro" id="zen-intro">                     
+      38 -        <header role="banner">                                 
+      39 -            <h1>pub.head2toes.org</h1>                         
+      40 -            <h2>Reg</h2>                                       
+      41 -        </header>                                              
+      21 +    <header role="banner" class="site">                        
+      22 +        <h1>pub.head2toes.org</h1>                             
+      23 +    </header>                                                  
+      24  
+      43 -        <div id="msg"></div>                                   
+      25 +    <!-- Messages: everything the page has to say, in one place
+         +. -->                                                          
+      26 +    <section class="intro board">                              
+      27 +        <h2>Messages</h2>                                      
+      28 +        <textarea id="msg" rows="8" readonly aria-live="polite"
+         +></textarea>                                                   
+      29 +    </section>                                                 
+      30  
+      45 -        <div class="summary" id="zen-summary" role="article">  
+      31 +    <!-- Sign in: for an ID Card that already exists. -->      
+      32 +    <section class="intro">                                    
+      33 +        <h2>Sign in</h2>                                       
+      34 +                                                               
+      35 +        <div class="summary" role="article">                   
+      36 +            <label for="signin_passphrase">Passphrase <small>(o
+         +ptional)</small></label>                                       
+      37 +            <input type="password" id="signin_passphrase" name=
+         +"signin_passphrase"                                            
+      38 +                   autocomplete="current-password"             
+      39 +                   placeholder="only for an ID Card marked with
+         + *" />                                                         
+      40 +                                                               
+      41 +            <label for="fileinput" class="menu-item">Load Id Ca
+         +rd &amp; Continue</label>                                      
+      42 +            <input class="button-hidden" type="file" id="filein
+         +put" />                                                        
+      43 +                                                               
+      44 +            <p class="hint">An ID Card whose name is marked wit
+         +h <code>*</code> is                                            
+      45 +               encrypted &mdash; type its passphrase above befo
+         +re loading it.</p>                                             
+      46 +        </div>                                                 
+      47 +    </section>                                                 
+      48 +                                                               
+      49 +    <!-- Reg: for a brand new identity, which exists only until
+         + its card is saved. -->                                        
+      50 +    <section class="intro">                                    
+      51 +        <h2>Reg</h2>                                           
+      52 +                                                               
+      53 +        <div class="summary" role="article">                   
+      54            <label for="username">User name</label>
+      55            <input type="text" id="username" name="username" auto
+          complete="username"
+      56                   placeholder="how you want to be known" maxleng
+          th="60" />
+     ...
+      63            <input type="password" id="passphrase2" name="passphr
+          ase2" autocomplete="new-password"
+      64                   placeholder="repeat it - a typo here cannot be
+           recovered" />
+      65  
+      58 -          <button class="menu-item" value="Download Keys" oncli
+         -ck="javascript:saveToNamedFile()">Save Id Card & Continue</butt
+         -on>                                                            
+      59 -          <a id="next" class="menu-item" href="#">Continue</a> 
+      66 +          <label for="pubkey">Public key</label>               
+      67 +          <input type="text" id="pubkey" name="pubkey" readonly
+      68 +                 placeholder="generated for you" />            
+      69 +                                                               
+      70 +          <button class="menu-item" onclick="javascript:saveToN
+         +amedFile()">Save Id Card &amp; Continue</button>               
+      71          </div>
+      72      </section>
+      73  
+     ...
+      77  <script>
+      78          document.getElementById('fileinput').addEventListener('
+          change', function(){
+      79              var file = this.files[0];
+      69 -            const msg = document.getElementById("msg");        
+      80              console.log("name : " + file.name);
+      81              console.log("size : " + file.size);
+      82              console.log("type : " + file.type);
+     ...
+      86  
+      87              reader.onload = async function(e) {
+      88              const text = reader.result;
+      79 -            const next = document.getElementById("next");      
+      89  
+      90              let card;
+      91              try {
+      83 -              card = await idcard.open(text, getPassphrase()); 
+      92 +              card = await idcard.open(text, getSignInPassphras
+         +e());                                                          
+      93              } catch (err) {
+      94                console.log(err);
+      86 -              msg.innerHTML = `<textarea rows="10">ID Card not 
+         -loaded: ${err.message}</textarea>`;                            
+      95 +              say(`ID Card not loaded: ${err.message}`);       
+      96                return;
+      97              }
+      98  
+     ...
+      104              if (card.username){
+      105                document.getElementById("username").value = card
+           .username;
+      106              }
+      107 +            showPub();                                        
+      108  
+      109              const who = card.username ? `${card.username} (${c
+           ard.pub})` : card.pub;
+      100 -            msg.innerHTML = `<textarea rows="10">ID loaded!  I
+          -D=${who}</textarea>`;                                         
+      110 +            say(`ID loaded!  ID=${who}`);                     
+      111  
+      102 -            next.href = getNextURL();                         
+      112 +            // "Load Id Card & Continue": there is nothing lef
+          +t to do on this page.                                         
+      113 +            window.location.href = getNextURL();              
+      114  
+      115              }
+      116  
+      117              reader.readAsText(file);
+      118  
+      119          }, false);
+      109 -                                                              
+      110 -                                                              
+      120 +                                                              
+      121 +                                                              
+      122  // Set while a freshly generated identity exists only in this 
+           page's memory.
+      123  var unsavedIdentity = false;
+      124  
+     ...
+      126    try {
+      127  
+      128      var localStorage = window.localStorage;
+      118 -    const msg = document.getElementById("msg");               
+      119 -    const next = document.getElementById("next");             
+      120 -    next.href = getNextURL();                                 
+      129  
+      130      if (session.userName()){
+      131        document.getElementById("username").value = session.user
+           Name();
+     ...
+      142      if (session.unlocked()){
+      143  
+      144        session.mintCookie();
+      137 -      msg.innerHTML = `<textarea rows="10">ID key found!  ID=$
+          -{session.pub()}</textarea>`;                                  
+      145 +      say(`ID key found!  ID=${session.pub()}`);              
+      146  
+      147      } else if (session.signedIn()){
+      148  
+      149        // The cookie is still good, so nothing has to be signed
+            on this visit.
+      142 -      msg.innerHTML = `<textarea rows="10">Signed in as ${sess
+          -ion.userName() || session.pub()}.                             
+      143 -Your ID Card is not loaded - load it below if you want to save
+          - a fresh copy.</textarea>`;                                   
+      150 +      say(`Signed in as ${session.userName() || session.pub()}
+          +.                                                             
+      151 +Your ID Card is not loaded - load it above if you want to save
+          + a fresh copy.`);                                             
+      152  
+      153      } else if (session.known()){
+      154  
+      147 -      msg.innerHTML = `<textarea rows="10">Your session has ex
+          -pired.                                                        
+      148 -Load the ID Card for ${session.userName() || session.pub()} to
+          - sign in again.</textarea>`;                                  
+      155 +      say(`Your session has expired.                          
+      156 +Load the ID Card for ${session.userName() || session.pub()} to
+          + sign in again.`);                                            
+      157  
+      158      } else {
+      159  
+     ...
+      161        session.mintCookie();
+      162        unsavedIdentity = true;
+      163  
+      156 -      msg.innerHTML = `<textarea rows="10">New ID keys generat
+          -ed: pub=${session.pub()}                                      
+      164 +      say(`New ID keys generated - the public half is shown be
+          +low.                                                          
+      165  
+      166  These keys are held in this page only - they are NOT saved in 
+           the browser.
+      159 -Save the ID Card now or the identity is lost when you leave th
+          -is page.</textarea>`;                                         
+      160 -      next.href = `javascript:saveToNamedFile();`;            
+      167 +Save the ID Card now or the identity is lost when you leave th
+          +is page.`);                                                   
+      168     }
+      169  
+      170 +    showPub();                                                
+      171 +                                                              
+      172    } catch(e) {
+      173     console.log(e);
+      174    }
+     ...
+      183    }
+      184  });
+      185  
+      186 +// The message board: read only, and always showing the latest
+          + word.                                                        
+      187 +function say (text){                                          
+      188 +  document.getElementById("msg").value = text;                
+      189 +}                                                             
+      190 +                                                              
+      191 +// The public key of the identity this page holds, shown in th
+          +e Reg section.                                                
+      192 +function showPub (){                                          
+      193 +  document.getElementById("pubkey").value = session.pub();    
+      194 +}                                                             
+      195 +                                                              
+      196  function getNextURL () {
+      197      const nextURL = window.location.hash.substr(1);
+      198      let href = "/fs/get/home.html";
+     ...
+      208    return session.rememberUserName(document.getElementById("use
+           rname").value);
+      209  }
+      210  
+      211 +// The Reg section's passphrase, which encrypts the ID Card be
+          +ing saved.                                                    
+      212  function getPassphrase (){
+      213    return document.getElementById("passphrase").value;
+      214  }
+      215  
+      216 +// The Sign in section's passphrase, which decrypts the ID Car
+          +d being loaded.                                               
+      217 +function getSignInPassphrase (){                              
+      218 +  return document.getElementById("signin_passphrase").value;  
+      219 +}                                                             
+      220 +                                                              
+      221  // The ID Card as it currently stands: the in-memory key plus 
+           the typed name.
+      222  function currentIdCard (){
+      223    rememberUserName();
+     ...
+      241  }
+      242  
+      243  function confirmReg (ctx){
+      219 -    msg.innerHTML = `<textarea rows="10">New ID keys reistered
+          -! ID=${ctx.reqPath}</textarea>`;                              
+      244 +    say(`New ID keys reistered! ID=${ctx.reqPath}`);          
+      245      console.log(JSON.stringify(ctx));
+      246      window.location.href = getNextURL();
+      247  }
+      248  
+      249  async function saveToNamedFile (){
+      225 -  const msg = document.getElementById("msg");                 
+      250    const passphrase = getPassphrase();
+      251  
+      252    if (passphrase && passphrase !== document.getElementById("pa
+           ssphrase2").value){
+      229 -    msg.innerHTML = `<textarea rows="10">The two passphrases d
+          -o not match. Nothing was saved.</textarea>`;                  
+      253 +    say("The two passphrases do not match. Nothing was saved."
+          +);                                                            
+      254      return;
+      255    }
+      256  
+     ...
+      259      file = await idcard.toFile(currentIdCard(), passphrase);
+      260    } catch (err) {
+      261      console.log(err);
+      238 -    msg.innerHTML = `<textarea rows="10">ID Card not saved: ${
+          -err.message}</textarea>`;                                     
+      262 +    say(`ID Card not saved: ${err.message}`);                 
+      263      return;
+      264    }
+      265  
+     ...
+      277  
+      278    saveIdCard();
+      279  }
+      256 -                                                              
+      280 +                                                              
+      281  </script>
+      282 +</html>                                                       
+
+● Update(src/fs/reg/style.css)
+  ⎿  Added 2 lines, removed 3 lines
+       4      color: #0f0;
+       5      margin: 0;
+       6      padding: 0;
+       7 -    overflow: hidden;                                          
+       7      display: flex;
+       8      justify-content: center;
+      10 -    align-items: center;                                       
+      11 -    height: 100vh;                                             
+       9 +    align-items: flex-start;                                   
+      10 +    min-height: 100vh;                                         
+      11      background-image:
+      12          radial-gradient(circle at 10% 20%, rgba(0, 255, 0, 0.05
+          ) 0.5px, transparent 0.5px),
+      13          radial-gradient(circle at 90% 80%, rgba(0, 255, 0, 0.03
+          ) 0.5px, transparent 0.5px),
+
+● Update(src/fs/reg/style.css)
+  ⎿  Added 32 lines, removed 2 lines
+       65      transform: scale(0.98);
+       66  }
+       67  
+       68 -#msg {                                                        
+       69 -  height: 300px;                                              
+       68 +/* Reg.html: one page-wide column of sections, the message boa
+          +rd on top. */                                                 
+       69 +.page-wrapper {                                               
+       70 +    width: 100%;                                              
+       71 +    max-width: 720px;                                         
+       72 +    box-sizing: border-box;                                   
+       73 +    padding: 10px 10px 40px;                                  
+       74  }
+       75  
+       76 +.site h1 {                                                    
+       77 +    margin: 20px 10px 0;                                      
+       78 +}                                                             
+       79 +                                                              
+       80 +section.intro h2 {                                            
+       81 +    margin: 30px 10px 0;                                      
+       82 +    border-bottom: 1px solid #0f0;                            
+       83 +    padding-bottom: 5px;                                      
+       84 +}                                                             
+       85 +                                                              
+       86 +/* The message board: read only, and the full width of the pag
+          +e. */                                                         
+       87 +.board textarea {                                             
+       88 +    display: block;                                           
+       89 +    width: 100%;                                              
+       90 +    box-sizing: border-box;                                   
+       91 +    margin: 10px 0 0;                                         
+       92 +    border: 1px solid #0f0;                                   
+       93 +    padding: 10px;                                            
+       94 +    resize: vertical;                                         
+       95 +}                                                             
+       96 +                                                              
+       97 +input[readonly] {                                             
+       98 +    color: #0a0;                                              
+       99 +    border-style: dashed;                                     
+      100 +}                                                             
+      101 +                                                              
+      102  input {
+      103      color: #0f0;
+      104      background-color: #000;
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the tests that referenced the removed Continue link and the shared
+  passphrase field:
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 11 lines, removed 2 lines
+      110          assert.strictEqual(page.warnsOnLeave(), false);
+      111      });
+      112  
+      113 -    it('points Continue at the download, so the identity canno
+          -t be lost by clicking through', async () => {                 
+      113 +    it('shows the new public key in the Reg section, and only 
+          +the public one', async () => {                                
+      114          const page = loadRegPage();
+      115          await page.init();
+      116  
+      117 -        assert.match(page.element('next').href, /saveToNamedFi
+          -le/);                                                         
+      117 +        assert.strictEqual(page.element('pubkey').value, page.
+          +localStorage.pub);                                            
+      118 +        assert.notStrictEqual(page.element('pubkey').value, pa
+          +ge.session.card().priv);                                      
+      119      });
+      120 +                                                              
+      121 +    it('leaves saving the ID Card as the only way on, so the i
+          +dentity cannot be lost by clicking through', async () => {    
+      122 +        const page = loadRegPage();                           
+      123 +        await page.init();                                    
+      124 +                                                              
+      125 +        assert.strictEqual(page.window.location.href, '', 'not
+          +hing has navigated away yet');                                
+      126 +        assert.strictEqual(page.warnsOnLeave(), true);        
+      127 +    });                                                       
+      128  });
+      129  
+      130  describe('Reg.html returning visitor', () => {
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 12 lines, removed 2 lines
+      160          assert.strictEqual(page.element('username').value, 'al
+           ice');
+      161      });
+      162  
+      163 -    it('sends the visitor on to the path in the fragment', asy
+          -nc () => {                                                    
+      163 +    it('sends the visitor on to the path in the fragment once 
+          +the ID Card is loaded', async () => {                         
+      164          const page = loadRegPage({ hash: '#/fs/get/keyboard.ht
+           ml', localStorage: known(), cookie: liveCookie() });
+      165          await page.init();
+      166 +        assert.strictEqual(page.window.location.href, '', 'not
+          + before that');                                               
+      167  
+      167 -        assert.strictEqual(page.element('next').href, '/fs/get
+          -/keyboard.html');                                             
+      168 +        await page.upload(CARD);                              
+      169 +                                                              
+      170 +        assert.strictEqual(page.window.location.href, '/fs/get
+          +/keyboard.html');                                             
+      171      });
+      172 +                                                              
+      173 +    it('shows the identity this browser already has', async ()
+          + => {                                                         
+      174 +        const page = loadRegPage({ localStorage: known({ pub_n
+          +ame: 'alice' }), cookie: liveCookie() });                     
+      175 +        await page.init();                                    
+      176 +                                                              
+      177 +        assert.strictEqual(page.element('pubkey').value, PUB);
+      178 +    });                                                       
+      179  });
+      180  
+      181  // UPDATE_2 improvements 1-3
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 5 lines
+       2  
+       3  import { describe, it } from 'node:test';
+       4  import assert from 'node:assert';
+       5 +import fs from 'node:fs';                                      
+       6 +import path from 'node:path';                                  
+       7  import { loadRegPage } from './helpers/regPage.js';
+       8  
+       9 +const HTML = fs.readFileSync(                                  
+      10 +    path.join(import.meta.dirname, '..', 'src', 'fs', 'reg', 'R
+         +eg.html'), 'utf8');                                            
+      11 +                                                               
+      12  const PUB = 'JaCSWcLSex79JkDmRHekEX33avJ9L9/dsTdWqBYk4WPSVy5mKR
+          vFNTx+fqCHIHWba2Yr+8lVX938wQn3HHDkww==';
+      13  const PRIV = 'Q0oPz9y8DzB1Ux1S2vJk0jHFPBOTFAn7l2QolO+FvGE=';
+      14  
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 2 lines, removed 1 line
+      462  
+      463      it('gives the Sign in section its own passphrase, apart fr
+           om the one used to save', () => {
+      464          assert.match(HTML, /id="signin_passphrase"[\s\S]*type=
+           "file" id="fileinput"/);
+      465 -        assert.match(HTML, /getSignInPassphrase\(\)[\s\S]*idca
+          -rd\.open|idcard\.open\(text, getSignInPassphrase\(\)\)/);     
+      465 +        assert.match(HTML, /idcard\.open\(text, getSignInPassp
+          +hrase\(\)\)/, 'loading uses it');                             
+      466 +        assert.match(HTML, /idcard\.toFile\(currentIdCard\(\),
+          + passphrase\)/, 'saving uses the other one');                 
+      467      });
+      468  
+      469      it('loads and saves through one button each, with no separ
+           ate Continue', () => {
+  Searched for 3 patterns, ran 4 shell commands (ctrl+o to expand)
+
+● Update(REFACTORING.md)
+  ⎿  Added 17 lines
+      267    produces the same `r||s` the server already verifies, and th
+           e public key is
+      268    the raw export minus its leading `0x04` byte.
+      269  
+      270 +### 25. A signed-in visitor on Reg.html has no way forward    
+      271 +UPDATE_3 removed the standalone `Continue` link: the page now 
+          +moves on when the                                             
+      272 +visitor loads an ID Card or saves one, and each of those butto
+          +ns says so. That                                              
+      273 +covers both reasons anyone is sent here — a new identity, or a
+          +n expired session                                             
+      274 +— because the server only redirects writes that carry no `ssid
+          +` cookie                                                      
+      275 +(`Server.js:109`).                                            
+      276 +                                                              
+      277 +What it does not cover is somebody who opens `/fs/get/reg/Reg.
+          +html#<path>` by                                               
+      278 +hand while their cookie is still live. The message board tells
+          + them they are                                                
+      279 +signed in, but the only controls are the two that need a file.
+          + They have to use                                             
+      280 +the browser's back button, or type the path.                  
+      281 +                                                              
+      282 +**Fix**, if it turns out to matter: show one `Continue as <nam
+          +e>` button in the                                             
+      283 +Sign in section, and only while `session.signedIn()` is true. 
+          +Redirecting                                                   
+      284 +automatically would be wrong — a signed-in user may well be he
+          +re on purpose, to                                             
+      285 +save a fresh copy of their card.                              
+      286 +                                                              
+      287  ---
+      288  
+      289  ## Structure and maintainability
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+● UPDATE_3 is implemented in src/fs/reg/Reg.html (plus its stylesheet, tests and
+  docs). Full suite: 243 tests, 0 fail (4 pre-existing todos).
+
+  What changed
+
+  Header — one banner, pub.head2toes.org. The second head2toes header is gone.
+
+  Message section (src/fs/reg/Reg.html:26) — the textarea is now a real element
+  in the markup, readonly, full page width. Every message goes through a say()
+  helper that sets its value; nothing injects <textarea> via innerHTML any more.
+
+  Sign section (Reg.html:33) — has its own optional passphrase field
+  (signin_passphrase, autocomplete="current-password"), used only to decrypt a
+  card being loaded. The control reads Load Id Card & Continue, and it now
+  actually continues: on a successful load the page navigates to the fragment
+  path (/fs/get/home.html by default).
+
+  Reg section (Reg.html:50) — user name, passphrase, repeat passphrase, plus a
+  new read-only pubkey field showing the public half (never the private one).
+  Save Id Card & Continue is the only button; the Continue link is removed.
+
+  The one behaviour I split deliberately: the single passphrase field was doing
+  double duty for load and save, which is the confusion the update names.
+  getSignInPassphrase() feeds idcard.open, getPassphrase() feeds idcard.toFile.
+
+  One gap worth knowing about — with Continue gone, a visitor whose cookie is
+  still live who opens Reg.html by hand has no button that moves them on; both
+  remaining controls need a file. Anyone the server redirects here has no
+  cookie, so the normal paths are fine. I wrote it up as REFACTORING #25 with
+  the fix I'd pick (a Continue as <name> button in the Sign in section, shown
+  only while session.signedIn()) rather than adding UI the update didn't ask
+  for. Say the word and I'll add it.
+
+  Tests — tests/Reg.test.js gained a layout suite asserting the UPDATE_3
+  structure against the real markup (one h1, the three headings in order,
+  readonly board, separate passphrases, no #next, readonly pubkey field), plus
+  tests for the pub-key field and for navigation-on-load. The old assertions
+  moved from msg.innerHTML to msg.value. Signin.html was not in scope and is
+  untouched.
+
+✻ Cooked for 6m 20s
+
+※ recap: Goal was UPDATE_3's Reg.html rework: single header, three sections (message board, sign in, reg), separate passphrases, no Continue link. That's done with tests and docs updated, all passing. Next: decide whether to add the "Continue as <name>" button for already-signed-in visitors. (disable recaps in /config)
+
+❯ add the Continue as <name> button                                             
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 3 lines
+      43  
+      44              <p class="hint">An ID Card whose name is marked wit
+          h <code>*</code> is
+      45                 encrypted &mdash; type its passphrase above befo
+          re loading it.</p>
+      46 +                                                               
+      47 +            <!-- Shown only while the session cookie is live: n
+         +o file needed then. -->                                        
+      48 +            <a id="continue" class="menu-item" href="#" hidden>
+         +Continue</a>                                                   
+      49          </div>
+      50      </section>
+      51  
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 1 line, removed 1 line
+      151  
+      152        // The cookie is still good, so nothing has to be signed
+            on this visit.
+      153        say(`Signed in as ${session.userName() || session.pub()}
+           .
+      154 -Your ID Card is not loaded - load it above if you want to save
+          - a fresh copy.`);                                             
+      154 +Continue above, or load your ID Card if you want to save a fre
+          +sh copy.`);                                                   
+      155  
+      156      } else if (session.known()){
+      157  
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 1 line
+      171     }
+      172  
+      173      showPub();
+      174 +    showContinue();                                           
+      175  
+      176    } catch(e) {
+      177     console.log(e);
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 22 lines
+      197    document.getElementById("pubkey").value = session.pub();
+      198  }
+      199  
+      200 +// A short way to name whoever is signed in: the user name, or
+          + the head of the                                              
+      201 +// public key when there is none - the full key is on the page
+          + already.                                                     
+      202 +function whoAmI (){                                           
+      203 +  return session.userName() || `${session.pub().substr(0, 8)}.
+          +..`;                                                          
+      204 +}                                                             
+      205 +                                                              
+      206 +/**                                                           
+      207 + * A live session needs no file, so offer to carry straight on
+          +. Hidden while a                                              
+      208 + * newly generated identity is still unsaved: leaving the page
+          + then loses the                                               
+      209 + * key, which is why the Continue link was taken off the Reg s
+          +ection.                                                       
+      210 + */                                                           
+      211 +function showContinue (){                                     
+      212 +  const button = document.getElementById("continue");         
+      213 +  const live = !unsavedIdentity && session.signedIn();        
+      214 +                                                              
+      215 +  button.hidden = !live;                                      
+      216 +  if (live){                                                  
+      217 +    button.href = getNextURL();                               
+      218 +    button.textContent = `Continue as ${whoAmI()}`;           
+      219 +  }                                                           
+      220 +}                                                             
+      221 +                                                              
+      222  function getNextURL () {
+      223      const nextURL = window.location.hash.substr(1);
+      224      let href = "/fs/get/home.html";
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 8 lines
+      130          assert.strictEqual(page.window.location.href, '', 'not
+           hing has navigated away yet');
+      131          assert.strictEqual(page.warnsOnLeave(), true);
+      132      });
+      133 +                                                              
+      134 +    it('hides Continue while the new identity is unsaved, cook
+          +ie or no cookie', async () => {                               
+      135 +        const page = loadRegPage();                           
+      136 +        await page.init();                                    
+      137 +                                                              
+      138 +        assert.ok(page.cookie().startsWith('ssid='), 'the sess
+          +ion is live');                                                
+      139 +        assert.strictEqual(page.element('continue').hidden, tr
+          +ue, 'but leaving now would lose the key');                    
+      140 +    });                                                       
+      141  });
+      142  
+      143  describe('Reg.html returning visitor', () => {
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 31 lines
+      189  
+      190          assert.strictEqual(page.element('pubkey').value, PUB);
+      191      });
+      192 +                                                              
+      193 +    it('offers Continue as the user, so a live session needs n
+          +o file', async () => {                                        
+      194 +        const page = loadRegPage({ hash: '#/fs/get/keyboard.ht
+          +ml', localStorage: known({ pub_name: 'alice' }), cookie: liveC
+          +ookie() });                                                   
+      195 +        await page.init();                                    
+      196 +                                                              
+      197 +        const button = page.element('continue');              
+      198 +        assert.strictEqual(button.hidden, false);             
+      199 +        assert.strictEqual(button.textContent, 'Continue as al
+          +ice');                                                        
+      200 +        assert.strictEqual(button.href, '/fs/get/keyboard.html
+          +');                                                           
+      201 +    });                                                       
+      202 +                                                              
+      203 +    it('names an unnamed visitor by the head of their public k
+          +ey', async () => {                                            
+      204 +        const page = loadRegPage({ localStorage: known(), cook
+          +ie: liveCookie() });                                          
+      205 +        await page.init();                                    
+      206 +                                                              
+      207 +        assert.strictEqual(page.element('continue').textConten
+          +t, `Continue as ${PUB.substr(0, 8)}...`);                     
+      208 +    });                                                       
+      209 +                                                              
+      210 +    it('offers it to a browser whose key came from an older ve
+          +rsion', async () => {                                         
+      211 +        const page = loadRegPage({ localStorage: { pub: PUB, p
+          +riv: PRIV, pub_name: 'alice' } });                            
+      212 +        await page.init();                                    
+      213 +                                                              
+      214 +        assert.strictEqual(page.element('continue').hidden, fa
+          +lse, 'the adopted key minted a cookie');                      
+      215 +    });                                                       
+      216 +                                                              
+      217 +    it('hides it when the session has expired, since there is 
+          +nothing to continue', async () => {                           
+      218 +        const page = loadRegPage({ localStorage: known({ pub_n
+          +ame: 'alice' }) });                                           
+      219 +        await page.init();                                    
+      220 +                                                              
+      221 +        assert.strictEqual(page.element('continue').hidden, tr
+          +ue);                                                          
+      222 +    });                                                       
+      223  });
+      224  
+      225  // UPDATE_2 improvements 1-3
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 10 lines, removed 1 line
+      508      it('loads and saves through one button each, with no separ
+           ate Continue', () => {
+      509          assert.match(HTML, /Load Id Card &amp; Continue/);
+      510          assert.match(HTML, /Save Id Card &amp; Continue/);
+      511 -        assert.ok(!/id="next"/.test(HTML), 'the Continue link 
+          -is gone');                                                    
+      511 +        assert.ok(!/id="next"/.test(HTML), 'the Continue link 
+          +is gone from the Reg section');                               
+      512      });
+      513  
+      514 +    it('keeps the live-session Continue in the Sign in section
+          +, hidden until it applies', () => {                           
+      515 +        const [sign, reg] = HTML.split(/<h2[^>]*>\s*Reg\s*<\/h
+          +2>/);                                                         
+      516 +        const button = sign.match(/<a[^>]*id="continue"[^>]*>/
+          +);                                                            
+      517 +                                                              
+      518 +        assert.ok(button, 'it belongs with Sign in, not with R
+          +eg');                                                         
+      519 +        assert.match(button[0], /\bhidden\b/, 'and starts hidd
+          +en, for the visitors it does not apply to');                  
+      520 +        assert.ok(!/id="continue"/.test(reg));                
+      521 +    });                                                       
+      522 +                                                              
+      523      it('shows the public key in a read only field, and never t
+           he private one', () => {
+      524          const field = HTML.match(/<input[^>]*id="pubkey"[^>]*>
+           /);
+      525  
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Update(REFACTORING.md)
+  ⎿  Added 10 lines, removed 9 lines
+      267    produces the same `r||s` the server already verifies, and th
+           e public key is
+      268    the raw export minus its leading `0x04` byte.
+      269  
+      270 -### 25. A signed-in visitor on Reg.html has no way forward    
+      270 +### 25. A signed-in visitor on Reg.html has no way forward — f
+          +ixed                                                          
+      271  UPDATE_3 removed the standalone `Continue` link: the page now 
+           moves on when the
+      272  visitor loads an ID Card or saves one, and each of those butto
+           ns says so. That
+      273  covers both reasons anyone is sent here — a new identity, or a
+           n expired session
+      274  — because the server only redirects writes that carry no `ssid
+           ` cookie
+      275  (`Server.js:109`).
+      276  
+      277 -What it does not cover is somebody who opens `/fs/get/reg/Reg.
+          -html#<path>` by                                               
+      278 -hand while their cookie is still live. The message board tells
+          - them they are                                                
+      279 -signed in, but the only controls are the two that need a file.
+          - They have to use                                             
+      280 -the browser's back button, or type the path.                  
+      277 +What it did not cover was somebody who opens `/fs/get/reg/Reg.
+          +html#<path>` by                                               
+      278 +hand while their cookie is still live: the message board told 
+          +them they were                                                
+      279 +signed in, but both controls needed a file.                   
+      280  
+      282 -**Fix**, if it turns out to matter: show one `Continue as <nam
+          -e>` button in the                                             
+      283 -Sign in section, and only while `session.signedIn()` is true. 
+          -Redirecting                                                   
+      284 -automatically would be wrong — a signed-in user may well be he
+          -re on purpose, to                                             
+      285 -save a fresh copy of their card.                              
+      281 +**Fixed** with one `Continue as <name>` button in the Sign in 
+          +section                                                       
+      282 +(`Reg.html:showContinue`), shown only while `session.signedIn(
+          +)` holds and the                                              
+      283 +page is not sitting on an unsaved new identity — that second c
+          +ondition is what                                              
+      284 +keeps J8 true, since a generated key that is never downloaded 
+          +cannot be                                                     
+      285 +recovered. Redirecting automatically would have been wrong: a 
+          +signed-in user                                                
+      286 +may well be here on purpose, to save a fresh copy of their car
+          +d.                                                            
+      287  
+      288  ---
+      289  
+
+● Real trap here: .menu-item { display: inline-block } overrides the browser's
+  [hidden] rule, so the button would still show. Fixing in CSS:
+
+● Update(src/fs/reg/style.css)
+  ⎿  Added 6 lines
+      41      overflow-x: auto;
+      42  }
+      43  
+      44 +/* An author `display` beats the browser's own [hidden] rule, a
+         +nd .menu-item                                                  
+      45 +   sets one - so hidden has to be said again, louder, or it is 
+         +ignored. */                                                    
+      46 +[hidden] {                                                     
+      47 +    display: none !important;                                  
+      48 +}                                                              
+      49 +                                                               
+      50  .menu-item {
+      51      display: inline-block;
+      52      padding: 5px 10px;
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 3 lines, removed 2 lines
+       6  import path from 'node:path';
+       7  import { loadRegPage } from './helpers/regPage.js';
+       8  
+       9 -const HTML = fs.readFileSync(                                  
+      10 -    path.join(import.meta.dirname, '..', 'src', 'fs', 'reg', 'R
+         -eg.html'), 'utf8');                                            
+       9 +const REG_DIR = path.join(import.meta.dirname, '..', 'src', 'fs
+         +', 'reg');                                                     
+      10 +const HTML = fs.readFileSync(path.join(REG_DIR, 'Reg.html'), 'u
+         +tf8');                                                         
+      11 +const CSS = fs.readFileSync(path.join(REG_DIR, 'style.css'), 'u
+         +tf8');                                                         
+      12  
+      13  const PUB = 'JaCSWcLSex79JkDmRHekEX33avJ9L9/dsTdWqBYk4WPSVy5mKR
+          vFNTx+fqCHIHWba2Yr+8lVX938wQn3HHDkww==';
+      14  const PRIV = 'Q0oPz9y8DzB1Ux1S2vJk0jHFPBOTFAn7l2QolO+FvGE=';
+● Update(tests/Reg.test.js)
+  ⎿  Added 7 lines
+      521          assert.ok(!/id="continue"/.test(reg));
+      522      });
+      523  
+      524 +    // .menu-item sets a display, and an author display beats 
+          +the browser's own                                             
+      525 +    // [hidden] rule - without this the "hidden" button would 
+          +be on screen.                                                 
+      526 +    it('makes hidden actually hide, given the class the button
+          + wears', () => {                                              
+      527 +        assert.match(CSS, /\[hidden\]\s*{[^}]*display:\s*none\
+          +s*!important/);                                               
+      528 +        assert.ok(CSS.indexOf('[hidden]') < CSS.indexOf('.menu
+          +-item {'), 'and says it before .menu-item');                  
+      529 +    });                                                       
+      530 +                                                              
+      531      it('shows the public key in a read only field, and never t
+           he private one', () => {
+      532          const field = HTML.match(/<input[^>]*id="pubkey"[^>]*>
+           /);
+      533  
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Added, in the Sign in section (src/fs/reg/Reg.html:47):
+
+  <a id="continue" class="menu-item" href="#" hidden>Continue</a>
+
+  showContinue() runs at the end of init() and reveals it only when
+  session.signedIn() is true and unsavedIdentity is false. That second condition
+  is what keeps J8 intact — on a first visit the page mints a cookie
+  immediately, so signedIn() alone would have put a click-through path right
+  back in front of a key that hasn't been downloaded yet. Label is Continue as 
+  <name>, falling back to the first 8 characters of the public key when there's
+  no user name (the full key is already in the Reg section). href is the
+  fragment path, so it behaves like a normal link.
+
+  The signed-in message now reads "Continue above, or load your ID Card if you
+  want to save a fresh copy."
+
+  One thing that would have shipped broken: .menu-item sets display: 
+  inline-block, and an author display beats the browser's built-in [hidden] { 
+  display: none } — the hidden button would have been visible to everyone.
+  src/fs/reg/style.css now declares [hidden] { display: none !important } ahead
+  of .menu-item, with a test pinning both the rule and its order.
+
+  Six new tests (250 total, 0 fail, same 4 pre-existing todos): shown with the
+  name and fragment href for a live cookie; the truncated-key label for an
+  unnamed visitor; shown for a browser whose key was adopted from an older
+  version; hidden on an unsaved new identity despite the live cookie; hidden on
+  an expired session; and the markup/CSS checks. REFACTORING #25 is marked
+  fixed, FEATURES J9 updated.
+
+✻ Sautéed for 3m 8s
+
+※ recap: Goal was UPDATE_3's Reg.html rework: single banner, message/sign/reg sections, split passphrases, plus the Continue as <name> button you asked for. All done, 250 tests passing, docs updated. Next: review the diff, then commit if it looks right. (disable recaps in /config)
+
+❯ One issue found with `Save Id Card & Continue`: In case when active session   
+  is present the Reg shows pub key from the session, and save is failing,       
+  probably because there is no priv key. Fix it so that whenever the Reg.html   
+  page loads the new key pair to be generated and it is available in case `Save 
+  Id Card & Continue` button is selected. Additionaly, if username is empty     
+  set it in the local storage as `UNKNOWN`.                                     
+
+● Let me check the ID Card layer before changing the naming rule.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the session layer — a drafted key pair, plus the UNKNOWN default:
+
+● Update(src/fs/reg/session.js)
+  ⎿  Added 2 lines
+      21      const NAME = 'pub_name';
+      22      const LEGACY_PRIV = 'priv';
+      23      const LOGGED_OUT = 'notloggedin';
+      24 +    // Everybody is called something, even the visitor who woul
+         +d rather not be.                                               
+      25 +    const UNKNOWN = 'UNKNOWN';                                 
+      26  
+      27      // The private key, never written to storage.
+      28      let held = null;
+
+● Update(src/fs/reg/session.js)
+  ⎿  Added 3 lines, removed 6 lines
+      45          return store()[NAME] || '';
+      46      };
+      47  
+      48 +    /** Stores the typed name, or UNKNOWN when nothing was type
+         +d. */                                                          
+      49      api.rememberUserName = function (username) {
+      49 -        const clean = idcard.cleanName(username);              
+      50 -        if (clean) {                                           
+      51 -            store()[NAME] = clean;                             
+      52 -        } else {                                               
+      53 -            delete store()[NAME];                              
+      54 -        }                                                      
+      50 +        const clean = idcard.cleanName(username) || UNKNOWN;   
+      51 +        store()[NAME] = clean;                                 
+      52          return clean;
+      53      };
+      54  
+
+● Update(src/fs/reg/session.js)
+  ⎿  Added 22 lines, removed 6 lines
+       81          return api;
+       82      };
+       83  
+       84 -    /** A brand new identity. It exists only in memory until i
+          -ts ID Card is saved. */                                       
+       85 -    api.generate = function (username) {                      
+       84 +    /**                                                       
+       85 +     * A key pair that belongs to nobody yet: it is not held, 
+          +not stored, and                                               
+       86 +     * signs nothing until `adopt` makes it this browser's ide
+          +ntity. Reg.html                                               
+       87 +     * drafts one on every visit so the Save button always has
+          + a pair to save,                                              
+       88 +     * whether or not an ID Card happens to be loaded.        
+       89 +     */                                                       
+       90 +    api.draft = function () {                                 
+       91          const keys = sjcl.ecc.ecdsa.generateKeys(256);
+       87 -        const pub = sjcl.codec.base64.fromBits(keys.pub.get().
+          -x.concat(keys.pub.get().y));                                  
+       88 -        const priv = sjcl.codec.base64.fromBits(keys.sec.get()
+          -);                                                            
+       92 +        return {                                              
+       93 +            pub: sjcl.codec.base64.fromBits(keys.pub.get().x.c
+          +oncat(keys.pub.get().y)),                                     
+       94 +            priv: sjcl.codec.base64.fromBits(keys.sec.get()), 
+       95 +            sec: keys.sec                                     
+       96 +        };                                                    
+       97 +    };                                                        
+       98  
+       90 -        held = { priv: priv, sec: keys.sec };                 
+       91 -        store()[PUB] = pub;                                   
+       99 +    /** Takes a drafted pair as this browser's identity, repla
+          +cing any other. */                                            
+      100 +    api.adopt = function (draft, username) {                  
+      101 +        held = { priv: draft.priv, sec: draft.sec };          
+      102 +        store()[PUB] = draft.pub;                             
+      103          api.rememberUserName(username);
+      104          return api.card();
+      105      };
+      106  
+      107 +    /** A brand new identity. It exists only in memory until i
+          +ts ID Card is saved. */                                       
+      108 +    api.generate = function (username) {                      
+      109 +        return api.adopt(api.draft(), username);              
+      110 +    };                                                        
+      111 +                                                              
+      112      /** The ID Card for download. Needs the key, so the page m
+           ust be unlocked. */
+      113      api.card = function () {
+      114          if (!held) {
+
+● Now the page:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 6 lines
+      125  // Set while a freshly generated identity exists only in this 
+           page's memory.
+      126  var unsavedIdentity = false;
+      127  
+      128 +// The key pair the Reg section offers, drafted on every visit
+          +. It belongs to                                               
+      129 +// nobody until Save Id Card is pressed - see currentDraft(). 
+      130 +var draft = null;                                             
+      131 +                                                              
+      132  async function init() {
+      133    try {
+      134  
+     ...
+      144        return;
+      145      }
+      146  
+      147 +    currentDraft();                                           
+      148 +                                                              
+      149      // A key left in storage by an older version was taken int
+           o memory and
+      150      // scrubbed when session.js loaded; the cookie can be refr
+           eshed right away.
+      151      if (session.unlocked()){
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 3 lines, removed 2 lines
+      162      } else if (session.known()){
+      163  
+      164        say(`Your session has expired.
+      165 -Load the ID Card for ${session.userName() || session.pub()} to
+          - sign in again.`);                                            
+      165 +Load the ID Card for ${session.userName() || session.pub()} to
+          + sign in again,                                               
+      166 +or save the ID Card below to register as somebody new.`);     
+      167  
+      168      } else {
+      169  
+      169 -      session.generate(document.getElementById("username").val
+          -ue);                                                          
+      170 +      session.adopt(currentDraft(), document.getElementById("u
+          +sername").value);                                             
+      171        session.mintCookie();
+      172        unsavedIdentity = true;
+      173  
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 2 lines, removed 1 line
+      157  
+      158        // The cookie is still good, so nothing has to be signed
+            on this visit.
+      159        say(`Signed in as ${session.userName() || session.pub()}
+           .
+      160 -Continue above, or load your ID Card if you want to save a fre
+          -sh copy.`);                                                   
+      160 +Continue above, or load your ID Card if you want to save a fre
+          +sh copy.                                                      
+      161 +The ID Card below is a new identity - saving it replaces this 
+          +one.`);                                                       
+      162  
+      163      } else if (session.known()){
+      164  
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 20 lines, removed 2 lines
+      200    document.getElementById("msg").value = text;
+      201  }
+      202  
+      203 -// The public key of the identity this page holds, shown in th
+          -e Reg section.                                                
+      203 +/**                                                           
+      204 + * The pair the Reg section is offering. Drafted once per visi
+          +t and kept until                                              
+      205 + * it is saved: a live session cookie is not a loaded key, so 
+          +without a draft                                               
+      206 + * there would be nothing for Save Id Card to write.          
+      207 + */                                                           
+      208 +function currentDraft (){                                     
+      209 +  if (!draft){                                                
+      210 +    draft = session.draft();                                  
+      211 +  }                                                           
+      212 +  return draft;                                               
+      213 +}                                                             
+      214 +                                                              
+      215 +/** The public key Save Id Card would write: the loaded card's
+          +, or the draft's. */                                          
+      216 +function savedPub (){                                         
+      217 +  return session.unlocked() ? session.pub() : currentDraft().p
+          +ub;                                                           
+      218 +}                                                             
+      219 +                                                              
+      220 +// The public half of that key, shown in the Reg section. The 
+          +private half is                                               
+      221 +// only ever in the file.                                     
+      222  function showPub (){
+      205 -  document.getElementById("pubkey").value = session.pub();    
+      223 +  document.getElementById("pubkey").value = savedPub();       
+      224  }
+      225  
+      226  // A short way to name whoever is signed in: the user name, or
+            the head of the
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 9 lines, removed 3 lines
+      270    return document.getElementById("signin_passphrase").value;
+      271  }
+      272  
+      273 -// The ID Card as it currently stands: the in-memory key plus 
+          -the typed name.                                               
+      273 +/**                                                           
+      274 + * The ID Card the Reg section would save: the loaded card whe
+          +n there is one,                                               
+      275 + * and otherwise this visit's drafted pair, which nothing has 
+          +adopted yet.                                                  
+      276 + */                                                           
+      277  function currentIdCard (){
+      275 -  rememberUserName();                                         
+      276 -  return session.card();                                      
+      278 +  const username = rememberUserName();                        
+      279 +  if (session.unlocked()){                                    
+      280 +    return session.card();                                    
+      281 +  }                                                           
+      282 +  return idcard.build(username, currentDraft().pub, currentDra
+          +ft().priv);                                                   
+      283  }
+      284  
+      285  function saveIdCard (){
+
+● Update(src/fs/reg/Reg.html)
+  ⎿  Added 12 lines
+      321      return;
+      322    }
+      323  
+      324 +  // The card is on its way to disk, so the pair it holds beco
+          +mes this browser's                                            
+      325 +  // identity - replacing whoever was signed in, whose own car
+          +d is untouched.                                               
+      326 +  // Nothing was adopted until here, so a card that could not 
+          +be built changes                                              
+      327 +  // nothing at all.                                          
+      328 +  if (!session.unlocked()){                                   
+      329 +    session.adopt(currentDraft(), document.getElementById("use
+          +rname").value);                                               
+      330 +    session.mintCookie();                                     
+      331 +    draft = null;                                             
+      332 +    showPub();                                                
+      333 +    showContinue();                                           
+      334 +  }                                                           
+      335 +                                                              
+      336    // The identity now exists off this page, so leaving is safe
+            again.
+      337    unsavedIdentity = false;
+      338  
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 6 lines, removed 2 lines
+      184          assert.strictEqual(page.window.location.href, '/fs/get
+           /keyboard.html');
+      185      });
+      186  
+      187 -    it('shows the identity this browser already has', async ()
+          - => {                                                         
+      187 +    // A live cookie is not a loaded key: the Reg section can 
+          +only offer a new pair                                         
+      188 +    it('shows the key it would save, which is not the one it c
+          +annot reach', async () => {                                   
+      189          const page = loadRegPage({ localStorage: known({ pub_n
+           ame: 'alice' }), cookie: liveCookie() });
+      190          await page.init();
+      191  
+      191 -        assert.strictEqual(page.element('pubkey').value, PUB);
+      192 +        const shown = page.element('pubkey').value;           
+      193 +        assert.ok(shown, 'a key is offered');                 
+      194 +        assert.notStrictEqual(shown, PUB, 'not the signed-in o
+          +ne, whose private half is not here');                         
+      195 +        assert.strictEqual(page.localStorage.pub, PUB, 'and th
+          +e stored identity is left alone');                            
+      196      });
+      197  
+      198      it('offers Continue as the user, so a live session needs n
+           o file', async () => {
+● Update(tests/Reg.test.js)
+  ⎿  Added 3 lines, removed 3 lines
+      237          assert.strictEqual(page.localStorage.pub_name, 'alice'
+           );
+      238      });
+      239  
+      240 -    it('forgets the user name when the field is cleared', asyn
+          -c () => {                                                     
+      240 +    it('calls a visitor who types no name UNKNOWN', async () =
+          +> {                                                           
+      241          const page = await signedIn();
+      242          page.element('username').value = '';
+      243 -        page.rememberUserName();                              
+      243  
+      245 -        assert.ok(!('pub_name' in page.localStorage));        
+      244 +        assert.strictEqual(page.rememberUserName(), 'UNKNOWN')
+          +;                                                             
+      245 +        assert.strictEqual(page.localStorage.pub_name, 'UNKNOW
+          +N');                                                          
+      246      });
+      247  
+      248      it('registers the user name with the ID Card in the databa
+           se', async () => {
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 74 lines, removed 4 lines
+      310          assert.strictEqual(page.requests.length, 1);
+      311      });
+      312  
+      313 -    it('falls back to a timestamped name when no user name is 
+          -given', async () => {                                         
+      313 +    it('names the file for UNKNOWN when no user name is given'
+          +, async () => {                                               
+      314          const page = await signedIn();
+      315          page.element('username').value = '';
+      316  
+      317          await page.saveToNamedFile();
+      318  
+      319 -        assert.match(page.downloads[0].name, /^\d{8}T\d{6}\.id
+          -\.txt$/);                                                     
+      319 +        assert.match(page.downloads[0].name, /^UNKNOWN\.\d{8}T
+          +\d{6}\.id\.txt$/);                                            
+      320      });
+      321 +});                                                           
+      322  
+      322 -    it('cannot save a card the page does not hold the key for'
+          -, async () => {                                               
+      323 +// The bug: a live cookie is not a loaded key, and Save had no
+          +thing to write                                                
+      324 +describe('Reg.html saving without a card loaded', () => {     
+      325 +    it('saves the pair drafted on this visit', async () => {  
+      326          const page = loadRegPage({ localStorage: known(), cook
+           ie: liveCookie() });
+      327          await page.init();
+      328 +        page.element('username').value = 'bob';               
+      329  
+      330          await page.saveToNamedFile();
+      331  
+      332 +        assert.strictEqual(page.downloads.length, 1);         
+      333 +        const card = page.idcard.parse(decodeURIComponent(page
+          +.downloads[0].href.split(',')[1]));                           
+      334 +        assert.strictEqual(card.username, 'bob');             
+      335 +        assert.ok(card.priv, 'with the private half in it, whi
+          +ch is the point');                                            
+      336 +        assert.notStrictEqual(card.pub, PUB, 'a new identity, 
+          +since the old key is not here');                              
+      337 +    });                                                       
+      338 +                                                              
+      339 +    it('saves the key it showed in the Reg section', async () 
+          +=> {                                                          
+      340 +        const page = loadRegPage({ localStorage: known(), cook
+          +ie: liveCookie() });                                          
+      341 +        await page.init();                                    
+      342 +        const offered = page.element('pubkey').value;         
+      343 +                                                              
+      344 +        await page.saveToNamedFile();                         
+      345 +                                                              
+      346 +        const card = page.idcard.parse(decodeURIComponent(page
+          +.downloads[0].href.split(',')[1]));                           
+      347 +        assert.strictEqual(card.pub, offered);                
+      348 +    });                                                       
+      349 +                                                              
+      350 +    it('makes that pair the identity: stored, registered and s
+          +igning the cookie', async () => {                             
+      351 +        const page = loadRegPage({ localStorage: known(), cook
+          +ie: liveCookie() });                                          
+      352 +        await page.init();                                    
+      353 +                                                              
+      354 +        await page.saveToNamedFile();                         
+      355 +                                                              
+      356 +        const card = page.idcard.parse(decodeURIComponent(page
+          +.downloads[0].href.split(',')[1]));                           
+      357 +        assert.strictEqual(page.localStorage.pub, card.pub);  
+      358 +        assert.strictEqual(page.session.unlocked(), true);    
+      359 +        assert.ok(page.cookie().startsWith(`ssid=${card.pub}.`
+          +), 'the cookie is re-signed by the new key');                 
+      360 +        assert.deepStrictEqual(JSON.parse(page.requests[0].bod
+          +y), { pub: card.pub, pub_name: 'UNKNOWN' });                  
+      361 +        assert.ok(!('priv' in page.localStorage));            
+      362 +    });                                                       
+      363 +                                                              
+      364 +    it('changes nothing until the card is actually built', asy
+          +nc () => {                                                    
+      365 +        const page = loadRegPage({ localStorage: known({ pub_n
+          +ame: 'alice' }), cookie: liveCookie() });                     
+      366 +        await page.init();                                    
+      367 +        page.element('passphrase').value = 's3cret';          
+      368 +        page.element('passphrase2').value = 'typo';           
+      369 +                                                              
+      370 +        await page.saveToNamedFile();                         
+      371 +                                                              
+      372          assert.strictEqual(page.downloads.length, 0);
+      329 -        assert.match(page.element('msg').value, /load your ID 
+          -Card first/i);                                                
+      373 +        assert.strictEqual(page.localStorage.pub, PUB, 'the si
+          +gned-in identity is untouched');                              
+      374 +        assert.strictEqual(page.session.unlocked(), false);   
+      375      });
+      376 +                                                              
+      377 +    it('also works for a visitor whose session has expired', a
+          +sync () => {                                                  
+      378 +        const page = loadRegPage({ localStorage: known({ pub_n
+          +ame: 'alice' }) });                                           
+      379 +        await page.init();                                    
+      380 +                                                              
+      381 +        await page.saveToNamedFile();                         
+      382 +                                                              
+      383 +        assert.strictEqual(page.downloads.length, 1);         
+      384 +        assert.ok(page.cookie().startsWith(`ssid=${page.localS
+          +torage.pub}.`));                                              
+      385 +        assert.notStrictEqual(page.localStorage.pub, PUB);    
+      386 +    });                                                       
+      387 +                                                              
+      388 +    it('keeps saving the loaded card once one is loaded, rathe
+          +r than the draft', async () => {                              
+      389 +        const page = loadRegPage({ localStorage: known(), cook
+          +ie: liveCookie() });                                          
+      390 +        await page.init();                                    
+      391 +        const drafted = page.element('pubkey').value;         
+      392 +                                                              
+      393 +        await page.upload(CARD);                              
+      394 +        await page.saveToNamedFile();                         
+      395 +                                                              
+      396 +        assert.strictEqual(page.element('pubkey').value, PUB);
+      397 +        const card = page.idcard.parse(decodeURIComponent(page
+          +.downloads[0].href.split(',')[1]));                           
+      398 +        assert.strictEqual(card.pub, PUB);                    
+      399 +        assert.notStrictEqual(card.pub, drafted);             
+      400 +    });                                                       
+      401  });
+      402  
+      403  // UPDATE_2 improvement 5
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Update(src/fs/reg/session.js)
+  ⎿  Added 5 lines, removed 1 line
+      73          if (!card || !card.pub || !card.priv) {
+      74              throw new Error('this ID Card has no key pair in it
+          ');
+      75          }
+      76 +        // A v1 card carries no name. Keep the stored one only 
+         +when it belongs to                                             
+      77 +        // this same key, or the previous user's name would end
+         + up on it.                                                     
+      78 +        const sameIdentity = api.pub() === card.pub;           
+      79 +                                                               
+      80          held = { priv: card.priv, sec: secretKeyFrom(card.priv)
+           };
+      81          store()[PUB] = card.pub;
+      78 -        if (idcard.cleanName(card.username)) {                 
+      82 +        if (idcard.cleanName(card.username) || !sameIdentity) {
+      83              api.rememberUserName(card.username);
+      84          }
+      85          return api;
+
+● Update(tests/Reg.test.js)
+  ⎿  Added 19 lines
+      465          assert.match(page.element('msg').value, /ID loaded/);
+      466      });
+      467  
+      468 +    it('does not put the last user name on an unnamed card bel
+          +onging to someone else', async () => {                        
+      469 +        const page = loadRegPage({ localStorage: known({ pub_n
+          +ame: 'alice' }), cookie: liveCookie() });                     
+      470 +        await page.init();                                    
+      471 +                                                              
+      472 +        await page.upload(`otherpub.${PRIV}`);                
+      473 +                                                              
+      474 +        assert.strictEqual(page.localStorage.pub, 'otherpub');
+      475 +        assert.strictEqual(page.localStorage.pub_name, 'UNKNOW
+          +N');                                                          
+      476 +    });                                                       
+      477 +                                                              
+      478 +    it('keeps the name when the unnamed card is that same iden
+          +tity', async () => {                                          
+      479 +        const page = loadRegPage({ localStorage: known({ pub_n
+          +ame: 'alice' }), cookie: liveCookie() });                     
+      480 +        await page.init();                                    
+      481 +                                                              
+      482 +        await page.upload(`${PUB}.${PRIV}`);                  
+      483 +                                                              
+      484 +        assert.strictEqual(page.localStorage.pub_name, 'alice'
+          +);                                                            
+      485 +    });                                                       
+      486 +                                                              
+      487      it('signs a fresh session cookie with the uploaded key', a
+           sync () => {
+      488          const page = loadRegPage({ localStorage: known() });
+      489          await page.init();
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+● Fixed. 257 tests, 0 fail (the same 4 pre-existing todos).
+
+  The bug — Save Id Card called session.card(), which throws load your ID Card 
+  first whenever the key isn't in memory. A live cookie is not a loaded key, so
+  every signed-in visitor without their card hit it, while the field showed the
+  session's public key it could never save.
+
+  The fix — session.js gained two pieces (src/fs/reg/session.js:86): draft()
+  generates a key pair that is held nowhere and stored nowhere, and adopt()
+  makes a drafted pair the browser's identity. generate() is now just those two
+  together, so the first-visit path is unchanged.
+
+  Reg.html drafts a pair on every load (currentDraft(), after the remotectrl
+  redirect so it isn't wasted). The read-only field shows what Save would
+  actually write — the loaded card's key when one is loaded, the draft
+  otherwise. Save builds the card from that same pair, and only after the file
+  is successfully built does it adopt the pair, re-sign the cookie and register
+  it. A failed build (mismatched passphrases, encryption error) changes nothing
+  at all — the signed-in identity survives untouched.
+
+  Saving while signed in therefore replaces the identity, which is what the Reg
+  section means. Both message-board texts now say so: "The ID Card below is a 
+  new identity - saving it replaces this one", and for an expired session, "or 
+  save the ID Card below to register as somebody new". The old identity's card
+  file still opens normally.
+
+  UNKNOWN — session.rememberUserName now stores UNKNOWN instead of deleting
+  pub_name when the field is empty. Since userName() reads storage, that name
+  flows through consistently: the DB record is {pub, pub_name: "UNKNOWN"} and
+  the download is UNKNOWN.20260816T….id.txt rather than a bare timestamp.
+
+  One related thing I fixed while in unlock(): loading an unnamed v1 card used
+  to leave whatever pub_name was already stored, so the previous user's name
+  could end up attached to a different public key. It now keeps the stored name
+  only when the card is that same key, and otherwise sets UNKNOWN.
+
+  Tests — nine new ones, mostly in a new Reg.html saving without a card loaded
+  suite: the draft gets saved with its private half, it matches the key shown in
+  the field, it becomes the stored/registered/cookie-signing identity, a failed
+  build leaves the signed-in identity alone, the expired-session case works
+  too, and a loaded card still wins over the draft. Four existing tests changed
+  to the new behaviour (the pub-key field, the two UNKNOWN naming cases, and the
+  old "cannot save" test, which asserted exactly the bug you reported).
+  FEATURES J1 and a new J10 document it.
+
+✻ Crunched for 6m 16s
+
+※ recap: Goal was reworking Northern's Reg.html per UPDATE_3: three sections, a Continue-as button, and a Save fix so a fresh key pair is always available. All done, 257 tests pass. Next: review the diff and commit. (disable recaps in /config)

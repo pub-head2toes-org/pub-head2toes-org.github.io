@@ -305,12 +305,35 @@ default 9443 — `Cluster.js` is unaffected), and `init` stores `this.httpServer
 `this.sslServer` and `this.db` so tests can shut the node down. Everything else
 in `src/` is untouched.
 
+### 26. Undo/redo on the keyboard page is not persisted yet
+The history lives in memory and dies with the page (FEATURES I7). Persisting the
+recent steps to `localStorage` is the obvious next step, and the plumbing is
+ready for it — `TextHistory` states are plain JSON — but three things have to be
+decided first, so it was left out of this pass:
+
+* **Size.** `search` dumps the whole key list into `text`; these buffers hold
+  entire database records. A cap per entry (~64KB, skip rather than evict) and
+  per buffer (~256KB), with `QuotaExceededError` dropping the oldest half, or
+  the identity in the same origin-wide store is what gets pushed out.
+* **Writes.** `localStorage` is synchronous. Debounce ~500ms and flush on
+  `pagehide`, never on the keystroke.
+* **Privacy.** This is the one that matters. The buffers hold whatever the user
+  fetched, including private records, and `localStorage` is origin-wide and
+  survives logout — which cuts against #24 and FEATURES J6. Whatever is
+  persisted has to be cleared by `session.forget()`/`Logout.html`, and the
+  viewer (`text2`) is probably `sessionStorage` material rather than durable.
+
+A natural companion once it exists: `runCursor` (`cli_v2.js`) is the capture
+point for a shell-style history of *executed commands* in `clip`, which is a
+different feature from character undo but rides on the same plumbing.
+
 ### 14. Browser code has no module boundary
-**Partly addressed for registration**: the ID Card format now lives in
-`src/fs/reg/idcard.js`, a DOM-free script that `tests/idcard.test.js` exercises
-directly, and `tests/helpers/regPage.js` runs the real `Reg.html` in a vm with
-a DOM stub so the page's own wiring is covered too. The same two techniques
-apply to everything below.
+**Partly addressed for registration and for the keyboard page**: the ID Card
+format lives in `src/fs/reg/idcard.js` and the undo history in
+`src/fs/js/history.js`, both DOM-free scripts their own tests exercise directly,
+while `tests/helpers/regPage.js` and `tests/helpers/keyboardPage.js` run the real
+pages in a vm with a DOM stub so the wiring is covered too. The same two
+techniques apply to everything below.
 
 `src/fs/js/cli_v2.js` and friends are top-level scripts that reach for
 `document` and globals like `clip` and `footer`, so the command parser, the
@@ -393,7 +416,8 @@ of `new URL()`.
 ### 21. Test suite gaps
 The suite added here covers the server modules. Still uncovered:
 
-* the browser applications (I1–I6) — needs a DOM harness (#14);
+* the browser applications (I1–I6, except the undo history) — needs a DOM
+  harness (#14);
 * HTTPS request handling (only the listener is asserted);
 * concurrency: parallel writes to one key (#10);
 * the SSE path under load — many subscribers, slow consumers, abrupt drops;
