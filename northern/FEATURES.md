@@ -115,8 +115,8 @@ start-up read (REFACTORING #9). The module is now `src/h2t/SqliteDB.js`.
 
 Mostly not covered by the test suite — these are DOM programs with no module
 boundaries, and testing them would need a browser harness (see REFACTORING #14).
-The exception is I7, whose logic was extracted into DOM-free scripts for exactly
-that reason.
+The exceptions are I7 and I8, whose logic was extracted into DOM-free scripts
+for exactly that reason.
 
 | # | Feature | Code | Tests |
 | --- | --- | --- | --- |
@@ -127,6 +127,7 @@ that reason.
 | I5 | Music and game pages: chord player, musical grids, go board, tonal.js, audio samples | `fs/games/*`, `fs/simon/*` |
 | I6 | Diagnostics page | `fs/diagnostics/tests.html` |
 | I7 | Undo/redo in all three buffers of the keyboard page. Every write goes through one choke point (`textedit.setText`), because assigning `textarea.value` — which this page does for every on-screen key, every `get` and every `search` — wipes the browser's own undo stack. Each buffer keeps its own list of `{value, selection}` states: a typed run folds into one step (by ~500ms and by word boundary), a run of deletes is its own step, and every programmatic write is one step, so a `get` that replaces unsaved edits can be taken back. On Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and on two on-screen keys, for a device with no Ctrl | `fs/js/history.js`, `fs/js/textedit.js`, `fs/keyboard.html` | `textHistory.test.js`, `textedit.test.js` |
+| I8 | Bandage: a 25 key piano (two octaves, C to C) over a vendored `webaudio-tinysynth`. Polyphonic touch with glissando, computer-keyboard playing, 12 GM voices, octave shift, sustain and volume; the upper third of the screen is left empty by design. The layout arithmetic is a DOM-free script, so it is tested as numbers; the synth is vendored (Apache-2.0) and everything is cached, so it plays offline | `fs/pwa/bandage/keys.js`, `fs/pwa/bandage/bandage.js`, `fs/pwa/bandage/*` | `bandage.test.js` |
 
 ---
 
@@ -168,7 +169,7 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 
 ## Test suite
 
-`npm test` (`node --test`) — 297 tests over 12 files:
+`npm test` (`node --test`) — 347 tests over 13 files:
 
 | File | Covers |
 | --- | --- |
@@ -184,6 +185,7 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 | `tests/browserIdentity.test.js` | J6–J7: the no-stored-key invariant across every file in `src/fs`, plus `A.html` and `Remote.html` |
 | `tests/textHistory.test.js` | I7: the undo history in isolation, no DOM |
 | `tests/textedit.test.js` | I7: the choke point, the key bindings and the on-screen keyboard path, in a DOM stub |
+| `tests/bandage.test.js` | I8: the key layout as numbers, the PWA shell, and the app itself in a DOM stub |
 | `tests/Example.test.js` | pre-existing placeholder, tests a function defined inside itself |
 
 The four remaining `todo` tests describe behaviour the code is meant to have but

@@ -1,0 +1,226 @@
+:root {
+  --theme: #005E7A;
+  --theme-dark: #00455a;
+  --bg: #101619;
+  --panel: #18232a;
+  --border: #24343d;
+  --text: #e7eef2;
+  --muted: #8fa3ad;
+  --white-key: #fbfdfe;
+  --white-key-down: #b8e2ef;
+  --black-key: #10191e;
+  --black-key-down: #2c6d84;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;                 /* a keyboard does not scroll */
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;                   /* the phone's real estate, minus its bars */
+}
+
+/* ---------- The reserved upper third ---------- */
+
+#stage {
+  flex: 0 0 33.3333%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px calc(12px + env(safe-area-inset-left)) 12px calc(12px + env(safe-area-inset-right));
+  background: linear-gradient(180deg, var(--panel), var(--bg));
+  border-bottom: 1px solid var(--border);
+}
+
+.stage-note {
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 16px 24px;
+  max-width: 480px;
+}
+
+.stage-note h1 {
+  margin: 0;
+  color: var(--theme);
+  font-size: 1.8rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.stage-note p {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+}
+
+/* ---------- Console: toolbar + keys, the lower two thirds ---------- */
+
+#console {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px calc(10px + env(safe-area-inset-left)) 8px calc(10px + env(safe-area-inset-right));
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.control-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+#toolbar select,
+#toolbar button {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+#toolbar button:active {
+  background: var(--theme-dark);
+}
+
+#toolbar button[aria-pressed="true"] {
+  background: var(--theme);
+  border-color: var(--theme);
+  color: #fff;
+}
+
+.octave {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#range_label {
+  min-width: 62px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+
+#volume {
+  width: 108px;
+  accent-color: var(--theme);
+}
+
+.readout #readout {
+  min-width: 48px;
+  font-size: 0.9rem;
+  color: var(--theme);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- The keys ---------- */
+
+#keyboard {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: var(--black-key);
+  touch-action: none;               /* the board takes the touch, not the scroller */
+}
+
+.key {
+  position: absolute;
+  top: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.key.white {
+  height: 100%;
+  z-index: 1;
+  background: var(--white-key);
+  border-right: 1px solid #c3d2d9;
+  border-radius: 0 0 5px 5px;
+  box-shadow: inset 0 -18px 22px -18px rgba(0, 0, 0, 0.45);
+}
+
+.key.black {
+  height: 62%;
+  z-index: 2;
+  background: linear-gradient(180deg, #2b3941, var(--black-key));
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.6);
+}
+
+.key.white.down {
+  background: var(--white-key-down);
+}
+
+.key.black.down {
+  background: linear-gradient(180deg, var(--black-key-down), #1b4b5c);
+}
+
+/* The note name, tucked at the bottom of the white keys and out of the way */
+.key .label {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.6rem;
+  letter-spacing: 0.5px;
+  color: #7d939e;
+  pointer-events: none;
+}
+
+.key.black .label {
+  display: none;
+}
+
+/* Middle C, so a player can find their place */
+.key.anchor .label {
+  color: var(--theme);
+  font-weight: 700;
+}
+
+@media (max-height: 420px) {
+  .stage-note { padding: 8px 14px; }
+  .stage-note h1 { font-size: 1.2rem; }
+  .stage-note p { display: none; }
+}

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#005E7A">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Bandage</title>
+</head>
+<body>
+
+  <!--
+    The upper third, reserved for future development. It is deliberately empty:
+    the keyboard below is sized off what is left, so whatever lands here later
+    can take the whole panel without the keys having to move.
+  -->
+  <section id="stage" aria-label="Reserved">
+    <div class="stage-note">
+      <h1>Bandage</h1>
+      <p>This panel is reserved.</p>
+    </div>
+  </section>
+
+  <section id="console">
+    <div id="toolbar">
+      <label class="control">
+        <span class="control-label">Voice</span>
+        <select id="voice_select" aria-label="Instrument"></select>
+      </label>
+
+      <div class="control">
+        <span class="control-label">Octave</span>
+        <div class="octave">
+          <button type="button" id="octave_down" aria-label="Octave down">&minus;</button>
+          <span id="range_label" aria-live="polite">C3&ndash;C5</span>
+          <button type="button" id="octave_up" aria-label="Octave up">+</button>
+        </div>
+      </div>
+
+      <label class="control">
+        <span class="control-label">Volume</span>
+        <input type="range" id="volume" min="0" max="100" value="60" aria-label="Volume">
+      </label>
+
+      <div class="control">
+        <span class="control-label">Sustain</span>
+        <button type="button" id="sustain" aria-pressed="false">Off</button>
+      </div>
+
+      <div class="control readout">
+        <span class="control-label">Playing</span>
+        <span id="readout" aria-live="polite">&mdash;</span>
+      </div>
+    </div>
+
+    <!-- The 25 keys are built by bandage.js from the geometry in keys.js -->
+    <div id="keyboard" role="group" aria-label="25 key piano"></div>
+  </section>
+
+  <script src="./webaudio-tinysynth.js"></script>
+  <script src="./keys.js"></script>
+  <script src="./bandage.js"></script>
+</body>
+</html>
