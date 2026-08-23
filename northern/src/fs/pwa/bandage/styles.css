@@ -85,13 +85,14 @@ body {
   padding: 0 0 2px;
 }
 
+/* The labels take what they need; the eight loop columns divide the rest */
 #loop_table thead th:first-child,
 #loop_table tbody th {
-  width: 4.2rem;
+  width: 3.4rem;
 }
 
 #loop_table td {
-  padding: 1px;
+  padding: 1px 1px;
   text-align: center;
 }
 
@@ -99,7 +100,7 @@ body {
   width: 100%;
   min-height: 26px;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   line-height: 1;
   color: var(--text);
   background: var(--bg);
@@ -230,6 +231,15 @@ body {
   border-color: var(--theme);
 }
 
+/* A tie is the note before it going on: the fill runs through, the edge does not */
+#edit_grid .cell.tied {
+  color: var(--white-key-down);
+  background: var(--theme-dark);
+  border-color: var(--theme);
+  border-left-color: transparent;
+  border-radius: 0 3px 3px 0;
+}
+
 /* The bar line, so a player can see where the pattern comes round */
 #edit_grid .cell.bar { border-left: 2px solid var(--muted); }
 
@@ -335,6 +345,18 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* The name sits at the far end of the strip, out of the way of the controls */
+#brand {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+  padding-left: 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--theme);
+}
+
 /* ---------- The keys ---------- */
 
 #keyboard {
@@ -346,6 +368,7 @@ body {
   touch-action: none;               /* the board takes the touch, not the scroller */
 }
 
+/* left, width and height are written by bandage.js from keys.layout */
 .key {
   position: absolute;
   top: 0;
@@ -357,7 +380,6 @@ body {
 }
 
 .key.white {
-  height: 100%;
   z-index: 1;
   background: var(--white-key);
   border-right: 1px solid #c3d2d9;
@@ -366,7 +388,6 @@ body {
 }
 
 .key.black {
-  height: 62%;
   z-index: 2;
   background: linear-gradient(180deg, #2b3941, var(--black-key));
   border-radius: 0 0 4px 4px;
@@ -409,9 +430,10 @@ body {
 @media (max-height: 420px) {
   #stage { gap: 2px; padding-top: 4px; }
   #loop_table { font-size: 0.6rem; }
-  #loop_table thead th, #loop_table tbody th { width: 3.4rem; }
-  .loop-button { min-height: 20px; padding: 1px 0; font-size: 0.8rem; }
+  #loop_table thead th, #loop_table tbody th { width: 2.8rem; }
+  .loop-button { min-height: 20px; padding: 1px 0; font-size: 0.7rem; }
   #loop_foot { font-size: 0.6rem; }
   #editor_hint { display: none; }
+  #brand { font-size: 0.8rem; letter-spacing: 2px; }
   #edit_grid .cell { font-size: 0.55rem; }
 }

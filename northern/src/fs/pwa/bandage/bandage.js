@@ -155,6 +155,7 @@ function drawKeyboard() {
     element.className = `key ${key.black ? 'black' : 'white'}`;
     element.style.left = `${key.left * 100}%`;
     element.style.width = `${key.width * 100}%`;
+    element.style.height = `${key.height * 100}%`;
     element.dataset.midi = key.midi;
     element.setAttribute('aria-label', key.name);
     if (key.midi === 60) {
@@ -334,7 +335,10 @@ function init() {
     return;
   }
 
-  app.synth = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 24 });
+  // Eight loops of four notes, plus ten fingers, is what the app can now ask
+  // for at once; the voice count is the ceiling before the synth starts
+  // stealing notes back from itself.
+  app.synth = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 48 });
   app.synth.setMasterVol(Number(app.elements.volume.value) / 100);
   app.synth.setProgram(CHANNEL, keys.VOICES[0].program);
 

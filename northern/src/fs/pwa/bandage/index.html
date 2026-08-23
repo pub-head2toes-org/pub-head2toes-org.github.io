@@ -19,44 +19,17 @@
     below is still sized off what is left, so the loops can take the whole panel
     without the keys having to move - the editor overlay covers this same space.
 
-    Rows are the functions, columns are the four loop channels.
   -->
   <section id="stage" aria-label="Loops">
 
+    <!--
+      The rows are the functions, the columns the loop channels. Both are built
+      by recorder.js from loops.COUNT, the way the keys are built from
+      keys.layout: one number decides how many there are, and the markup cannot
+      drift away from it.
+    -->
     <table id="loop_table">
       <caption class="sr-only">Loop channels</caption>
-      <thead>
-        <tr>
-          <th scope="col"><span class="sr-only">Function</span></th>
-          <th scope="col">Loop 1</th>
-          <th scope="col">Loop 2</th>
-          <th scope="col">Loop 3</th>
-          <th scope="col">Loop 4</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th scope="row">Play</th>
-          <td><button type="button" id="play_0" class="loop-button" aria-pressed="false" aria-label="Play loop 1">&#9654;</button></td>
-          <td><button type="button" id="play_1" class="loop-button" aria-pressed="false" aria-label="Play loop 2">&#9654;</button></td>
-          <td><button type="button" id="play_2" class="loop-button" aria-pressed="false" aria-label="Play loop 3">&#9654;</button></td>
-          <td><button type="button" id="play_3" class="loop-button" aria-pressed="false" aria-label="Play loop 4">&#9654;</button></td>
-        </tr>
-        <tr>
-          <th scope="row">Record</th>
-          <td><button type="button" id="record_0" class="loop-button record" aria-pressed="false" aria-label="Record loop 1">&#9679;</button></td>
-          <td><button type="button" id="record_1" class="loop-button record" aria-pressed="false" aria-label="Record loop 2">&#9679;</button></td>
-          <td><button type="button" id="record_2" class="loop-button record" aria-pressed="false" aria-label="Record loop 3">&#9679;</button></td>
-          <td><button type="button" id="record_3" class="loop-button record" aria-pressed="false" aria-label="Record loop 4">&#9679;</button></td>
-        </tr>
-        <tr>
-          <th scope="row">Edit</th>
-          <td><button type="button" id="edit_0" class="loop-button" aria-label="Edit loop 1">&#9998;</button></td>
-          <td><button type="button" id="edit_1" class="loop-button" aria-label="Edit loop 2">&#9998;</button></td>
-          <td><button type="button" id="edit_2" class="loop-button" aria-label="Edit loop 3">&#9998;</button></td>
-          <td><button type="button" id="edit_3" class="loop-button" aria-label="Edit loop 4">&#9998;</button></td>
-        </tr>
-      </tbody>
     </table>
 
     <div id="loop_foot">
@@ -80,6 +53,7 @@
         <button type="button" id="edit_right" aria-label="On one step">&#9654;</button>
         <button type="button" id="edit_insert" aria-label="Insert an empty step">Ins</button>
         <button type="button" id="edit_delete" aria-label="Delete this step">Del</button>
+        <button type="button" id="edit_tie" aria-label="Hold the last notes through this step">Tie</button>
         <button type="button" id="edit_undo" aria-label="Undo">&#8630;</button>
         <button type="button" id="edit_redo" aria-label="Redo">&#8631;</button>
         <button type="button" id="edit_close">Close</button>
@@ -125,6 +99,9 @@
         <span class="control-label">Playing</span>
         <span id="readout" aria-live="polite">&mdash;</span>
       </div>
+
+      <!-- The name, pushed to the far end of the strip by margin-left: auto -->
+      <h1 id="brand">Bandage</h1>
     </div>
 
     <!-- The 25 keys are built by bandage.js from the geometry in keys.js -->

@@ -62,7 +62,12 @@ smf.track = function (events) {
 
 /**
  * One loop as a track: the program it plays on, then a note on and a note off
- * for every note in every step, then a marker at the end.
+ * for every *run* of notes, then a marker at the end.
+ *
+ * A run is what a tie makes: a note struck once and held over several steps
+ * goes into the file as one note of that length, which is what any other
+ * program reading it would expect to find. `loops.runs` is what knows where
+ * one ends, and it is left unwrapped here - a file has an end, a loop does not.
  *
  * The marker is what carries the loop's *length*. Trailing rests are real -
  * they are how a pattern is given room to breathe - and they leave no note
@@ -71,20 +76,18 @@ smf.track = function (events) {
  * at that event rather than recording it, so an undefined controller is used:
  * harmless to anything else that reads the file, and it survives the read.
  */
-smf.loopTrack = function (loop, index) {
+smf.loopTrack = function (loop, index, model) {
     const channel = index + 1;
     const steps = (loop && loop.steps) || [];
-    const gate = Math.max(1, Math.round(smf.TICKS_PER_STEP * 0.9));
+    const gap = Math.max(1, Math.round(smf.TICKS_PER_STEP * 0.1));
     const events = [{ tick: 0, bytes: [0xc0 | channel, (loop && loop.program) || 0] }];
 
-    steps.forEach((step, at) => {
-        const tick = at * smf.TICKS_PER_STEP;
-        (step || []).forEach((note) => {
-            if (note === null || note === undefined) {
-                return;
-            }
-            events.push({ tick: tick, bytes: [0x90 | channel, note, 100] });
-            events.push({ tick: tick + gate, bytes: [0x80 | channel, note, 0] });
+    model.runs(steps).forEach((run) => {
+        const tick = run.at * smf.TICKS_PER_STEP;
+        events.push({ tick: tick, bytes: [0x90 | channel, run.midi, 100] });
+        events.push({
+            tick: tick + (run.length * smf.TICKS_PER_STEP) - gap,
+            bytes: [0x80 | channel, run.midi, 0]
         });
     });
 
@@ -96,8 +99,8 @@ smf.loopTrack = function (loop, index) {
 };
 
 /** The four loops and the tempo they were played at, as file bytes. */
-smf.encode = function (all, bpm) {
-    const tracks = (all || []).map(smf.loopTrack);
+smf.encode = function (all, bpm, model) {
+    const tracks = (all || []).map((loop, index) => smf.loopTrack(loop, index, model));
     const tempo = Math.round(60000000 / (bpm || 120));
     const head = [
         ...smf.ascii('MThd'), ...smf.bytes32(6),
@@ -132,7 +135,21 @@ smf.decode = function (song, model) {
 
     const perStep = Math.max(1, Math.round((song.timebase || smf.DIVISION * 4) / 8));
     const lengths = new Array(made.length).fill(0);
+    const open = new Map();                      // 'channel:note' -> the step it began on
     let bpm = song.tempo || model.DEFAULT_BPM;
+
+    /** A note that has ended: the steps it covered get it, tied after the first. */
+    const close = (index, note, endStep) => {
+        const key = `${index}:${note}`;
+        if (!open.has(key)) {
+            return;
+        }
+        const from = open.get(key);
+        open.delete(key);
+        const to = Math.max(from, endStep - 1);
+        made[index].steps = model.holdNote(made[index].steps, from, to, note);
+        lengths[index] = Math.max(lengths[index], to + 1);
+    };
 
     song.ev.forEach((event) => {
         const message = event.m || [];
@@ -151,10 +168,15 @@ smf.decode = function (song, model) {
             made[index].program = message[1];
             break;
         case 0x90:
+            // A note on at zero velocity is a note off; the format allows both.
             if (message[2] > 0) {
-                made[index].steps = model.setNote(made[index].steps, at, null, message[1]);
-                lengths[index] = Math.max(lengths[index], at + 1);
+                open.set(`${index}:${message[1]}`, at);
+            } else {
+                close(index, message[1], at);
             }
+            break;
+        case 0x80:
+            close(index, message[1], at);
             break;
         case 0xb0:
             if (message[1] === smf.END_MARKER) {
@@ -162,6 +184,12 @@ smf.decode = function (song, model) {
             }
             break;
         }
+    });
+
+    // A file that ends mid-note: it stops where the loop does.
+    [...open.keys()].forEach((key) => {
+        const [index, note] = key.split(':').map(Number);
+        close(index, note, lengths[index] || 1);
     });
 
     // The marker says where a loop ends; the rests up to it are put back.

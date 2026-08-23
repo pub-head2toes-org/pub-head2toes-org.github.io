@@ -17,10 +17,20 @@
  * A step is a fixed slice of time, so a rest is a real thing that takes up
  * room. That is why the editor has to be able to insert and delete an empty
  * one: it is how the rhythm is written.
+ *
+ * A slot holds one of three things: nothing, a note struck, or a *tie* - the
+ * note before it going on ringing. A tie is written as the pitch made negative,
+ * so a slot stays a number and every strip stays an array of them:
+ *
+ *     [ 60, -60, -60, null ]   C4 struck, held for three steps, then silence
+ *     [ 60,  60,  60, null ]   C4 struck three times over
+ *
+ * Which is the whole point of having a tie at all: without one, those two are
+ * the same strip, and a note held down comes back as a stutter.
  */
 const loops = {};
 
-loops.COUNT = 4;                 // four loop channels
+loops.COUNT = 8;                 // eight loop channels - see loops.channel
 loops.ROWS = 4;                  // up to four notes at once, per loop
 loops.BAR = 8;                   // steps to a bar: four beats of two eighths
 loops.DEFAULT_BPM = 120;
@@ -32,6 +42,10 @@ loops.VELOCITY = 100;
 /**
  * The MIDI channel a loop plays on. Channel 0 is the player's hands and is
  * never touched, so a loop starting can never cut off a note being held.
+ *
+ * This is what puts the ceiling at eight: channel 9 is the drum channel, which
+ * `tinysynth` sets up in `reset` and which plays a kit rather than a pitch. A
+ * ninth loop would land on it and come out as percussion.
  */
 loops.channel = function (index) {
     return index + 1;
@@ -48,6 +62,35 @@ loops.stepSeconds = function (bpm) {
 loops.quantise = function (elapsed, bpm) {
     const step = Math.round(elapsed / loops.stepSeconds(bpm));
     return step > 0 ? step : 0;
+};
+
+/**
+ * A slot's value as the note before it, still ringing. Pitch 0 cannot be tied -
+ * negative zero is zero - but the board never goes near it: C0 is 12.
+ */
+loops.tie = function (midi) {
+    return -midi;
+};
+
+/** Whether a slot is a note going on rather than a note struck. */
+loops.isTie = function (value) {
+    return typeof value === 'number' && value < 0;
+};
+
+/** The note in a slot, struck or tied; null stays null. */
+loops.pitch = function (value) {
+    return value === null || value === undefined ? null : Math.abs(value);
+};
+
+/** Whether a step holds this note at all, struck or carried on. */
+loops.has = function (step, midi) {
+    return (step || []).some(value => value !== null && loops.pitch(value) === midi);
+};
+
+/** Whether this note is struck anywhere in the strip. A tie needs one. */
+loops.isStruck = function (steps, midi) {
+    return (steps || []).some(step => (step || []).some(value =>
+        value !== null && !loops.isTie(value) && loops.pitch(value) === midi));
 };
 
 /** An empty step: four rows, all silent. */
@@ -116,7 +159,7 @@ loops.setNote = function (steps, index, row, midi) {
         }
         return grown;
     }
-    if (step.indexOf(midi) !== -1) {
+    if (loops.has(step, midi)) {
         return grown;                       // already sounding in this step
     }
 
@@ -126,6 +169,72 @@ loops.setNote = function (steps, index, row, midi) {
     }
     step[at] = midi;
     return grown;
+};
+
+/**
+ * A note held down across a run of steps: struck on the first, tied across the
+ * rest. `from` and `to` are both inclusive; a press and release inside one step
+ * is one step and no tie at all.
+ */
+loops.holdNote = function (steps, from, to, midi) {
+    const first = Math.max(0, from);
+    const last = Math.max(first, to);
+    let out = loops.setNote(steps, first, null, midi);
+    for (let at = first + 1; at <= last; at++) {
+        out = loops.setNote(out, at, null, loops.tie(midi));
+    }
+    return out;
+};
+
+/**
+ * The notes of a strip as runs: each a pitch, the step it is struck on, and the
+ * number of steps it rings for. This is the one place that knows what a tie
+ * means, and both the player and the file writer read it.
+ *
+ *     [ 60, -60, -60, 64 ]  ->  {60, at 0, 3 steps}, {64, at 3, 1 step}
+ *
+ * `wrapped` lets a run carry on past the end of the strip into the start of it,
+ * which is what a loop does. The file writer leaves it off: a file has an end.
+ *
+ * A tie with nothing to carry on - the step it belonged to was deleted, say -
+ * is struck instead of being dropped, so an edit can never silence a note
+ * without showing that it has. Read straight, the first step is always the head
+ * of whatever it holds; it is only when runs may wrap that a ring of ties with
+ * no strike anywhere in it could otherwise carry on forever and never sound.
+ */
+loops.runs = function (steps, wrapped) {
+    const strip = steps || [];
+    const length = strip.length;
+    if (length === 0) {
+        return [];
+    }
+    const stepAt = i => strip[((i % length) + length) % length];
+    const tiesOn = (i, midi) => stepAt(i).some(value =>
+        loops.isTie(value) && loops.pitch(value) === midi);
+
+    const found = [];
+    strip.forEach((step, index) => {
+        (step || []).forEach((value) => {
+            if (value === null) {
+                return;
+            }
+            const midi = loops.pitch(value);
+            const carriedOn = loops.isTie(value)
+                && loops.has(stepAt(index - 1), midi)
+                && (index > 0 || (wrapped && loops.isStruck(strip, midi)));
+            if (carriedOn) {
+                return;                     // it belongs to the run before it
+            }
+            let span = 1;
+            while (span < length
+                    && (wrapped || (index + span) < length)
+                    && tiesOn(index + span, midi)) {
+                span++;
+            }
+            found.push({ midi: midi, at: index, length: span });
+        });
+    });
+    return found.sort((a, b) => (a.at - b.at) || (a.midi - b.midi));
 };
 
 /** Empties one cell, which is how a note is taken back out of the grid. */
@@ -155,6 +264,25 @@ loops.deleteStep = function (steps, index) {
         copied.splice(index, 1);
     }
     return copied;
+};
+
+/**
+ * Sorts the notes within each step low to high, rests to the bottom.
+ *
+ * Rows are slots, not voices, so this changes nothing about what is heard. It
+ * is what stops a recording from looking ragged: notes are written into a step
+ * as the keys are let go, and a chord released out of order would otherwise
+ * leave the same two notes swapped between one column and the next.
+ */
+loops.tidy = function (steps) {
+    return loops.copy(steps).map((step) => {
+        const notes = step.filter(note => note !== null)
+            .sort((a, b) => loops.pitch(a) - loops.pitch(b));
+        while (notes.length < loops.ROWS) {
+            notes.push(null);
+        }
+        return notes;
+    });
 };
 
 /**
@@ -221,7 +349,25 @@ loops.stepAt = function (loop, tick) {
 /** The notes sounding at that point, low to high - handy for a readout. */
 loops.notesAt = function (loop, tick) {
     const step = loops.stepAt(loop, tick);
-    return step ? step.filter(note => note !== null).sort((a, b) => a - b) : [];
+    return step
+        ? step.filter(note => note !== null).map(loops.pitch).sort((a, b) => a - b)
+        : [];
+};
+
+/**
+ * Ties the cursor step to the one before it: everything ringing there goes on
+ * ringing here. This is the editor's way of making a note longer.
+ */
+loops.tieStep = function (steps, index) {
+    if (index <= 0) {
+        return loops.copy(steps);
+    }
+    const grown = loops.extend(steps, index);
+    const before = grown[index - 1];
+    grown[index] = loops.emptyStep();
+    before.filter(value => value !== null)
+        .forEach((value, row) => { grown[index][row] = loops.tie(loops.pitch(value)); });
+    return grown;
 };
 
 /* ------------------------------------------------------------------ history

@@ -131,12 +131,9 @@ export function loadBandage({ audio = true } = {}) {
     const ids = ['keyboard', 'voice_select', 'range_label', 'readout', 'sustain', 'volume',
         'octave_down', 'octave_up', 'tempo', 'tempo_label',
         'transport', 'editor', 'editor_title', 'edit_grid',
-        'edit_left', 'edit_right', 'edit_insert', 'edit_delete',
+        'edit_left', 'edit_right', 'edit_insert', 'edit_delete', 'edit_tie',
         'edit_undo', 'edit_redo', 'edit_close',
-        'loop_save', 'loop_load', 'loop_file'];
-    for (let i = 0; i < 4; i++) {
-        ids.push(`play_${i}`, `record_${i}`, `edit_${i}`);
-    }
+        'loop_save', 'loop_load', 'loop_file', 'loop_table'];
     ids.forEach(id => {
         elements[id] = node('div');
         elements[id].id = id;
@@ -159,18 +156,34 @@ export function loadBandage({ audio = true } = {}) {
         hidden: false,
         listeners: {},
         getElementById: id => elements[id] || null,
-        createElement: node,
+        /**
+         * A real document finds anything with an id, including what the page
+         * has just built - which is how the loop table's buttons are reached.
+         */
+        createElement(tag) {
+            const made = node(tag);
+            let id = '';
+            Object.defineProperty(made, 'id', {
+                get: () => id,
+                set: (value) => { id = String(value); elements[id] = made; }
+            });
+            return made;
+        },
         addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
         dispatch(type, event = {}) {
             (this.listeners[type] || []).forEach(fn => fn({ preventDefault() {}, ...event }));
         },
-        /** The key under a point, black keys winning as their z-index says. */
+        /**
+         * The key under a point, black keys winning as their z-index says. The
+         * box comes off the key's own style, so the hit testing follows
+         * `keys.layout` rather than repeating its numbers.
+         */
         elementFromPoint(x, y) {
             const board = elements.keyboard;
             const hit = key => {
                 const left = parseFloat(key.style.left) / 100 * BOARD_WIDTH;
                 const width = parseFloat(key.style.width) / 100 * BOARD_WIDTH;
-                const height = key.classes.has('black') ? BOARD_HEIGHT * 0.62 : BOARD_HEIGHT;
+                const height = parseFloat(key.style.height) / 100 * BOARD_HEIGHT;
                 return x >= left && x < left + width && y >= 0 && y < height;
             };
             return board.children.filter(key => key.classes.has('black')).find(hit)
@@ -208,7 +221,7 @@ export function loadBandage({ audio = true } = {}) {
         document: document_,
         console: { log() {}, warn() {} },
         navigator: {},
-        Map, Set, Number, Array, Math, String, Object, isFinite, Boolean, Uint8Array,
+        Map, Set, WeakMap, Number, Array, Math, String, Object, isFinite, Boolean, Uint8Array,
         setInterval(fn) { const id = nextTimer++; timers.set(id, fn); return id; },
         clearInterval(id) { timers.delete(id); },
         setTimeout(fn) { return 0; },
@@ -267,6 +280,12 @@ export function loadBandage({ audio = true } = {}) {
         press(midi, pointerId = 1) {
             board.dispatch('pointerdown', { pointerId, ...pointOf(midi) });
         },
+        /** Holds a key down for `seconds` of the audio clock, then lets it go. */
+        hold(midi, seconds, pointerId = 1) {
+            board.dispatch('pointerdown', { pointerId, ...pointOf(midi) });
+            advance(seconds);
+            window_.dispatch('pointerup', { pointerId });
+        },
         slideTo(midi, pointerId = 1) {
             board.dispatch('pointermove', { pointerId, ...pointOf(midi) });
         },
@@ -283,7 +302,10 @@ export function loadBandage({ audio = true } = {}) {
         strip(index) {
             return Array.from(rec.loops[index].steps, step => {
                 const notes = Array.from(step).filter(note => note !== null);
-                return notes.length ? notes.map(noteName).join(' ') : '.';
+                // `~C4` is C4 tied over from the step before; `C4` is C4 struck
+                return notes.length
+                    ? notes.map(note => (note < 0 ? '~' : '') + noteName(Math.abs(note))).join(' ')
+                    : '.';
             });
         },
         /** What the editor is showing, row by row. */

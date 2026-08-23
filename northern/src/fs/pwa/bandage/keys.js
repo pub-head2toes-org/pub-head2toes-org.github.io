@@ -17,6 +17,7 @@ keys.DEFAULT_LOWEST = 48;        // C3, so middle C (60) sits in the middle
 keys.MIN_LOWEST = 12;            // C0
 keys.MAX_LOWEST = 96;            // C7, whose top key is C9 - still inside MIDI
 keys.BLACK_WIDTH = 0.62;         // of a white key, as a real piano roughly is
+keys.BLACK_HEIGHT = 0.465;       // of the board: short enough to leave the white keys room
 
 keys.NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 keys.BLACK = [1, 3, 6, 8, 10];
@@ -44,10 +45,14 @@ keys.shift = function (lowest, octaves) {
 };
 
 /**
- * The 25 keys from `lowest` up, each with where it sits on a keyboard one unit
- * wide. White keys divide that width evenly; a black key straddles the line
- * between the two white keys it sits between, which is what makes the gaps in
- * the black row fall in the right places without any special casing.
+ * The 25 keys from `lowest` up, each with where it sits on a board one unit wide
+ * and one unit tall. White keys divide the width evenly; a black key straddles
+ * the line between the two white keys it sits between, which is what makes the
+ * gaps in the black row fall in the right places without any special casing.
+ *
+ * The height is here rather than in the stylesheet so that the one file that
+ * knows the geometry knows all of it - the hit testing in the tests reads the
+ * same number the page is drawn from.
  */
 keys.layout = function (lowest) {
     const bottom = keys.normalize(lowest);
@@ -69,6 +74,7 @@ keys.layout = function (lowest) {
             name: keys.name(midi),
             black: black,
             width: black ? blackWidth : whiteWidth,
+            height: black ? keys.BLACK_HEIGHT : 1,
             left: black
                 ? (whitesSoFar * whiteWidth) - (blackWidth / 2)
                 : whitesSoFar * whiteWidth

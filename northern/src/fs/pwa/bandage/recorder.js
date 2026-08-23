@@ -29,6 +29,13 @@ const TIMER_MS = 25;              // how often the scheduler wakes
 const HORIZON = 0.15;             // seconds of notes handed over each time
 const EDIT_COLUMNS = 8;           // steps visible in the editor at once
 
+/** The three rows of the loop table, in the order they are drawn. */
+const FUNCTIONS = [
+  { key: 'play', label: 'Play', verb: 'Play', glyph: '\u25B6' },
+  { key: 'record', label: 'Record', verb: 'Record', glyph: '\u25CF' },
+  { key: 'edit', label: 'Edit', verb: 'Edit', glyph: '\u270E' }
+];
+
 const rec = {
   loops: loops.blank(),
   /** the loops sounding, by index */
@@ -52,6 +59,8 @@ const rec = {
   histories: [],
   /** the notes of the chord being entered in the editor */
   pending: new Set(),
+  /** midi -> the step it was struck on, for keys still down while recording */
+  held: new Map(),
   /** the last thing the transport line said, so it is not written every 25ms */
   said: '',
   elements: {}
@@ -120,13 +129,46 @@ function pump() {
   showTransport();
 }
 
-/** One step of every running loop, on its own channel and its own instrument. */
+/**
+ * The runs of a strip, worked out once per edit rather than once per step.
+ *
+ * Every edit in `loops.js` returns a *new* array, so the array itself is the
+ * cache key: a strip that has not been replaced has not changed.
+ */
+const runsOf = (() => {
+  const seen = new WeakMap();
+  return (steps) => {
+    if (!seen.has(steps)) {
+      seen.set(steps, loops.runs(steps, true));
+    }
+    return seen.get(steps);
+  };
+})();
+
+/**
+ * One step of every running loop, on its own channel and its own instrument.
+ *
+ * A note is struck only where its run begins, and stops at the end of the run,
+ * so a note tied across four steps is one note four steps long rather than four
+ * notes one step long. The gate leaves a hair of silence before the next step,
+ * which is what keeps a repeated note from sounding tied.
+ */
 function sound(tick, at, step) {
   rec.running.forEach((index) => {
+    const loop = rec.loops[index];
+    const length = loop.steps.length;
+    if (length === 0) {
+      return;
+    }
+    const here = ((tick % length) + length) % length;
     const channel = loops.channel(index);
-    loops.notesAt(rec.loops[index], tick).forEach((midi) => {
-      app.synth.noteOn(channel, midi, loops.VELOCITY, at);
-      app.synth.noteOff(channel, midi, at + (step * loops.GATE));
+
+    runsOf(loop.steps).forEach((run) => {
+      if (run.at !== here) {
+        return;
+      }
+      app.synth.noteOn(channel, run.midi, loops.VELOCITY, at);
+      app.synth.noteOff(channel, run.midi, at + ((run.length - 1 + loops.GATE) * step));
     });
   });
 }
@@ -172,6 +214,7 @@ function toggleRecord(index) {
   closeEditor();
 
   const program = Number(app.elements.voice.value) || 0;
+  rec.held.clear();
   rec.loops[index] = loops.create(program);
   rec.running.delete(index);
   app.synth.allSoundOff(loops.channel(index));
@@ -198,10 +241,12 @@ function finishRecording() {
   if (index === null) {
     return;
   }
+  // A key still down when Record is pressed again ends here, not nowhere.
+  [...rec.held.keys()].forEach(releaseIntoLoop);
   rec.recording = null;
 
   const loop = rec.loops[index];
-  loop.steps = loops.padToBar(loops.trim(loop.steps));
+  loop.steps = loops.padToBar(loops.trim(loops.tidy(loop.steps)));
   loop.steps = loops.rotate(loop.steps, rec.originTick);
   rec.histories[index] = loops.history(loop.steps);
 
@@ -218,6 +263,7 @@ function stopAll() {
   rec.recording = null;
   rec.running.clear();
   rec.pending.clear();
+  rec.held.clear();
   stopClock();
   showTable();
 }
@@ -239,16 +285,53 @@ function observe(kind, midi) {
     editorInput(kind, midi);
     return;
   }
-  if (rec.recording === null || kind !== 'on') {
+  if (rec.recording === null) {
     return;
   }
-  const step = loops.stepSeconds(app.bpm);
+  if (kind === 'on') {
+    strikeIntoLoop(midi);
+  } else {
+    releaseIntoLoop(midi);
+  }
+}
+
+/** The step the clock is on now, as the recording counts them. */
+function recordingStep() {
+  return loops.quantise(now() - rec.origin, app.bpm);
+}
+
+/**
+ * A key struck: the note goes down on the step it was played on, so the player
+ * sees it at once, and the step is kept so that letting go can fill in the rest.
+ */
+function strikeIntoLoop(midi) {
   const elapsed = now() - rec.origin;
-  if (elapsed < -step / 2) {
+  if (elapsed < -(loops.stepSeconds(app.bpm) / 2)) {
     return;                              // still counting in to the bar
   }
+  if (rec.held.has(midi)) {
+    return;                              // two fingers on one key: the first holds it
+  }
+  const at = loops.quantise(elapsed, app.bpm);
+  rec.held.set(midi, at);
   const loop = rec.loops[rec.recording];
-  loop.steps = loops.setNote(loop.steps, loops.quantise(elapsed, app.bpm), null, midi);
+  loop.steps = loops.setNote(loop.steps, at, null, midi);
+  showTransport();
+}
+
+/**
+ * A key let go: every step from the one it was struck on to the one before the
+ * release gets the note, so a long press comes back as a long note rather than
+ * as a blip in a single slot.
+ */
+function releaseIntoLoop(midi) {
+  if (!rec.held.has(midi)) {
+    return;
+  }
+  const from = rec.held.get(midi);
+  rec.held.delete(midi);
+  const loop = rec.loops[rec.recording];
+  loop.steps = loops.holdNote(loop.steps, from, recordingStep() - 1, midi);
   showTransport();
 }
 
@@ -409,14 +492,23 @@ function drawEditor() {
       const step = loop.steps[at];
       const note = step ? step[row] : null;
 
+      const empty = note === null || note === undefined;
+      const tied = loops.isTie(note);
+
       const cell = document.createElement('td');
       cell.className = 'cell';
-      cell.textContent = note === null || note === undefined ? '·' : keys.name(note);
+      // A run reads across the row as `C4 — — —`, the way a piano roll draws it
+      cell.textContent = empty ? '·' : (tied ? '—' : keys.name(note));
       cell.dataset.step = at;
       cell.dataset.row = row;
       cell.classList.toggle('at', at === rec.cursor);
       cell.classList.toggle('past', at >= loop.steps.length);
-      cell.classList.toggle('filled', note !== null && note !== undefined);
+      cell.classList.toggle('filled', !empty);
+      cell.classList.toggle('tied', tied);
+      if (!empty) {
+        cell.setAttribute('aria-label',
+          `${keys.name(loops.pitch(note))}${tied ? ' held' : ''}`);
+      }
       if (at % loops.BAR === 0) {
         cell.classList.add('bar');                 // where a bar begins
       }
@@ -439,7 +531,7 @@ function drawEditor() {
  */
 
 function saveLoops() {
-  const bytes = smf.encode(rec.loops, app.bpm);
+  const bytes = smf.encode(rec.loops, app.bpm, loops);
   const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/midi' }));
   const link = document.createElement('a');
   link.href = url;
@@ -474,12 +566,71 @@ function loadLoops(file) {
 
 /* --------------------------------------------------------------------- boot */
 
-function pick(prefix) {
-  const found = [];
+/**
+ * Draws the loop table: the functions down the side, one column per loop.
+ *
+ * It is built rather than written out because `loops.COUNT` is what says how
+ * many loops there are, and a table typed into the page by hand is a second
+ * place to say it - one that can disagree.
+ */
+function buildTable() {
+  const table = document.getElementById('loop_table');
+  const head = document.createElement('thead');
+  const across = document.createElement('tr');
+
+  const corner = document.createElement('th');
+  corner.setAttribute('scope', 'col');
+  corner.textContent = 'Loop';
+  across.appendChild(corner);
+
   for (let i = 0; i < loops.COUNT; i++) {
-    found.push(document.getElementById(`${prefix}_${i}`));
+    const heading = document.createElement('th');
+    heading.setAttribute('scope', 'col');
+    heading.textContent = String(i + 1);
+    across.appendChild(heading);
   }
-  return found;
+  head.appendChild(across);
+  table.appendChild(head);
+
+  const body = document.createElement('tbody');
+  FUNCTIONS.forEach((fn) => {
+    rec.elements[fn.key] = [];
+    const row = document.createElement('tr');
+
+    const label = document.createElement('th');
+    label.setAttribute('scope', 'row');
+    label.textContent = fn.label;
+    row.appendChild(label);
+
+    for (let i = 0; i < loops.COUNT; i++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `loop-button ${fn.key}`;
+      button.id = `${fn.key}_${i}`;
+      button.textContent = fn.glyph;
+      button.setAttribute('aria-label', `${fn.verb} loop ${i + 1}`);
+      button.setAttribute('aria-pressed', 'false');
+      button.addEventListener('click', () => press(fn.key, i));
+
+      const cell = document.createElement('td');
+      cell.appendChild(button);
+      row.appendChild(cell);
+      rec.elements[fn.key].push(button);
+    }
+    body.appendChild(row);
+  });
+  table.appendChild(body);
+}
+
+/** What a button in the table does, by the row it sits in. */
+function press(what, index) {
+  if (what === 'play') {
+    togglePlay(index);
+  } else if (what === 'record') {
+    toggleRecord(index);
+  } else {
+    return rec.editing === index ? closeEditor() : openEditor(index);
+  }
 }
 
 function initRecorder() {
@@ -487,9 +638,6 @@ function initRecorder() {
     return;                              // no Web Audio: bandage.js has left the page
   }
   rec.elements = {
-    play: pick('play'),
-    record: pick('record'),
-    edit: pick('edit'),
     transport: document.getElementById('transport'),
     editor: document.getElementById('editor'),
     editorTitle: document.getElementById('editor_title'),
@@ -499,15 +647,8 @@ function initRecorder() {
     file: document.getElementById('loop_file')
   };
 
+  buildTable();
   rec.histories = rec.loops.map(loop => loops.history(loop.steps));
-
-  rec.elements.play.forEach((button, i) =>
-    button.addEventListener('click', () => togglePlay(i)));
-  rec.elements.record.forEach((button, i) =>
-    button.addEventListener('click', () => toggleRecord(i)));
-  rec.elements.edit.forEach((button, i) =>
-    button.addEventListener('click', () =>
-      (rec.editing === i ? closeEditor() : openEditor(i))));
 
   document.getElementById('edit_left').addEventListener('click', () => moveCursor(-1));
   document.getElementById('edit_right').addEventListener('click', () => moveCursor(1));
@@ -515,6 +656,15 @@ function initRecorder() {
     applyEdit(steps => loops.insertStep(steps, rec.cursor)));
   document.getElementById('edit_delete').addEventListener('click', () =>
     applyEdit(steps => loops.deleteStep(steps, rec.cursor)));
+  // Tie: what is ringing in the step before goes on ringing here, and the
+  // cursor moves along, so a note is made longer by tapping it repeatedly.
+  document.getElementById('edit_tie').addEventListener('click', () => {
+    if (rec.editing === null || rec.cursor === 0) {
+      return;
+    }
+    applyEdit(steps => loops.tieStep(steps, rec.cursor));
+    moveCursor(1);
+  });
   rec.elements.undo.addEventListener('click', () => undoEdit(false));
   rec.elements.redo.addEventListener('click', () => undoEdit(true));
   document.getElementById('edit_close').addEventListener('click', closeEditor);
