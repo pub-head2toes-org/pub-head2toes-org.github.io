@@ -1,9 +1,12 @@
-const CACHE_NAME = 'bandage-v1';
+const CACHE_NAME = 'bandage-v2';
 const urlsToCache = [
   './index.html',
   './error.html',
   './bandage.js',
   './keys.js',
+  './loops.js',
+  './smf.js',
+  './recorder.js',
   './webaudio-tinysynth.js',
   './styles.css',
   './manifest.json',

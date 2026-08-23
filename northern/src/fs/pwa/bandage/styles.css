@@ -1,5 +1,6 @@
 :root {
   --theme: #005E7A;
+  --rec: #a3323c;
   --theme-dark: #00455a;
   --bg: #101619;
   --panel: #18232a;
@@ -33,39 +34,217 @@ body {
   height: 100dvh;                   /* the phone's real estate, minus its bars */
 }
 
-/* ---------- The reserved upper third ---------- */
+/* ---------- The upper third: the four loops ---------- */
 
 #stage {
+  position: relative;                 /* the editor is laid over this */
   flex: 0 0 33.3333%;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px calc(12px + env(safe-area-inset-left)) 12px calc(12px + env(safe-area-inset-right));
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px calc(8px + env(safe-area-inset-left)) 4px calc(8px + env(safe-area-inset-right));
   background: linear-gradient(180deg, var(--panel), var(--bg));
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
 }
 
-.stage-note {
-  text-align: center;
-  color: var(--muted);
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 16px 24px;
-  max-width: 480px;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-.stage-note h1 {
-  margin: 0;
-  color: var(--theme);
-  font-size: 1.8rem;
-  letter-spacing: 2px;
+.spacer { flex: 1 1 auto; }
+
+/* Rows are the functions, columns are the loops */
+#loop_table {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.7rem;
+}
+
+#loop_table th {
+  font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-align: left;
+  padding: 0 6px 0 0;
+  white-space: nowrap;
 }
 
-.stage-note p {
-  margin: 6px 0 0;
-  font-size: 0.85rem;
+#loop_table thead th {
+  text-align: center;
+  padding: 0 0 2px;
+}
+
+#loop_table thead th:first-child,
+#loop_table tbody th {
+  width: 4.2rem;
+}
+
+#loop_table td {
+  padding: 1px;
+  text-align: center;
+}
+
+.loop-button {
+  width: 100%;
+  min-height: 26px;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.loop-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.loop-button[aria-pressed="true"] {
+  background: var(--theme);
+  border-color: var(--theme);
+  color: #fff;
+}
+
+.loop-button.record[aria-pressed="true"] {
+  background: var(--rec);
+  border-color: var(--rec);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink { to { opacity: 0.45; } }
+
+#loop_foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+#loop_foot button {
+  font: inherit;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+#transport {
+  font-variant-numeric: tabular-nums;
+  color: var(--theme);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- The editor, over the same panel ---------- */
+
+#editor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px calc(8px + env(safe-area-inset-left)) 4px calc(8px + env(safe-area-inset-right));
+  background: var(--panel);
+  z-index: 3;
+}
+
+#editor[hidden] { display: none; }
+
+#editor_head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#editor_title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--theme);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#editor_head button {
+  font: inherit;
+  font-size: 0.7rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+#editor_head button:disabled { opacity: 0.35; cursor: default; }
+
+/* Four rows are the four notes at once; the columns fill the panel's width */
+#edit_grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+#edit_grid .cell {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-align: center;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--bg);
+  padding: 2px 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+#edit_grid .cell.filled {
+  color: #fff;
+  background: var(--theme-dark);
+  border-color: var(--theme);
+}
+
+/* The bar line, so a player can see where the pattern comes round */
+#edit_grid .cell.bar { border-left: 2px solid var(--muted); }
+
+/* Past the end of the loop: writing here is what makes it longer */
+#edit_grid .cell.past { opacity: 0.4; }
+
+#edit_grid .cell.at {
+  outline: 2px solid var(--theme);
+  outline-offset: -2px;
+}
+
+#editor_hint {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  color: var(--muted);
 }
 
 /* ---------- Console: toolbar + keys, the lower two thirds ---------- */
@@ -138,9 +317,15 @@ body {
   font-size: 0.9rem;
 }
 
-#volume {
+#volume,
+#tempo {
   width: 108px;
   accent-color: var(--theme);
+}
+
+#tempo_label {
+  color: var(--theme);
+  font-variant-numeric: tabular-nums;
 }
 
 .readout #readout {
@@ -219,8 +404,14 @@ body {
   font-weight: 700;
 }
 
+/* A phone on its side leaves the panel about 120px tall: everything shrinks,
+   and the two lines that are only prose give up their space first. */
 @media (max-height: 420px) {
-  .stage-note { padding: 8px 14px; }
-  .stage-note h1 { font-size: 1.2rem; }
-  .stage-note p { display: none; }
+  #stage { gap: 2px; padding-top: 4px; }
+  #loop_table { font-size: 0.6rem; }
+  #loop_table thead th, #loop_table tbody th { width: 3.4rem; }
+  .loop-button { min-height: 20px; padding: 1px 0; font-size: 0.8rem; }
+  #loop_foot { font-size: 0.6rem; }
+  #editor_hint { display: none; }
+  #edit_grid .cell { font-size: 0.55rem; }
 }

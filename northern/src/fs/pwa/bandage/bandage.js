@@ -11,9 +11,13 @@
  * down (a finger, a typed key, the sustain latch). A note stops only when the
  * last holder lets go, so sliding a finger off a key that the keyboard is also
  * holding does not cut it short.
+ *
+ * The keyboard knows nothing about the loops. It only announces what the player
+ * struck, on `app.observers`; `recorder.js` is what listens, and what happens to
+ * be recording is none of the keyboard's business.
  */
 
-const CHANNEL = 0;
+const CHANNEL = 0;                  // the hands. Loops take 1 to 4.
 
 const app = {
   synth: null,
@@ -27,8 +31,27 @@ const app = {
   typed: new Set(),
   /** the notes the sustain latch is holding */
   latched: new Set(),
+  /** beats a minute, shared by the loops - see loops.stepSeconds */
+  bpm: loops.DEFAULT_BPM,
+  /** (kind, midi) => void, for anything that wants to know what was played */
+  observers: [],
   elements: {}
 };
+
+/**
+ * Tells the listeners what the player did: 'on' and 'off' for a key struck and
+ * let go, 'silence' for everything stopping at once. A listener that throws is
+ * not allowed to take the keyboard down with it.
+ */
+function notify(kind, midi) {
+  app.observers.forEach((observer) => {
+    try {
+      observer(kind, midi);
+    } catch (error) {
+      console.warn('observer failed', error);
+    }
+  });
+}
 
 /* ---------------------------------------------------------------- sounding */
 
@@ -68,6 +91,22 @@ function letGo(midi) {
   release(midi);
 }
 
+/**
+ * A key struck and a key let go, as the player meant them - one call per
+ * gesture, which is what a recorder needs. `hold` fires only when a note goes
+ * from silent to sounding, so a note re-struck while the sustain latch is still
+ * holding it would never be heard of again.
+ */
+function strike(midi) {
+  notify('on', midi);
+  hold(midi);
+}
+
+function unstrike(midi) {
+  notify('off', midi);
+  letGo(midi);
+}
+
 /** Stops everything: used on octave change, on sustain off, and when hidden. */
 function silence() {
   app.pointers.clear();
@@ -79,6 +118,16 @@ function silence() {
   Array.prototype.forEach.call(board.querySelectorAll('.key.down'),
     (key) => key.classList.remove('down'));
   showReadout();
+}
+
+/**
+ * Everything stops, the loops included. This is not the same as `silence`: the
+ * octave buttons let go of the keys because the board has moved under them, and
+ * a loop playing has nothing to do with where the keys are.
+ */
+function panic() {
+  silence();
+  notify('silence', null);
 }
 
 /* -------------------------------------------------------------------- view */
@@ -153,7 +202,7 @@ function onPointerDown(event) {
   event.preventDefault();
   wakeAudio();
   app.pointers.set(event.pointerId, midi);
-  hold(midi);
+  strike(midi);
 }
 
 /** A finger sliding across the board: a glissando, not a drag. */
@@ -171,9 +220,9 @@ function onPointerMove(event) {
     app.pointers.delete(event.pointerId);
   } else {
     app.pointers.set(event.pointerId, now);
-    hold(now);
+    strike(now);
   }
-  letGo(was);
+  unstrike(was);
 }
 
 function onPointerUp(event) {
@@ -182,7 +231,7 @@ function onPointerUp(event) {
   }
   const midi = app.pointers.get(event.pointerId);
   app.pointers.delete(event.pointerId);
-  letGo(midi);
+  unstrike(midi);
 }
 
 function onKeyDown(event) {
@@ -201,7 +250,7 @@ function onKeyDown(event) {
   event.preventDefault();
   wakeAudio();
   app.typed.add(midi);
-  hold(midi);
+  strike(midi);
 }
 
 function onKeyUp(event) {
@@ -210,7 +259,7 @@ function onKeyUp(event) {
     return;
   }
   app.typed.delete(midi);
-  letGo(midi);
+  unstrike(midi);
 }
 
 /* ---------------------------------------------------------------- controls */
@@ -236,6 +285,13 @@ function setSustain(on) {
       release(midi);
     });
   }
+}
+
+/** The tempo every loop keeps: one clock, so four of them cannot drift apart. */
+function setTempo(bpm) {
+  app.bpm = Math.min(loops.MAX_BPM, Math.max(loops.MIN_BPM, Number(bpm) || loops.DEFAULT_BPM));
+  app.elements.tempo.value = String(app.bpm);
+  app.elements.tempoLabel.textContent = `${app.bpm} bpm`;
 }
 
 function fillVoices() {
@@ -266,7 +322,9 @@ function init() {
     range: document.getElementById('range_label'),
     readout: document.getElementById('readout'),
     sustain: document.getElementById('sustain'),
-    volume: document.getElementById('volume')
+    volume: document.getElementById('volume'),
+    tempo: document.getElementById('tempo'),
+    tempoLabel: document.getElementById('tempo_label')
   };
 
   // No Web Audio, no instrument: say so on the page kept for it.
@@ -283,6 +341,7 @@ function init() {
   fillVoices();
   drawKeyboard();
   setSustain(false);
+  setTempo(app.elements.tempo.value);
 
   const board = app.elements.keyboard;
   board.addEventListener('pointerdown', onPointerDown);
@@ -303,16 +362,17 @@ function init() {
     app.synth.setMasterVol(Number(event.target.value) / 100);
   });
   app.elements.sustain.addEventListener('click', () => setSustain(!app.sustain));
+  app.elements.tempo.addEventListener('input', (event) => setTempo(event.target.value));
   document.getElementById('octave_down').addEventListener('click', () => changeOctave(-1));
   document.getElementById('octave_up').addEventListener('click', () => changeOctave(1));
 
   // Leaving the page with a note held would leave it ringing on return.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      silence();
+      panic();
     }
   });
-  window.addEventListener('blur', silence);
+  window.addEventListener('blur', panic);
 
   registerServiceWorker();
 }
