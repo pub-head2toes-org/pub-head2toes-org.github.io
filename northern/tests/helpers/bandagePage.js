@@ -133,13 +133,15 @@ export function loadBandage({ audio = true } = {}) {
         'transport', 'editor', 'editor_title', 'edit_grid',
         'edit_left', 'edit_right', 'edit_insert', 'edit_delete', 'edit_tie',
         'edit_undo', 'edit_redo', 'edit_close',
-        'loop_save', 'loop_load', 'loop_file', 'loop_table'];
+        'loop_save', 'loop_load', 'loop_file', 'loop_table', 'loop_all',
+        'song_bar', 'song_play', 'song_time', 'song_seek'];
     ids.forEach(id => {
         elements[id] = node('div');
         elements[id].id = id;
     });
     elements.volume.value = '60';
     elements.tempo.value = '120';
+    elements.song_seek.value = '0';
     const tbody = node('tbody');
     elements.edit_grid.appendChild(tbody);
 
@@ -202,18 +204,63 @@ export function loadBandage({ audio = true } = {}) {
     };
 
     class FakeSynth {
-        constructor(options) { this.options = options; this.programs = {}; this.volume = null; }
+        constructor(options) {
+            this.options = options; this.programs = {}; this.volume = null;
+            this.chvol = {}; this.log = []; this.playing = 0;
+            this.playTick = 0; this.maxTick = 0;
+        }
         get actx() { return { get state() { return 'running'; }, get currentTime() { return clock.time; }, resume() {} }; }
         setMasterVol(v) { this.volume = v; }
         setProgram(ch, program) { this.programs[ch] = program; }
         noteOn(ch, note, velocity, at) { played.push({ on: note, velocity, ch, at }); }
         noteOff(ch, note, at) { played.push({ off: note, ch, at }); }
         allSoundOff(ch) { played.push({ allOff: true, ch }); }
+        resetAllControllers(ch) { played.push({ reset: true, ch }); }
+        setChVol(ch, v) { this.chvol[ch] = v; }
         /** The library does the parsing; nothing here pretends to. */
         loadMIDI(data) {
             reader = reader || midiReader();
             reader.loadMIDI(data);
             this.song = reader.song;
+            this.maxTick = this.song.ev.length
+                ? this.song.ev[this.song.ev.length - 1].t : 0;
+            this.playing = 0;
+            this.playTick = 0;
+        }
+
+        /* The library's own song player, as much of it as the app can see: it
+           plays by itself once started, so the fake one moves with the clock. */
+        get tick2Time() { return 4 * 60 / (this.song.tempo || 120) / this.song.timebase; }
+        playMIDI() {
+            if (!this.song) return;
+            if (this.playTick >= this.maxTick) this.playTick = 0;
+            this.playing = 1;
+            this.startedAt = clock.time;
+            this.startedTick = this.playTick;
+            this.log.push('play');
+        }
+        stopMIDI() {
+            this.playing = 0;
+            for (let ch = 0; ch < 16; ch++) played.push({ allOff: true, ch });
+            this.log.push('stop');
+        }
+        locateMIDI(tick) {
+            const was = this.playing;
+            this.stopMIDI();
+            this.playTick = Math.max(0, Math.min(this.maxTick, tick));
+            this.log.push(`locate ${this.playTick}`);
+            if (was) this.playMIDI();
+        }
+        getPlayStatus() {
+            if (this.playing) {
+                const gone = (clock.time - this.startedAt) / this.tick2Time;
+                this.playTick = this.startedTick + gone;
+                if (this.playTick >= this.maxTick) {
+                    this.playTick = this.maxTick;
+                    this.playing = 0;               // it ran to the end
+                }
+            }
+            return { play: this.playing, maxTick: this.maxTick, curTick: this.playTick };
         }
     }
 
@@ -246,6 +293,7 @@ export function loadBandage({ audio = true } = {}) {
     vm.runInContext(read('recorder.js'), context, { filename: 'recorder.js' });
 
     const app = vm.runInContext('app', context);
+    const synth = app.synth;
     const noteName = vm.runInContext('keys', context).name;
     const rec = vm.runInContext('typeof rec === "object" ? rec : null', context);
     const board = elements.keyboard;
@@ -325,6 +373,17 @@ export function loadBandage({ audio = true } = {}) {
                 .find(one => Number(one.dataset.step) === step);
             tbody.dispatch('click', { target: cell });
         },
+        /** The song bar, as a player sees it. */
+        song() {
+            return {
+                shown: !elements.song_bar.hidden,
+                time: elements.song_time.textContent,
+                playing: elements.song_play.getAttribute('aria-pressed') === 'true',
+                at: Number(elements.song_seek.value)
+            };
+        },
+        /** What the library's player was asked to do: ['play', 'locate 240', 'stop'] */
+        songLog() { return synth ? synth.log : []; },
         /** The notes the loops sounded, by channel, since the last look. */
         loopNotes(channel) {
             return played.filter(call => call.on !== undefined && call.ch === channel)

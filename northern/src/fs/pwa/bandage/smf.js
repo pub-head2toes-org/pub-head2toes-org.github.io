@@ -127,6 +127,61 @@ smf.encode = function (all, bpm, model) {
  * Ticks come back in the file's own units and the timebase the library keeps
  * is four times the division it read, so a step is `timebase / 8` ticks.
  */
+/**
+ * Where a tick falls in a song, in seconds, following its tempo map.
+ *
+ * The player reads tempo changes as it goes and rewrites `song.tempo` while it
+ * runs, so a position cannot be worked out from whatever that says at the time.
+ * The changes are walked once here instead, at the moment the file is read,
+ * and what comes back is good for the life of the song.
+ */
+smf.clock = function (song) {
+    const events = (song && song.ev) || [];
+    const timebase = (song && song.timebase) || smf.DIVISION;
+    // The parser multiplies the file's division by four, so `timebase` counts
+    // ticks to a whole note rather than to a beat - which is why there is a
+    // four here, and in `tick2Time` in the library itself.
+    const perTick = bpm => 4 * 60 / bpm / timebase;
+
+    // Each mark is a tempo change: the tick it happens on, the second it falls
+    // on, and the rate from there until the next one.
+    const marks = [{ tick: 0, at: 0, bpm: 120 }];
+    events.forEach((event) => {
+        const message = event.m || [];
+        if (message[0] !== 0xff51) {
+            return;
+        }
+        const last = marks[marks.length - 1];
+        const at = last.at + ((event.t - last.tick) * perTick(last.bpm));
+        if (event.t === last.tick) {
+            marks[marks.length - 1] = { tick: event.t, at: at, bpm: message[1] };
+        } else {
+            marks.push({ tick: event.t, at: at, bpm: message[1] });
+        }
+    });
+
+    const at = function (tick) {
+        const wanted = Math.max(0, tick || 0);
+        let mark = marks[0];
+        for (let i = marks.length - 1; i >= 0; i--) {
+            if (marks[i].tick <= wanted) {
+                mark = marks[i];
+                break;
+            }
+        }
+        return mark.at + ((wanted - mark.tick) * perTick(mark.bpm));
+    };
+
+    const last = events.length ? events[events.length - 1].t : 0;
+    return { at: at, ticks: last, seconds: at(last) };
+};
+
+/** Seconds as a player reads them: 0:07, 5:09. */
+smf.mmss = function (seconds) {
+    const whole = Math.max(0, Math.floor(seconds || 0));
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+};
+
 smf.decode = function (song, model) {
     const made = model.blank();
     if (!song || !Array.isArray(song.ev)) {
@@ -135,7 +190,9 @@ smf.decode = function (song, model) {
 
     const perStep = Math.max(1, Math.round((song.timebase || smf.DIVISION * 4) / 8));
     const lengths = new Array(made.length).fill(0);
+    const written = made.map(() => model.writer());
     const open = new Map();                      // 'channel:note' -> the step it began on
+    let marked = false;                          // did anything say where it ends?
     let bpm = song.tempo || model.DEFAULT_BPM;
 
     /** A note that has ended: the steps it covered get it, tied after the first. */
@@ -147,7 +204,7 @@ smf.decode = function (song, model) {
         const from = open.get(key);
         open.delete(key);
         const to = Math.max(from, endStep - 1);
-        made[index].steps = model.holdNote(made[index].steps, from, to, note);
+        written[index].hold(from, to, note);
         lengths[index] = Math.max(lengths[index], to + 1);
     };
 
@@ -181,6 +238,7 @@ smf.decode = function (song, model) {
         case 0xb0:
             if (message[1] === smf.END_MARKER) {
                 lengths[index] = Math.max(lengths[index], at);
+                marked = true;
             }
             break;
         }
@@ -192,14 +250,26 @@ smf.decode = function (song, model) {
         close(index, note, lengths[index] || 1);
     });
 
+    // Nobody said where anything ends, so this is somebody else's song rather
+    // than loops we wrote: its parts are one piece of music and have to stay in
+    // step with each other. Left at their own lengths they each come round at a
+    // different moment and the song comes apart - the shortest part first, and
+    // after that never in phase again. So they all end where the longest does.
+    const whole = !marked;
+    if (whole) {
+        const longest = Math.max(0, ...lengths);
+        lengths.fill(longest);
+    }
+
     // The marker says where a loop ends; the rests up to it are put back.
     made.forEach((loop, index) => {
+        const strip = written[index].steps();
         loop.steps = lengths[index] > 0
-            ? model.extend(loop.steps, lengths[index] - 1).slice(0, lengths[index])
+            ? model.extend(strip, lengths[index] - 1).slice(0, lengths[index])
             : [];
     });
 
-    return { loops: made, bpm: bpm };
+    return { loops: made, bpm: bpm, whole: whole };
 };
 
 if (typeof module === 'object' && module.exports) {

@@ -298,6 +298,23 @@ describe('the bandage PWA shell', () => {
             'so a narrow phone gets a second row instead of squeezed buttons');
     });
 
+    // Five scripts, one global scope. `loops.js` grew a private `hold` once and
+    // silently took over the `hold` in `bandage.js` that holds a key down.
+    it('gives no two scripts the same name at the top level', () => {
+        const scripts = ['keys.js', 'loops.js', 'smf.js', 'bandage.js', 'recorder.js'];
+        const seen = new Map();
+
+        scripts.forEach((script) => {
+            const names = [...read(script).matchAll(/^(?:function|const|let|var) +([\w$]+)/gm)];
+            names.forEach(([, name]) => {
+                assert.ok(!seen.has(name),
+                    `${name} is declared in both ${seen.get(name)} and ${script}`);
+                seen.set(name, script);
+            });
+        });
+        assert.ok(seen.size > 20, `only found ${seen.size} names to check`);
+    });
+
     it('leaves the loop table to be built, so one number decides how many', () => {
         const stage = index.match(/<section id="stage"[\s\S]*?<\/section>/)[0];
 
@@ -1510,5 +1527,271 @@ describe('saving and loading the loops', () => {
 
         assert.strictEqual(page.app.synth.volume, 0.25);
         assert.strictEqual(page.app.synth.programs[0], 0, 'the hands keep their voice');
+    });
+});
+
+describe('a whole song, rather than eight loops', () => {
+    /** What the library's parser leaves behind, without needing a file. */
+    function song(events, timebase = 480) {
+        return { timebase: timebase, tempo: 120, ev: events };
+    }
+    const on = (t, ch, note) => ({ t: t, m: [0x90 | ch, note, 100] });
+    const off = (t, ch, note) => ({ t: t, m: [0x80 | ch, note, 0] });
+
+    it('puts the parts of somebody else`s song on one length', () => {
+        // Two parts of different lengths, and nothing saying where either ends
+        const read = smf.decode(song([
+            on(0, 1, 60), off(480, 1, 60),          // channel 1, a bar long
+            on(0, 2, 67), off(1920, 2, 67)          // channel 2, four times that
+        ]), loops);
+
+        const lengths = read.loops.map(loop => loop.steps.length);
+        assert.ok(read.whole, 'nothing marked its end, so it is a song');
+        assert.strictEqual(lengths[0], lengths[1], `parts came back ${lengths[0]} and ${lengths[1]}`);
+        assert.ok(lengths[0] > 0);
+    });
+
+    // Left at their own lengths they each come round at a different moment
+    it('leaves our own loops at the lengths they were saved with', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.press(60); page.lift();
+        page.click('edit_close');
+        page.click('edit_1');
+        for (let i = 0; i < 5; i++) { page.press(64); page.lift(); }
+        page.click('edit_close');
+
+        page.click('loop_save');
+        const bytes = page.saved[page.saved.length - 1].parts[0];
+        page.element('loop_file').dispatch('change', { target: { files: [bytes], value: '' } });
+
+        assert.notStrictEqual(page.rec.loops[0].steps.length, page.rec.loops[1].steps.length,
+            'a one note loop and a five note loop are not the same length');
+    });
+
+    // The parser multiplies the file's division by four, so a timebase of 480
+    // is 480 ticks to a whole note - four beats, two seconds at 120bpm.
+    // A real song, if one has been left in the folder: five minutes of Clocks
+    // across 29 tracks and 15 channels is nothing like what this app writes.
+    const sample = path.join(PWA, 'Clocks.mid');
+    it('takes a real song without its parts coming apart', { skip: !fs.existsSync(sample) }, () => {
+        const page = loadBandage();
+        const bytes = new Uint8Array(fs.readFileSync(sample));
+
+        page.element('loop_file').dispatch('change', { target: { files: [bytes], value: '' } });
+
+        const lengths = page.rec.loops.map(loop => loop.steps.length);
+        assert.strictEqual(new Set(lengths).size, 1, `came back as ${lengths.join(' ')}`);
+        assert.ok(lengths[0] > 100, 'and it is a song, not a bar');
+        assert.strictEqual(page.song().shown, true, 'and can be played whole');
+    });
+
+    it('reads a tempo map rather than one tempo', () => {
+        const clock = smf.clock(song([
+            { t: 0, m: [0xff51, 120] },
+            { t: 480, m: [0xff51, 240] },           // twice the speed, one bar in
+            on(960, 1, 60)
+        ]));
+
+        assert.ok(Math.abs(clock.at(480) - 2) < 1e-9, `the first bar took ${clock.at(480)}s`);
+        assert.ok(Math.abs(clock.at(960) - 3) < 1e-9, `the second took ${clock.at(960) - 2}s`);
+        assert.ok(Math.abs(clock.seconds - 3) < 1e-9);
+    });
+
+    it('reads the clock in minutes and seconds', () => {
+        assert.strictEqual(smf.mmss(0), '0:00');
+        assert.strictEqual(smf.mmss(7.9), '0:07');
+        assert.strictEqual(smf.mmss(309.6), '5:09');
+    });
+
+    it('builds a strip note by note the way an edit does, without the copies', () => {
+        const written = loops.writer();
+        written.hold(0, 2, 60).hold(1, 1, 64);
+
+        let edited = loops.holdNote([], 0, 2, 60);
+        edited = loops.holdNote(edited, 1, 1, 64);
+
+        assert.deepStrictEqual(written.steps(), edited);
+    });
+});
+
+describe('the song bar', () => {
+    /** Saves what is in the loops and loads it back as a file. */
+    function reload(page) {
+        page.click('loop_save');
+        const bytes = page.saved[page.saved.length - 1].parts[0];
+        page.element('loop_file').dispatch('change', { target: { files: [bytes], value: '' } });
+    }
+
+    function withALoop() {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.press(60); page.lift();
+        page.press(64); page.lift();
+        page.click('edit_close');
+        return page;
+    }
+
+    it('stays out of the way until a file has been read', () => {
+        const page = loadBandage();
+
+        assert.strictEqual(page.song().shown, false);
+    });
+
+    it('shows how long the file is once one is', () => {
+        const page = withALoop();
+        reload(page);
+
+        assert.strictEqual(page.song().shown, true);
+        assert.match(page.song().time, /^0:00 \/ \d+:\d\d$/);
+    });
+
+    it('hands a whole song to the library`s own player', () => {
+        const page = withALoop();
+        reload(page);
+
+        page.click('song_play');
+
+        assert.deepStrictEqual(page.songLog().slice(-1), ['play']);
+        assert.strictEqual(page.song().playing, true);
+    });
+
+    it('stops the loops when the song starts: one transport at a time', () => {
+        const page = withALoop();
+        reload(page);
+        page.click('play_0');
+        assert.strictEqual(page.rec.running.size, 1);
+
+        page.click('song_play');
+
+        assert.strictEqual(page.rec.running.size, 0);
+        assert.strictEqual(page.rec.timer, null, 'and the loop clock is off');
+    });
+
+    it('stops the song when a loop starts, the other way about', () => {
+        const page = withALoop();
+        reload(page);
+        page.click('song_play');
+
+        page.click('play_0');
+
+        assert.strictEqual(page.song().playing, false);
+        assert.deepStrictEqual(page.songLog().slice(-1), ['stop']);
+    });
+
+    it('moves along while it plays, and says where it is', () => {
+        const page = withALoop();
+        reload(page);
+        page.click('song_play');
+
+        page.advance(1.2);
+
+        assert.ok(page.song().at > 0, `the seek bar is at ${page.song().at}`);
+    });
+
+    it('puts the voices back when the song stops', () => {
+        const page = withALoop();
+        const voice = page.element('voice_select');
+        voice.value = '19';
+        voice.dispatch('change', { target: voice });
+        reload(page);
+        page.click('song_play');
+        // What a song does on its way past: its own program on every channel
+        page.app.synth.setProgram(0, 99);
+        page.app.synth.setProgram(1, 99);
+
+        page.click('song_play');
+
+        assert.strictEqual(page.app.synth.programs[0], 19, 'the keys keep the voice chosen for them');
+        assert.strictEqual(page.app.synth.programs[1], page.rec.loops[0].program,
+            'and the loop the one it was recorded with');
+        assert.strictEqual(page.song().playing, false);
+    });
+
+    it('tidies up by itself when the song reaches its end', () => {
+        const page = withALoop();
+        reload(page);
+        page.click('song_play');
+        page.app.synth.setProgram(0, 99);
+
+        page.advance(60);
+
+        assert.strictEqual(page.song().playing, false);
+        assert.strictEqual(page.rec.songTimer, null, 'the watcher is off');
+        assert.strictEqual(page.app.synth.programs[0], 0,
+            'and the keys have their voice back, without anyone pressing stop');
+    });
+
+    it('seeks when the finger comes off the bar, not while it is on it', () => {
+        const page = withALoop();
+        reload(page);
+        const seek = page.element('song_seek');
+
+        seek.value = '500';
+        seek.dispatch('input', { target: seek });
+        assert.ok(!page.songLog().some(line => line.startsWith('locate')), 'nothing yet');
+
+        seek.dispatch('change', { target: seek });
+        assert.ok(page.songLog().some(line => line.startsWith('locate')), 'now it moves');
+    });
+});
+
+describe('playing every loop at once', () => {
+    function twoLoops() {
+        const page = loadBandage();
+        [0, 3].forEach((index) => {
+            page.click(`edit_${index}`);
+            page.press(60 + index); page.lift();
+            page.click('edit_close');
+        });
+        return page;
+    }
+
+    it('has nothing to start when every loop is empty', () => {
+        const page = loadBandage();
+
+        assert.strictEqual(page.element('loop_all').disabled, true);
+    });
+
+    it('starts every loop with something in it, from one press', () => {
+        const page = twoLoops();
+
+        page.click('loop_all');
+
+        assert.deepStrictEqual([...page.rec.running].sort(), [0, 3]);
+        assert.strictEqual(page.element('loop_all').textContent, 'Stop all');
+    });
+
+    it('starts them together, at the top of the pattern', () => {
+        const page = twoLoops();
+
+        page.click('loop_all');
+
+        // Both loops hold one note, on step 0: from a standstill they sound at
+        // the same moment rather than wherever a clock had already got to.
+        const first = channel => page.played
+            .filter(call => call.on !== undefined && call.ch === channel)[0];
+        assert.ok(first(1) && first(4), 'both loops sounded');
+        assert.strictEqual(first(1).at, first(4).at);
+    });
+
+    it('stops everything on the second press', () => {
+        const page = twoLoops();
+        page.click('loop_all');
+
+        page.click('loop_all');
+
+        assert.strictEqual(page.rec.running.size, 0);
+        assert.strictEqual(page.rec.timer, null);
+        assert.strictEqual(page.element('loop_all').textContent, 'Play all');
+    });
+
+    it('stops a recording too, which is the only way it could be left running', () => {
+        const page = twoLoops();
+        page.click('record_1');
+
+        page.click('loop_all');
+
+        assert.strictEqual(page.rec.recording, null);
     });
 });

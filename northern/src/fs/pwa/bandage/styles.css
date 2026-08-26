@@ -164,6 +164,58 @@ body {
   white-space: nowrap;
 }
 
+#loop_foot button:disabled { opacity: 0.35; cursor: default; }
+
+#loop_foot button[aria-pressed="true"] {
+  background: var(--theme);
+  border-color: var(--theme);
+  color: #fff;
+}
+
+/* ---------- The song bar: only there once a file has been read ---------- */
+
+#song_bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+#song_bar[hidden] { display: none; }
+
+#song_play {
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  min-width: var(--thumb);
+  padding: 3px 0;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#song_play[aria-pressed="true"] {
+  background: var(--theme);
+  border-color: var(--theme);
+  color: #fff;
+}
+
+#song_time {
+  font-variant-numeric: tabular-nums;
+  color: var(--theme);
+  white-space: nowrap;
+}
+
+#song_seek {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--theme);
+}
+
 /* ---------- The editor, over the same panel ---------- */
 
 #editor {
@@ -467,6 +519,7 @@ body {
   #loop_table thead th, #loop_table tbody th { width: 2.8rem; }
   .loop-button { min-height: 20px; padding: 1px 0; font-size: 0.7rem; }
   #loop_foot { font-size: 0.6rem; }
+  #song_bar { font-size: 0.6rem; gap: 6px; }
   #editor_hint { display: none; }
   #brand { font-size: 0.8rem; letter-spacing: 2px; }
   #edit_grid .cell { font-size: 0.55rem; }

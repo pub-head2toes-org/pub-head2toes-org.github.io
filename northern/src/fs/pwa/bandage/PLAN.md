@@ -225,6 +225,59 @@ Because `loadMIDI` resets the synth, Load puts the app's own state back
 afterwards: master volume, the voice the hands are playing, and each loop's
 program.
 
+`Play all` starts every loop that has something in it, and stops everything when
+pressed again. From a standstill the clock starts at step 0, so the parts begin
+together — eight taps to start a song means seven of them join late.
+
+## A whole song is the other job
+
+A loaded file is two things at once, and they want two different players.
+
+Split across the loops it is something to play with: take a part, edit it, jam
+over it. That is `smf.decode`, and it is **lossy on purpose**. Eight loops have
+eight channels between them where a song has sixteen, so channel 0 and the drums
+on channel 9 have nowhere to go, and the grid is eighth notes where a song is
+not. Measured on a real five minute file, of 8436 note-ons:
+
+| | |
+| --- | --- |
+| on channels 1–8, the only ones a loop can hold | 4527 |
+| lost with channel 0 and 9–15 — the lead, and the whole kit | 3909 |
+| lost to the four-notes-a-step ceiling | 94 |
+| distinct onsets merged onto the eighth note grid | 32% |
+
+Played whole it is the song, and there the library's player is right and ours is
+not: every channel including the drums, the file's own timing rather than a
+grid, and its tempo map followed as it goes. The reason our transport exists —
+loops starting and stopping under hands that are still playing — is not
+something a song needs. So the song gets `playMIDI`, and the song bar under the
+loops is `playMIDI` / `stopMIDI` / `locateMIDI` with `getPlayStatus` read back
+every 200 ms.
+
+Two things follow from the song owning the synth while it runs:
+
+* Starting it stops the loops, and starting a loop stops it. One transport at a
+  time — they would otherwise be sending on the same channels.
+* A song sends its own program changes and channel volumes and stopping it does
+  not take them back, so the app's voices go on again afterwards. That happens
+  when a song runs off its own end as well as when it is stopped, which is why
+  it is the watcher's timer rather than the player that says a run is in
+  progress.
+
+Where a song is in seconds is worked out by `smf.clock`, once, when the file is
+read: the player rewrites `song.tempo` as it goes, so the position cannot be
+had from whatever that says at the time. The parser multiplies the file's
+division by four, so `timebase` counts ticks to a whole note — which is where
+the four in `4 * 60 / bpm / timebase` comes from, in that function and in the
+library's own `tick2Time`.
+
+Parts of a file that nothing marked the end of are somebody else's song rather
+than loops we wrote, and they all get the length of the longest. Left at their
+own lengths each comes round at a different moment and the song comes apart —
+the shortest part first, and after that never in phase again. Our own files
+carry CC 119 at every loop's end, so they keep the lengths they were saved with:
+a one bar loop under a four bar one is the point of them.
+
 ## Audio
 
 The synth is created at load but a browser will not start audio outside a
@@ -260,6 +313,12 @@ against a second implementation of the same idea.
 * One note of a chord cannot be taken out on its own any more: a step is
   rewritten by playing over it, or removed whole with Del. `loops.clearCell` is
   still there, and still tested, for the day that gets a button of its own.
+* Reading a file is no longer quadratic — `loops.writer` writes into one strip
+  instead of copying it once per note, and a five minute song went from 1.75 s
+  to 49 ms — but the loops it fills are still on an eighth note grid at one
+  tempo. Song mode is the answer to that, not a finer grid.
+* A song plays every channel, so it plays over the hands as well: while one
+  runs, channel 0 is the song's and the Voice selector is not what is heard.
 * Velocity is fixed at 100: a touch screen reports `pressure`, but it is not
   meaningful on most hardware.
 * Loops live in memory and in whatever `.mid` file you saved. Nothing is written

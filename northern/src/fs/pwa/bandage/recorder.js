@@ -1,19 +1,23 @@
 'use strict';
 
 /**
- * The four loops: the transport, the table that drives them, and the editor.
+ * The eight loops: the transport, the table that drives them, and the editor.
  *
  * `loops.js` holds the arithmetic and `smf.js` the file format; this file is
  * the wiring, the way `bandage.js` is the wiring for the keys.
  *
- * The transport is ours rather than the library's. `tinysynth` can play a
- * Standard MIDI File, but `loadMIDI` ends in `reset()` and `locateMIDI(0)` -
+ * There are two transports here, because there are two jobs.
+ *
+ * The loops are scheduled here rather than by the library. `tinysynth` can play
+ * a Standard MIDI File, but `loadMIDI` ends in `reset()` and `locateMIDI(0)` -
  * it resets all sixteen channels and silences them - and the synth holds
- * exactly one song. Four loops that start and stop independently, under hands
+ * exactly one song. Eight loops that start and stop independently, under hands
  * that are still playing, cannot live in one song: starting the third would
- * cut off the other two and the player's chord with them. So the loops are
- * scheduled here, note by note, and `smf.js` uses the library for what it is
- * good at - reading and writing the file.
+ * cut off the other two and the player's chord with them.
+ *
+ * A whole song is the other job, and there the library's player is the right
+ * one and ours is not - see the song section below. `smf.js` reads and writes
+ * the file either way, which is what the library is best at.
  *
  * Scheduling is the usual Web Audio look-ahead: a coarse timer wakes often and
  * hands the synth every note due in the next fraction of a second, stamped with
@@ -28,6 +32,7 @@
 const TIMER_MS = 25;              // how often the scheduler wakes
 const HORIZON = 0.15;             // seconds of notes handed over each time
 const EDIT_COLUMNS = 8;           // steps visible in the editor at once
+const SONG_MS = 200;              // how often a playing song's position is read back
 
 /** The three rows of the loop table, in the order they are drawn. */
 const FUNCTIONS = [
@@ -61,6 +66,11 @@ const rec = {
   pending: new Set(),
   /** midi -> the step it was struck on, for keys still down while recording */
   held: new Map(),
+  /** the loaded file, playable whole: {clock}, or null before one is read */
+  song: null,
+  songTimer: null,
+  /** true while a finger is on the seek bar, so it is not dragged from under it */
+  scrubbing: false,
   /** the last thing the transport line said, so it is not written every 25ms */
   said: '',
   elements: {}
@@ -173,9 +183,100 @@ function sound(tick, at, step) {
   });
 }
 
+/* --------------------------------------------------------------------- song
+ *
+ * A loaded file is two things at once, and they want two different players.
+ *
+ * Split across the loops it is something to play with: take a part, edit it,
+ * jam over it. That is `smf.decode`, and it is lossy on purpose - eight loops
+ * have eight channels between them where a song has sixteen, so channel 0 and
+ * the drums on channel 9 have nowhere to go, and the grid is eighth notes
+ * where a song is not. Reading a whole song that way loses about half of it.
+ *
+ * Played whole it is the song, and the library's own player is right for that
+ * and ours is not: every channel including the drums, the file's own timing
+ * rather than a grid, and its tempo map followed as it goes. The reason our
+ * transport exists - loops starting and stopping under hands that are playing -
+ * is not a thing a song needs. So the song gets `playMIDI`, and it owns the
+ * synth while it runs: the loops stop, and the voices go back on afterwards.
+ */
+
+function songPlaying() {
+  return !!(rec.song && app.synth.getPlayStatus && app.synth.getPlayStatus().play);
+}
+
+function playSong() {
+  if (!rec.song || songPlaying()) {
+    return;
+  }
+  stopAll();
+  app.synth.playMIDI();
+  if (rec.songTimer === null) {
+    rec.songTimer = setInterval(watchSong, SONG_MS);
+  }
+  showSong();
+}
+
+function stopSong() {
+  if (!rec.song) {
+    return;
+  }
+  // A song that has run off its own end is no longer playing, and still has to
+  // be cleared up after: the timer is what says a run is in progress, not the
+  // player. Its last notes are left to ring rather than being cut off.
+  const running = rec.songTimer !== null || songPlaying();
+  if (songPlaying()) {
+    app.synth.stopMIDI();
+  }
+  if (rec.songTimer !== null) {
+    clearInterval(rec.songTimer);
+    rec.songTimer = null;
+  }
+  if (running) {
+    restoreVoices();
+  }
+  showSong();
+}
+
+/**
+ * A song sends its own program changes and channel volumes, on every channel it
+ * touches, and stopping it does not take them back. So the app's own voices go
+ * on again after one: otherwise the keys come back as whatever the song left on
+ * channel 0, and each loop as whatever the song left on its.
+ */
+function restoreVoices() {
+  for (let channel = 0; channel <= loops.COUNT; channel++) {
+    app.synth.resetAllControllers(channel);
+    app.synth.setChVol(channel, 100);
+  }
+  app.synth.setMasterVol(Number(app.elements.volume.value) / 100);
+  app.synth.setProgram(0, Number(app.elements.voice.value) || 0);
+  rec.loops.forEach((loop, index) =>
+    app.synth.setProgram(loops.channel(index), loop.program));
+}
+
+/** The song runs itself; this only reads where it has got to, and notices the end. */
+function watchSong() {
+  if (rec.song && !songPlaying()) {
+    stopSong();                            // it reached the end on its own
+    return;
+  }
+  showSong();
+}
+
+function seekSong(fraction) {
+  if (!rec.song) {
+    return;
+  }
+  const ticks = app.synth.getPlayStatus().maxTick || rec.song.clock.ticks;
+  app.synth.locateMIDI(Math.round(Math.min(1, Math.max(0, fraction)) * ticks));
+  showSong();
+}
+
 /* ------------------------------------------------------------------ buttons */
 
 function togglePlay(index) {
+  stopSong();                            // one transport at a time
   if (rec.recording === index) {
     return;                              // it is being recorded, not played
   }
@@ -195,6 +296,32 @@ function togglePlay(index) {
 }
 
 /**
+ * Every loop with something in it, from one press - and everything stopped from
+ * the same press. A song split across the loops needs all eight going together,
+ * and eight taps to start it means seven of them join late.
+ *
+ * From a standstill the clock starts at step 0, so the parts begin together.
+ */
+function toggleAll() {
+  stopSong();
+  if (rec.running.size > 0 || rec.recording !== null) {
+    stopAll();
+    return;
+  }
+  rec.loops.forEach((loop, index) => {
+    if (loop.steps.length === 0) {
+      return;
+    }
+    app.synth.setProgram(loops.channel(index), loop.program);
+    rec.running.add(index);
+  });
+  if (rec.running.size > 0) {
+    startClock();
+  }
+  showTable();
+}
+
+/**
  * Record clears the loop and writes what is played into it, quantised. The
  * other loops keep going underneath, which is what makes this an overdub: the
  * player hears the parts already down while adding the next.
@@ -203,6 +330,7 @@ function togglePlay(index) {
  * loop plays back as the part sounded while it was being played.
  */
 function toggleRecord(index) {
+  stopSong();
   if (rec.recording === index) {
     finishRecording();
     showTable();
@@ -278,6 +406,7 @@ function stopAll() {
 function observe(kind, midi) {
   if (kind === 'silence') {
     rec.pending.clear();
+    stopSong();
     stopAll();
     return;
   }
@@ -455,7 +584,38 @@ function showTable() {
     record.classList.toggle('armed', rec.recording === i);
     edit.setAttribute('aria-pressed', String(rec.editing === i));
   }
+
+  const anything = rec.running.size > 0 || rec.recording !== null;
+  const all = rec.elements.all;
+  all.textContent = anything ? 'Stop all' : 'Play all';
+  all.setAttribute('aria-pressed', String(anything));
+  all.disabled = !anything && rec.loops.every(loop => loop.steps.length === 0);
   showTransport();
+}
+
+/** The song bar: hidden until a file has been read, then where it has got to. */
+function showSong() {
+  const bar = rec.elements.songBar;
+  if (!bar) {
+    return;
+  }
+  bar.hidden = !rec.song;
+  if (!rec.song) {
+    return;
+  }
+  const status = app.synth.getPlayStatus();
+  const ticks = status.maxTick || rec.song.clock.ticks;
+  const playing = !!status.play;
+
+  rec.elements.songTime.textContent =
+    `${smf.mmss(rec.song.clock.at(status.curTick))} / ${smf.mmss(rec.song.clock.seconds)}`;
+  rec.elements.songPlay.textContent = playing ? '\u25A0' : '\u25B6';
+  rec.elements.songPlay.setAttribute('aria-pressed', String(playing));
+  rec.elements.songPlay.setAttribute('aria-label', playing ? 'Stop the song' : 'Play the whole song');
+  if (!rec.scrubbing) {
+    rec.elements.songSeek.value =
+      String(ticks ? Math.round(1000 * status.curTick / ticks) : 0);
+  }
 }
 
 /** One line saying what the transport is doing, and where in the bar it is. */
@@ -547,7 +707,9 @@ function loadLoops(file) {
   }
   const reader = new FileReader();
   reader.onload = () => {
+    stopSong();
     stopAll();
+    closeEditor();
     app.synth.loadMIDI(reader.result);      // the library reads the file...
     const read = smf.decode(app.synth.song, loops);   // ...and we read the library
     rec.loops = read.loops;
@@ -559,7 +721,12 @@ function loadLoops(file) {
     rec.loops.forEach((loop, index) =>
       app.synth.setProgram(loops.channel(index), loop.program));
     setTempo(read.bpm);
+
+    // The same bytes, kept whole. The loops are what was got out of the file;
+    // this is the file itself, for playing as it was written.
+    rec.song = { clock: smf.clock(app.synth.song) };
     showTable();
+    showSong();
   };
   reader.readAsArrayBuffer(file);
 }
@@ -644,7 +811,12 @@ function initRecorder() {
     grid: document.getElementById('edit_grid').querySelector('tbody'),
     undo: document.getElementById('edit_undo'),
     redo: document.getElementById('edit_redo'),
-    file: document.getElementById('loop_file')
+    file: document.getElementById('loop_file'),
+    all: document.getElementById('loop_all'),
+    songBar: document.getElementById('song_bar'),
+    songPlay: document.getElementById('song_play'),
+    songTime: document.getElementById('song_time'),
+    songSeek: document.getElementById('song_seek')
   };
 
   buildTable();
@@ -683,6 +855,19 @@ function initRecorder() {
     drawEditor();
   });
 
+  rec.elements.all.addEventListener('click', toggleAll);
+
+  rec.elements.songPlay.addEventListener('click', () =>
+    (songPlaying() ? stopSong() : playSong()));
+  // The bar is written to every couple of hundred milliseconds while a song
+  // plays, which would drag the handle out from under a finger; it stops while
+  // one is on it, and the move is made when it comes off.
+  rec.elements.songSeek.addEventListener('input', () => { rec.scrubbing = true; });
+  rec.elements.songSeek.addEventListener('change', (event) => {
+    rec.scrubbing = false;
+    seekSong(Number(event.target.value) / 1000);
+  });
+
   document.getElementById('loop_save').addEventListener('click', saveLoops);
   document.getElementById('loop_load').addEventListener('click', () =>
     rec.elements.file.click());
@@ -693,6 +878,7 @@ function initRecorder() {
 
   app.observers.push(observe);
   showTable();
+  showSong();
 }
 
 if (typeof document !== 'undefined') {

@@ -141,34 +141,72 @@ loops.extend = function (steps, index) {
     return grown;
 };
 
+/*
+ * The rules for writing a note are here, working on a strip in place, and the
+ * edits above are those rules with a copy taken first. Two callers need them
+ * without the copy: reading a file is thousands of notes into a strip thousands
+ * of steps long, and copying the whole strip once per note made loading a song
+ * quadratic - seconds of a frozen page for a five minute file.
+ */
+
+/*
+ * These three are private to this file, but every script on the page shares one
+ * global scope - `bandage.js` has a `hold` of its own, for a key being held -
+ * so their names say which of the two they belong to.
+ */
+
+/** Grows a strip in place so that `index` exists, filling the gap with rests. */
+function stripGrow(strip, index) {
+    while (strip.length <= index) {
+        strip.push(loops.emptyStep());
+    }
+    return strip;
+}
+
+/** `setNote`, in place. */
+function stripPut(strip, index, row, midi) {
+    if (index < 0) {
+        return strip;
+    }
+    stripGrow(strip, index);
+    const step = strip[index];
+
+    if (midi === null) {
+        if (row !== null && row >= 0 && row < loops.ROWS) {
+            step[row] = null;
+        }
+        return strip;
+    }
+    if (loops.has(step, midi)) {
+        return strip;                       // already sounding in this step
+    }
+
+    const at = row === null || row === undefined ? step.indexOf(null) : row;
+    if (at < 0 || at >= loops.ROWS) {
+        return strip;                       // all four rows are taken
+    }
+    step[at] = midi;
+    return strip;
+}
+
+/** `holdNote`, in place. */
+function stripHold(strip, from, to, midi) {
+    const first = Math.max(0, from);
+    const last = Math.max(first, to);
+    stripPut(strip, first, null, midi);
+    for (let at = first + 1; at <= last; at++) {
+        stripPut(strip, at, null, loops.tie(midi));
+    }
+    return strip;
+}
+
 /**
  * Puts a note in a step. `row` of null finds the first free row, which is what
  * a chord wants: play three keys, they fill rows 0, 1 and 2. A step already
  * holding four notes takes no more.
  */
 loops.setNote = function (steps, index, row, midi) {
-    if (index < 0) {
-        return loops.copy(steps);
-    }
-    const grown = loops.extend(steps, index);
-    const step = grown[index];
-
-    if (midi === null) {
-        if (row !== null && row >= 0 && row < loops.ROWS) {
-            step[row] = null;
-        }
-        return grown;
-    }
-    if (loops.has(step, midi)) {
-        return grown;                       // already sounding in this step
-    }
-
-    const at = row === null || row === undefined ? step.indexOf(null) : row;
-    if (at < 0 || at >= loops.ROWS) {
-        return grown;                       // all four rows are taken
-    }
-    step[at] = midi;
-    return grown;
+    return stripPut(loops.copy(steps), index, row, midi);
 };
 
 /**
@@ -177,13 +215,25 @@ loops.setNote = function (steps, index, row, midi) {
  * is one step and no tie at all.
  */
 loops.holdNote = function (steps, from, to, midi) {
-    const first = Math.max(0, from);
-    const last = Math.max(first, to);
-    let out = loops.setNote(steps, first, null, midi);
-    for (let at = first + 1; at <= last; at++) {
-        out = loops.setNote(out, at, null, loops.tie(midi));
-    }
-    return out;
+    return stripHold(loops.copy(steps), from, to, midi);
+};
+
+/**
+ * A strip being built up note by note, for whoever is reading a file rather
+ * than editing. Same rules, no copy per note. `steps` hands over the strip
+ * itself, so the writer is finished with once it has been asked for.
+ */
+loops.writer = function () {
+    const strip = [];
+    return {
+        hold: function (from, to, midi) {
+            stripHold(strip, from, to, midi);
+            return this;
+        },
+        steps: function () {
+            return strip;
+        }
+    };
 };
 
 /**

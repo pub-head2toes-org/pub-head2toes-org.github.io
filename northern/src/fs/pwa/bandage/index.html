@@ -33,11 +33,24 @@
     </table>
 
     <div id="loop_foot">
+      <button type="button" id="loop_all" aria-pressed="false">Play all</button>
       <span id="transport" aria-live="polite">Stopped</span>
       <span class="spacer"></span>
       <button type="button" id="loop_save">Save</button>
       <button type="button" id="loop_load">Load</button>
       <input type="file" id="loop_file" accept=".mid,.midi,audio/midi" hidden>
+    </div>
+
+    <!--
+      A loaded file is two things. Split across the loops it is something to
+      take a part out of and play with; played whole it is the song, and that
+      is the library's own player rather than ours - see recorder.js. Nothing
+      to show until a file has been read.
+    -->
+    <div id="song_bar" hidden>
+      <button type="button" id="song_play" aria-pressed="false" aria-label="Play the whole song">&#9654;</button>
+      <span id="song_time">0:00 / 0:00</span>
+      <input type="range" id="song_seek" min="0" max="1000" step="1" value="0" aria-label="Position in the song">
     </div>
 
     <!--
