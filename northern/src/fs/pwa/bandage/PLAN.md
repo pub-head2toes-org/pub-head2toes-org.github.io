@@ -168,10 +168,19 @@ sound at once, eight step columns of the sequence at a time.
 | Tie | Holds whatever was ringing in the step before through this one, and moves on, so a note is made longer by tapping |
 | ↶ ↷ | Undo and redo, per loop |
 
+◀ and ▶ come first in the bar and are the widest things in it, with a gap as
+wide as they are between them. They are what a hand reaches for most in here,
+and a mis-hit steps the wrong way through the sequence; the gap is there to be
+missed into. The octave pair on the main toolbar is the same width, from the
+same `--thumb`. Where a phone is too narrow for one row of buttons the bar wraps
+onto two rather than shrinking them — the height is the point.
+
 Playing the keys writes into the cursor step: the first note of a chord clears
 what was there, the rest fill the rows beside it, and letting go of the last one
-moves on. Tapping a cell clears it — the one edit the keys cannot make, since
-they can only write.
+moves on. Tapping a cell only moves the cursor there. It used to clear the note
+under the finger as well, which made aiming an edit and every misjudged tap a
+lost note; a tap is for pointing. A step is changed by playing over it, or taken
+out with Del.
 
 A run reads across a row as `C4 — — —`, the way a piano roll draws it: the name
 where it is struck, the fill carrying on through its ties.
@@ -248,6 +257,9 @@ against a second implementation of the same idea.
 * Eight columns is a lot to fit across a third of a phone in portrait. It works,
   but the buttons are near the smallest a thumb wants; a ninth loop would need
   the panel laid out differently, not just `loops.COUNT` raised.
+* One note of a chord cannot be taken out on its own any more: a step is
+  rewritten by playing over it, or removed whole with Del. `loops.clearCell` is
+  still there, and still tested, for the day that gets a button of its own.
 * Velocity is fixed at 100: a touch screen reports `pressure`, but it is not
   meaningful on most hardware.
 * Loops live in memory and in whatever `.mid` file you saved. Nothing is written

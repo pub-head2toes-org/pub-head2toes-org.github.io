@@ -11,6 +11,11 @@
   --white-key-down: #b8e2ef;
   --black-key: #10191e;
   --black-key-down: #2c6d84;
+
+  /* A thumb wants about 44px. The step buttons in the editor and the octave
+     pair in the toolbar are the two controls worth spending that on, so they
+     are the same size and that size is written once. */
+  --thumb: 2.75rem;
 }
 
 * { box-sizing: border-box; }
@@ -174,11 +179,27 @@ body {
 
 #editor[hidden] { display: none; }
 
+/* Wraps rather than crushes: on a phone the buttons fall onto a second line
+   behind the spacer, on anything wider they stay on one. Either way each one
+   keeps the height a thumb needs. */
 #editor_head {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+}
+
+#editor_head .stepper {
+  display: flex;
+  gap: var(--thumb);               /* as wide as the buttons: the whole point */
+}
+
+#editor_head .stepper button {
+  width: var(--thumb);
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 0.85rem;
 }
 
 #editor_title {
@@ -197,7 +218,8 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 3px 7px;
+  padding: 3px 9px;
+  min-height: 2.125rem;            /* 34px: a row of them is a real toolbar */
   cursor: pointer;
 }
 
@@ -320,6 +342,16 @@ body {
   gap: 6px;
 }
 
+/* Two of the smallest targets on the strip, and both of them octave-sized
+   mistakes when missed: as wide as the editor's step buttons. */
+.octave button {
+  min-width: var(--thumb);
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
 #range_label {
   min-width: 62px;
   text-align: center;
@@ -428,7 +460,9 @@ body {
 /* A phone on its side leaves the panel about 120px tall: everything shrinks,
    and the two lines that are only prose give up their space first. */
 @media (max-height: 420px) {
+  :root { --thumb: 2.2rem; }
   #stage { gap: 2px; padding-top: 4px; }
+  #editor_head button { min-height: 1.6rem; padding: 1px 6px; }
   #loop_table { font-size: 0.6rem; }
   #loop_table thead th, #loop_table tbody th { width: 2.8rem; }
   .loop-button { min-height: 20px; padding: 1px 0; font-size: 0.7rem; }

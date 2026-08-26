@@ -669,15 +669,18 @@ function initRecorder() {
   rec.elements.redo.addEventListener('click', () => undoEdit(true));
   document.getElementById('edit_close').addEventListener('click', closeEditor);
 
-  // A tap on a cell takes that note back out, which is the one edit the keys
-  // cannot make: they can only write.
+  // A tap on a cell puts the cursor there and does nothing else. It used to
+  // clear the note under the finger as well, so pointing at a step was an edit
+  // and pointing at the wrong one was a lost note; a tap is for aiming. What
+  // the cell holds is changed by playing over it, or by Del.
   rec.elements.grid.addEventListener('click', (event) => {
     const cell = event.target && event.target.closest ? event.target.closest('.cell') : null;
     if (!cell || rec.editing === null) {
       return;
     }
     rec.cursor = Number(cell.dataset.step);
-    applyEdit(steps => loops.clearCell(steps, rec.cursor, Number(cell.dataset.row)));
+    follow();
+    drawEditor();
   });
 
   document.getElementById('loop_save').addEventListener('click', saveLoops);

@@ -47,10 +47,17 @@
     -->
     <div id="editor" hidden>
       <div id="editor_head">
+        <!--
+          The two most-used buttons, first and widest, with a gap as wide as
+          they are between them: moving the cursor is what a hand does most in
+          here, and stepping the wrong way is the easiest mistake to make.
+        -->
+        <div class="stepper">
+          <button type="button" id="edit_left" aria-label="Back one step">&#9664;</button>
+          <button type="button" id="edit_right" aria-label="On one step">&#9654;</button>
+        </div>
         <span id="editor_title">Loop 1</span>
         <span class="spacer"></span>
-        <button type="button" id="edit_left" aria-label="Back one step">&#9664;</button>
-        <button type="button" id="edit_right" aria-label="On one step">&#9654;</button>
         <button type="button" id="edit_insert" aria-label="Insert an empty step">Ins</button>
         <button type="button" id="edit_delete" aria-label="Delete this step">Del</button>
         <button type="button" id="edit_tie" aria-label="Hold the last notes through this step">Tie</button>
@@ -59,7 +66,7 @@
         <button type="button" id="edit_close">Close</button>
       </div>
       <table id="edit_grid"><tbody></tbody></table>
-      <div id="editor_hint">Play a key to write it here; let go to move on.</div>
+      <div id="editor_hint">Tap a step to aim; play a key to write it, let go to move on.</div>
     </div>
 
   </section>

@@ -276,6 +276,28 @@ describe('the bandage PWA shell', () => {
         assert.match(css, /#brand\s*{[^}]*text-transform:\s*uppercase/);
     });
 
+    // Two controls a thumb reaches for constantly, and the two worst to miss:
+    // the same width, from the same number.
+    it('puts the editor step buttons first, wide, and a full width apart', () => {
+        const css = read('styles.css');
+        const head = index.match(/<div id="editor_head">[\s\S]*?\n      <\/div>/)[0];
+
+        assert.ok(head.indexOf('id="edit_left"') < head.indexOf('id="edit_insert"'),
+            'at the left of the bar, ahead of the edit buttons');
+        assert.match(css, /\.stepper button\s*{[^}]*width:\s*var\(--thumb\)/);
+        assert.match(css, /\.stepper\s*{[^}]*gap:\s*var\(--thumb\)/,
+            'the space between them is as wide as they are');
+    });
+
+    it('gives the octave pair that same width, and the head room to be tall', () => {
+        const css = read('styles.css');
+
+        assert.match(css, /\.octave button\s*{[^}]*min-width:\s*var\(--thumb\)/);
+        assert.match(css, /#editor_head button\s*{[^}]*min-height:/);
+        assert.match(css, /#editor_head\s*{[^}]*flex-wrap:\s*wrap/,
+            'so a narrow phone gets a second row instead of squeezed buttons');
+    });
+
     it('leaves the loop table to be built, so one number decides how many', () => {
         const stage = index.match(/<section id="stage"[\s\S]*?<\/section>/)[0];
 
@@ -1295,14 +1317,16 @@ describe('the loop editor', () => {
         assert.deepStrictEqual(page.strip(0), ['C4', '.', '.']);
     });
 
-    it('clears a note when its cell is tapped', () => {
+    it('moves the cursor to a tapped cell, and leaves the notes where they are', () => {
         const page = loadBandage();
         page.click('edit_0');
         page.press(60, 1); page.press(64, 2); page.lift(1); page.lift(2);
+        page.press(67); page.lift();
 
         page.clickCell(0, 1);                    // the second row of the first step
 
-        assert.strictEqual(page.strip(0)[0], 'C4');
+        assert.strictEqual(page.cursorAt(), 0);
+        assert.strictEqual(page.strip(0)[0], 'C4 E4');
     });
 
     it('takes an edit back, and puts it back again', () => {
