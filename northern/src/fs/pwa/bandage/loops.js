@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * The four loops, as numbers.
+ * The eight loops, as numbers.
  *
  * Nothing here touches the DOM or the synth - the same split `keys.js` uses.
- * A loop is a list of *steps*; a step is up to four notes sounding at once, or
- * none at all, which is a rest. That is exactly what the editor draws: four
+ * A loop is a list of *steps*; a step is up to six notes sounding at once, or
+ * none at all, which is a rest. That is exactly what the editor draws: six
  * rows, one column per step.
  *
  *     steps[0]  steps[1]  steps[2]  steps[3]
@@ -13,6 +13,8 @@
  *     [ E4 ]    [    ]    [    ]    [ B4 ]     <- row 1
  *     [ G4 ]    [    ]    [    ]    [    ]     <- row 2
  *     [    ]    [    ]    [    ]    [    ]     <- row 3
+ *     [    ]    [    ]    [    ]    [    ]     <- row 4
+ *     [    ]    [    ]    [    ]    [    ]     <- row 5
  *
  * A step is a fixed slice of time, so a rest is a real thing that takes up
  * room. That is why the editor has to be able to insert and delete an empty
@@ -31,7 +33,15 @@
 const loops = {};
 
 loops.COUNT = 8;                 // eight loop channels - see loops.channel
-loops.ROWS = 4;                  // up to four notes at once, per loop
+/*
+ * Six, rather than the four the grid started with. Four is what a hand plays
+ * and what the editor draws comfortably; it is not what a file holds. A real
+ * song's parts run to five and six notes in a step - `Clocks.mid` has 912 steps
+ * wanting more than four and 16 wanting more than five - and a step with every
+ * row taken drops the note rather than making room, so the part came back
+ * missing chord tones. Six is where that file stops asking for more.
+ */
+loops.ROWS = 6;                  // up to six notes at once, per loop
 loops.BAR = 8;                   // steps to a bar: four beats of two eighths
 loops.DEFAULT_BPM = 120;
 loops.MIN_BPM = 40;
@@ -93,7 +103,7 @@ loops.isStruck = function (steps, midi) {
         value !== null && !loops.isTie(value) && loops.pitch(value) === midi));
 };
 
-/** An empty step: four rows, all silent. */
+/** An empty step: six rows, all silent. */
 loops.emptyStep = function () {
     return new Array(loops.ROWS).fill(null);
 };
@@ -111,7 +121,7 @@ loops.create = function (program) {
     };
 };
 
-/** The four of them, as the app starts with. */
+/** The eight of them, as the app starts with. */
 loops.blank = function () {
     const made = [];
     for (let i = 0; i < loops.COUNT; i++) {
@@ -150,7 +160,7 @@ loops.extend = function (steps, index) {
  */
 
 /*
- * These three are private to this file, but every script on the page shares one
+ * These four are private to this file, but every script on the page shares one
  * global scope - `bandage.js` has a `hold` of its own, for a key being held -
  * so their names say which of the two they belong to.
  */
@@ -183,19 +193,58 @@ function stripPut(strip, index, row, midi) {
 
     const at = row === null || row === undefined ? step.indexOf(null) : row;
     if (at < 0 || at >= loops.ROWS) {
-        return strip;                       // all four rows are taken
+        return strip;                       // every row is taken
     }
     step[at] = midi;
     return strip;
 }
 
-/** `holdNote`, in place. */
+/**
+ * A row that is free in every step from `first` to `last`, or null if no one
+ * row is. See `stripHold` for why a run wants the same row all the way along.
+ */
+function stripRoom(strip, first, last) {
+    for (let row = 0; row < loops.ROWS; row++) {
+        let free = true;
+        for (let at = first; at <= last && free; at++) {
+            free = strip[at][row] === null;
+        }
+        if (free) {
+            return row;
+        }
+    }
+    return null;
+}
+
+/**
+ * `holdNote`, in place.
+ *
+ * The row is chosen once, for the whole run, rather than left to `stripPut` to
+ * find a step at a time. Rows are slots and not voices, so either way the same
+ * notes sound - but a run written a step at a time takes whatever row happens
+ * to be free in each, and a note held over several steps ends up scattered
+ * across the grid. The editor draws a tie as a bare dash, so a tie that has
+ * wandered out of its own row reads as a note whose head has gone missing.
+ *
+ * When no single row is free the whole way, it falls back to a step at a time:
+ * a scattered run is still better than a note that was never written down.
+ *
+ * A step with every row already taken cannot hold the strike, so the run
+ * starts on the first step that can take it. Otherwise the note would come back
+ * as a tie carrying on from a strike that was never written - which `runs`
+ * sounds anyway, but which the grid draws as a dash with nothing above it.
+ */
 function stripHold(strip, from, to, midi) {
     const first = Math.max(0, from);
     const last = Math.max(first, to);
-    stripPut(strip, first, null, midi);
+    stripGrow(strip, last);
+    const row = stripRoom(strip, first, last);
+    stripPut(strip, first, row, midi);
+
+    let struck = loops.has(strip[first], midi);
     for (let at = first + 1; at <= last; at++) {
-        stripPut(strip, at, null, loops.tie(midi));
+        stripPut(strip, at, row, struck ? loops.tie(midi) : midi);
+        struck = struck || loops.has(strip[at], midi);
     }
     return strip;
 }
@@ -203,7 +252,7 @@ function stripHold(strip, from, to, midi) {
 /**
  * Puts a note in a step. `row` of null finds the first free row, which is what
  * a chord wants: play three keys, they fill rows 0, 1 and 2. A step already
- * holding four notes takes no more.
+ * holding `ROWS` notes takes no more.
  */
 loops.setNote = function (steps, index, row, midi) {
     return stripPut(loops.copy(steps), index, row, midi);
@@ -336,8 +385,8 @@ loops.tidy = function (steps) {
 };
 
 /**
- * Rounds a strip up to a whole bar, so four loops of different lengths still
- * come round together instead of drifting apart.
+ * Rounds a strip up to a whole bar, so loops of different lengths still come
+ * round together instead of drifting apart.
  */
 loops.padToBar = function (steps) {
     const copied = loops.copy(steps);

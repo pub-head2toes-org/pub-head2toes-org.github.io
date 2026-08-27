@@ -131,7 +131,8 @@ export function loadBandage({ audio = true } = {}) {
     const ids = ['keyboard', 'voice_select', 'range_label', 'readout', 'sustain', 'volume',
         'octave_down', 'octave_up', 'tempo', 'tempo_label',
         'transport', 'editor', 'editor_title', 'edit_grid',
-        'edit_left', 'edit_right', 'edit_insert', 'edit_delete', 'edit_tie',
+        'edit_left', 'edit_right', 'edit_bar_left', 'edit_bar_right',
+        'edit_insert', 'edit_delete', 'edit_tie',
         'edit_undo', 'edit_redo', 'edit_close',
         'loop_save', 'loop_load', 'loop_file', 'loop_table', 'loop_all',
         'song_bar', 'song_play', 'song_time', 'song_seek'];

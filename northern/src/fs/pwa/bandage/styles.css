@@ -244,7 +244,14 @@ body {
 
 #editor_head .stepper {
   display: flex;
-  gap: var(--thumb);               /* as wide as the buttons: the whole point */
+  gap: 4px;
+}
+
+/* The wide gap belongs between the two single-step buttons and nowhere else:
+   they are the pair a thumb confuses, and a bar jump either side of them is a
+   different move rather than the wrong one. */
+#editor_head .stepper #edit_right {
+  margin-left: calc(var(--thumb) - 4px);
 }
 
 #editor_head .stepper button {
@@ -252,6 +259,14 @@ body {
   padding-left: 0;
   padding-right: 0;
   font-size: 0.85rem;
+}
+
+/* A bar at a time is for getting somewhere, not for nudging: narrower than the
+   step buttons, so the pair in the middle stays the one a hand reaches for. */
+#editor_head .stepper .jump {
+  width: calc(var(--thumb) * 0.7);
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 #editor_title {
@@ -277,7 +292,8 @@ body {
 
 #editor_head button:disabled { opacity: 0.35; cursor: default; }
 
-/* Four rows are the four notes at once; the columns fill the panel's width */
+/* A row per note that can sound at once - loops.ROWS decides how many, and the
+   rows share whatever height the panel has left. The columns fill its width. */
 #edit_grid {
   flex: 1 1 auto;
   min-height: 0;

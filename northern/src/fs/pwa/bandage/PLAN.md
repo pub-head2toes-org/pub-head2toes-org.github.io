@@ -105,7 +105,7 @@ built from `keys.layout`. A table typed into the page by hand would be a second
 place that says how many loops there are, and one of the two would eventually be
 wrong.
 
-1. **A loop is a strip of steps; a step is up to four notes at once.** A step is
+1. **A loop is a strip of steps; a step is up to six notes at once.** A step is
    an eighth note, so a rest is a real thing that takes up room — which is what
    makes the editor's insert and delete of an empty step the way a rhythm is
    written, rather than a curiosity. A slot holds nothing, a note struck, or a
@@ -113,16 +113,20 @@ wrong.
    negative so that a strip stays an array of numbers.
 2. **One loop is one MIDI channel is one instrument.** Loops take channels 1 to
    8 and the player's hands keep channel 0, so a loop starting can never cut off
-   a note being held. A MIDI channel is polyphonic, so four notes at once needs
+   a note being held. A MIDI channel is polyphonic, so six notes at once needs
    no plumbing at all. The instrument is whatever the Voice selector says when
    Record is pressed, so a part plays back as it sounded while it was played.
 
    Eight is the ceiling, and channel 9 is why: `tinysynth` makes it the drum
    channel in `reset`, so a ninth loop would play a kit instead of a pitch. The
-   synth is opened with 48 voices, which is eight loops of four notes with room
+   synth is opened with 64 voices, which is eight loops of six notes with room
    for two hands on top.
-3. **One clock, not four.** Every loop reads its step off one counter, wrapping
-   at its own length — `steps[tick % length]`. Four transports would drift; one
+
+   Six notes to a step rather than four is what a real file asks for: `Clocks.mid`
+   has 912 steps wanting more than four, and a step with every row taken drops
+   the note rather than making room. Six is where that file stops asking.
+3. **One clock, not eight.** Every loop reads its step off one counter, wrapping
+   at its own length — `steps[tick % length]`. Eight transports would drift; one
    counter cannot.
 4. **Recording is real time, quantised.** Each note lands on the nearest step,
    which is both how a player wants to record and exactly the grid the editor

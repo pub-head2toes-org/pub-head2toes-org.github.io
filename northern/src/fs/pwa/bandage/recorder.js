@@ -86,7 +86,7 @@ function tickTime(tick) {
 
 /* --------------------------------------------------------------- transport */
 
-/** Wakes the scheduler. Idempotent: four loops share the one clock. */
+/** Wakes the scheduler. Idempotent: every loop shares the one clock. */
 function startClock() {
   if (rec.timer !== null) {
     return;
@@ -506,6 +506,38 @@ function follow() {
   }
 }
 
+/**
+ * The notes under the cursor, sounded as the loop would sound them: its own
+ * channel and instrument, one step long, gated like playback.
+ *
+ * Moving the cursor is reading the part, and a part is read by ear. The grid
+ * says which pitches are in a column but not what they are together, and a tie
+ * says a note goes on ringing without saying what it is - so a column of ties
+ * sounds too. What is heard is what is sounding at that point in the loop.
+ *
+ * Nothing is sounded while the loop being edited is already playing, or while
+ * the song is: it can be heard, and an audition on a channel something else is
+ * using would cut its notes off at the gate rather than let them ring.
+ */
+function audition() {
+  const step = rec.loops[rec.editing].steps[rec.cursor];
+  if (!step || rec.running.has(rec.editing) || songPlaying()) {
+    return;                              // past the end, or already sounding
+  }
+  const channel = loops.channel(rec.editing);
+  const at = now();
+  const until = at + (loops.stepSeconds(app.bpm) * loops.GATE);
+
+  app.synth.setProgram(channel, rec.loops[rec.editing].program);
+  step.forEach((note) => {
+    if (note === null) {
+      return;
+    }
+    app.synth.noteOn(channel, loops.pitch(note), loops.VELOCITY, at);
+    app.synth.noteOff(channel, loops.pitch(note), until);
+  });
+}
+
 function moveCursor(by) {
   if (rec.editing === null) {
     return;
@@ -513,6 +545,7 @@ function moveCursor(by) {
   rec.cursor = Math.max(0, rec.cursor + by);
   follow();
   drawEditor();
+  audition();
 }
 
 /** An edit, recorded so that one Undo takes it back. */
@@ -636,7 +669,7 @@ function showTransport() {
   }
 }
 
-/** The grid: four rows of notes, one column per step, a window at a time. */
+/** The grid: a row per note that can sound at once, a column per step. */
 function drawEditor() {
   if (rec.editing === null) {
     return;
@@ -824,6 +857,13 @@ function initRecorder() {
 
   document.getElementById('edit_left').addEventListener('click', () => moveCursor(-1));
   document.getElementById('edit_right').addEventListener('click', () => moveCursor(1));
+  // A bar rather than the eight the window happens to show: the jump then lands
+  // on the same beat of the bar before or after, which is where an edit belongs,
+  // and on a bar line the grid has already drawn.
+  document.getElementById('edit_bar_left')
+    .addEventListener('click', () => moveCursor(-loops.BAR));
+  document.getElementById('edit_bar_right')
+    .addEventListener('click', () => moveCursor(loops.BAR));
   document.getElementById('edit_insert').addEventListener('click', () =>
     applyEdit(steps => loops.insertStep(steps, rec.cursor)));
   document.getElementById('edit_delete').addEventListener('click', () =>
@@ -853,6 +893,7 @@ function initRecorder() {
     rec.cursor = Number(cell.dataset.step);
     follow();
     drawEditor();
+    audition();
   });
 
   rec.elements.all.addEventListener('click', toggleAll);

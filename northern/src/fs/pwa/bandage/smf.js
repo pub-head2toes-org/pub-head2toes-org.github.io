@@ -208,6 +208,36 @@ smf.decode = function (song, model) {
         lengths[index] = Math.max(lengths[index], to + 1);
     };
 
+    /**
+     * A note struck. `open` is keyed by channel and pitch, so a second strike
+     * arriving while the first is still ringing has to say what becomes of the
+     * one already there - left to overwrite it, the earlier strike would be
+     * closed by the wrong note off and the later one dropped for having no
+     * start left to close.
+     *
+     * A player striking a key again means the note starts over, so the one
+     * ringing ends where the new one begins.
+     *
+     * Unless both land on the same step. A step is an eighth note and a file is
+     * written in ticks, so two strikes a tick apart - a part doubled, or a note
+     * released and caught again - round to the same column, and a column holds
+     * one of a pitch. Restarting there would write a note of no length and then
+     * a second strike the grid has no room for. They are one note instead, held
+     * until whichever note off comes last, which is what it sounded like.
+     */
+    const strike = (index, note, at) => {
+        const key = `${index}:${note}`;
+        if (!open.has(key)) {
+            open.set(key, at);
+            return;
+        }
+        if (at <= open.get(key)) {
+            return;                              // the same column: one note
+        }
+        close(index, note, at);                  // it ends where the new one starts
+        open.set(key, at);
+    };
+
     song.ev.forEach((event) => {
         const message = event.m || [];
         if (message[0] === 0xff51) {
@@ -227,7 +257,7 @@ smf.decode = function (song, model) {
         case 0x90:
             // A note on at zero velocity is a note off; the format allows both.
             if (message[2] > 0) {
-                open.set(`${index}:${message[1]}`, at);
+                strike(index, message[1], at);
             } else {
                 close(index, message[1], at);
             }

@@ -55,7 +55,7 @@
 
     <!--
       The editor, over the table rather than beside it: the panel is a third of
-      a phone and there is no room for both. Four rows are the four notes that
+      a phone and there is no room for both. Six rows are the six notes that
       can sound at once; the columns are the sequence.
     -->
     <div id="editor" hidden>
@@ -64,10 +64,18 @@
           The two most-used buttons, first and widest, with a gap as wide as
           they are between them: moving the cursor is what a hand does most in
           here, and stepping the wrong way is the easiest mistake to make.
+
+          A bar either side of them, for getting somewhere rather than nudging:
+          a strip runs to hundreds of steps and the window shows eight. They sit
+          outside the pair and point the same way, so the row reads outwards
+          from the middle and the wide gap still separates the two easy to
+          confuse buttons rather than the four of them.
         -->
         <div class="stepper">
+          <button type="button" id="edit_bar_left" class="jump" aria-label="Back one bar">&#171;</button>
           <button type="button" id="edit_left" aria-label="Back one step">&#9664;</button>
           <button type="button" id="edit_right" aria-label="On one step">&#9654;</button>
+          <button type="button" id="edit_bar_right" class="jump" aria-label="On one bar">&#187;</button>
         </div>
         <span id="editor_title">Loop 1</span>
         <span class="spacer"></span>

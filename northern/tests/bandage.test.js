@@ -285,8 +285,19 @@ describe('the bandage PWA shell', () => {
         assert.ok(head.indexOf('id="edit_left"') < head.indexOf('id="edit_insert"'),
             'at the left of the bar, ahead of the edit buttons');
         assert.match(css, /\.stepper button\s*{[^}]*width:\s*var\(--thumb\)/);
-        assert.match(css, /\.stepper\s*{[^}]*gap:\s*var\(--thumb\)/,
+        assert.match(css, /#edit_right\s*{[^}]*margin-left:\s*calc\(var\(--thumb\)/,
             'the space between them is as wide as they are');
+    });
+
+    // Outside the pair and pointing the same way, so the wide gap still falls
+    // between the two buttons a thumb confuses rather than among four of them
+    it('puts the bar jumps outside the step buttons, narrower', () => {
+        const css = read('styles.css');
+        const head = index.match(/<div id="editor_head">[\s\S]*?\n      <\/div>/)[0];
+
+        assert.ok(head.indexOf('id="edit_bar_left"') < head.indexOf('id="edit_left"'));
+        assert.ok(head.indexOf('id="edit_bar_right"') > head.indexOf('id="edit_right"'));
+        assert.match(css, /\.stepper \.jump\s*{[^}]*width:\s*calc\(var\(--thumb\)/);
     });
 
     it('gives the octave pair that same width, and the head room to be tall', () => {
@@ -570,10 +581,21 @@ describe('the bandage controls', () => {
 });
 
 // The loops as numbers: what a step is, and what an edit does to a strip
+/**
+ * A step with these notes in its first rows and rests in the rest of them, so
+ * that an assertion about what is *in* a step does not also have to say how
+ * wide one is. Only the tests about the width itself write it out longhand.
+ */
+function step(...notes) {
+    const made = loops.emptyStep();
+    notes.forEach((note, row) => { made[row] = note; });
+    return made;
+}
+
 describe('the eight loops', () => {
-    it('are eight, each with four notes at once, on channels 1 to 8', () => {
+    it('are eight, each with six notes at once, on channels 1 to 8', () => {
         assert.strictEqual(loops.COUNT, 8);
-        assert.strictEqual(loops.ROWS, 4);
+        assert.strictEqual(loops.ROWS, 6);
         assert.deepStrictEqual(
             [...Array(loops.COUNT).keys()].map(loops.channel), [1, 2, 3, 4, 5, 6, 7, 8],
             'and never on channel 0, which is the hands');
@@ -616,21 +638,24 @@ describe('the eight loops', () => {
         let steps = [];
         [60, 64, 67].forEach(note => { steps = loops.setNote(steps, 0, null, note); });
 
-        assert.deepStrictEqual(steps[0], [60, 64, 67, null]);
+        assert.deepStrictEqual(steps[0], step(60, 64, 67));
     });
 
-    it('takes four notes at once and no more', () => {
+    // Six is what a real file asks for - see the note on loops.ROWS
+    it('takes six notes at once and no more', () => {
         let steps = [];
-        [60, 62, 64, 65, 67].forEach(note => { steps = loops.setNote(steps, 0, null, note); });
+        [60, 62, 64, 65, 67, 69, 71].forEach(note => {
+            steps = loops.setNote(steps, 0, null, note);
+        });
 
-        assert.deepStrictEqual(steps[0], [60, 62, 64, 65], 'the fifth has nowhere to go');
+        assert.deepStrictEqual(steps[0], [60, 62, 64, 65, 67, 69], 'the seventh has nowhere to go');
     });
 
     it('does not sound the same note twice in one step', () => {
         let steps = loops.setNote([], 0, null, 60);
         steps = loops.setNote(steps, 0, null, 60);
 
-        assert.deepStrictEqual(steps[0], [60, null, null, null]);
+        assert.deepStrictEqual(steps[0], step(60));
     });
 
     it('fills the gap with rests when a note lands past the end', () => {
@@ -671,14 +696,35 @@ describe('the eight loops', () => {
         let steps = loops.setNote([], 0, null, 60);
         steps = loops.holdNote(steps, 0, 1, 67);
 
-        assert.deepStrictEqual(steps[0], [60, 67, null, null]);
-        assert.deepStrictEqual(steps[1], [loops.tie(67), null, null, null]);
+        assert.deepStrictEqual(steps[0], step(60, 67));
+        // Row 1 the whole way: a tie belongs under the note it carries on
+        assert.deepStrictEqual(steps[1], step(null, loops.tie(67)));
+    });
+
+    it('keeps a run in one row, so its ties sit under the note they carry on', () => {
+        // Two notes ending together, written in the order a file read gives
+        // them: the shorter one first, taking the row the longer one wants.
+        let steps = loops.holdNote([], 1, 2, 67);
+        steps = loops.holdNote(steps, 0, 2, 60);
+
+        assert.deepStrictEqual(steps.map(step => step[0]), [null, 67, loops.tie(67)]);
+        assert.deepStrictEqual(steps.map(step => step[1]), [60, loops.tie(60), loops.tie(60)]);
+    });
+
+    it('falls back to a row at a time rather than lose a note', () => {
+        // Every row taken in the first step, one free from there on
+        const full = [...Array(loops.ROWS).keys()].map(row => 55 + row);
+        let steps = full.reduce((all, midi) => loops.setNote(all, 0, null, midi), []);
+        steps = loops.holdNote(steps, 0, 1, 67);
+
+        assert.deepStrictEqual(steps[0], full, 'nothing was overwritten');
+        assert.deepStrictEqual(steps[1], step(67), 'and it is struck, not lost');
     });
 
     it('sorts a step low to high, so a chord reads the same in every column', () => {
         const ragged = loops.setNote(loops.setNote([], 0, null, 67), 0, null, 60);
 
-        assert.deepStrictEqual(loops.tidy(ragged)[0], [60, 67, null, null]);
+        assert.deepStrictEqual(loops.tidy(ragged)[0], step(60, 67));
         assert.deepStrictEqual(loops.tidy([loops.emptyStep()])[0], loops.emptyStep());
     });
 
@@ -687,7 +733,7 @@ describe('the eight loops', () => {
 
         steps = loops.clearCell(steps, 0, 0);
 
-        assert.deepStrictEqual(steps[0], [null, 64, null, null]);
+        assert.deepStrictEqual(steps[0], step(null, 64));
     });
 
     it('leaves the strip it was given alone, which is what makes undo cheap', () => {
@@ -697,7 +743,7 @@ describe('the eight loops', () => {
         loops.insertStep(before, 0);
         loops.deleteStep(before, 0);
 
-        assert.deepStrictEqual(before[0], [60, null, null, null]);
+        assert.deepStrictEqual(before[0], step(60));
     });
 
     it('rounds a recording up to a whole bar, so loops come round together', () => {
@@ -731,7 +777,7 @@ describe('the eight loops', () => {
         const turned = loops.rotate(loops.extend(steps, 3), 2);
 
         assert.deepStrictEqual(turned.map(step => step[0]), [null, null, 60, null]);
-        assert.deepStrictEqual(loops.rotate(turned, -2).map(step => step[0]), [60, null, null, null]);
+        assert.deepStrictEqual(loops.rotate(turned, -2).map(one => one[0]), [60, null, null, null]);
         assert.deepStrictEqual(loops.rotate([], 3), [], 'and an empty strip cannot turn');
     });
 });
@@ -783,7 +829,7 @@ describe('a note held over several steps', () => {
     });
 
     it('takes several runs at once, in the order they start', () => {
-        const chord = [[60, 67, null, null], [loops.tie(60), null, null, null]];
+        const chord = [step(60, 67), step(loops.tie(60))];
 
         assert.deepStrictEqual(loops.runs(chord), [
             { midi: 60, at: 0, length: 2 },
@@ -801,7 +847,7 @@ describe('a note held over several steps', () => {
 
         const held = loops.tieStep(chord, 1);
 
-        assert.deepStrictEqual(held[1], [loops.tie(60), loops.tie(67), null, null]);
+        assert.deepStrictEqual(held[1], step(loops.tie(60), loops.tie(67)));
         assert.deepStrictEqual(loops.tieStep(chord, 0), chord, 'and step 0 has nothing before it');
     });
 });
@@ -1251,13 +1297,13 @@ describe('the loop table', () => {
 });
 
 describe('the loop editor', () => {
-    it('shows four rows of notes and a window of the sequence', () => {
+    it('shows a row per note that can sound, and a window of the sequence', () => {
         const page = loadBandage();
 
         page.click('edit_0');
 
         assert.strictEqual(page.element('editor').hidden, false);
-        assert.strictEqual(page.grid().length, 4, 'four notes at once');
+        assert.strictEqual(page.grid().length, loops.ROWS, 'a row per note at once');
         assert.strictEqual(page.grid()[0].length, 8, 'eight steps across');
         assert.strictEqual(page.cursorAt(), 0);
     });
@@ -1297,6 +1343,84 @@ describe('the loop editor', () => {
         assert.strictEqual(page.cursorAt(), 7, 'the cursor stays in view');
         assert.strictEqual(Number(page.grid()[0].length), 8);
         assert.match(page.element('editor_title').textContent, /10\//);
+    });
+
+    it('jumps a bar at a time, so a long strip is a few taps rather than many', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+
+        page.click('edit_bar_right');
+        page.click('edit_bar_right');
+
+        assert.strictEqual(page.rec.cursor, 2 * page.loops().BAR, 'two bars in');
+        assert.match(page.element('editor_title').textContent,
+            new RegExp(`${(2 * page.loops().BAR) + 1}/`));
+
+        page.click('edit_bar_left');
+
+        assert.strictEqual(page.rec.cursor, page.loops().BAR, 'and back again');
+    });
+
+    it('will not jump off the front either', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.click('edit_right');
+
+        page.click('edit_bar_left');
+
+        assert.strictEqual(page.cursorAt(), 0, 'it stops at the start, like a step does');
+    });
+
+    // The grid says which pitches are in a column but not what they are together
+    it('sounds the notes under the cursor, so a part can be read by ear', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.press(60, 1); page.press(64, 2); page.lift(1); page.lift(2);
+        page.played.length = 0;                  // the keys themselves, on channel 0
+
+        page.click('edit_left');                 // back onto the chord just written
+
+        assert.deepStrictEqual(page.loopNotes(1), [60, 64], 'on the loop`s own channel');
+    });
+
+    it('sounds a tie, which is the note before it still ringing', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.press(60); page.lift();             // C4 in step 0, cursor on step 1
+        page.click('edit_tie');                  // step 1 carries it on, cursor to 2
+        page.played.length = 0;
+
+        page.click('edit_left');                 // back onto the tie
+
+        assert.deepStrictEqual(page.loopNotes(1), [60]);
+    });
+
+    it('stays quiet over a column with nothing in it', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.press(60); page.lift();             // step 0, cursor moves to step 1
+        page.click('edit_right');                // step 2
+        page.press(67); page.lift();             // step 2, so step 1 is a rest
+        page.played.length = 0;
+
+        page.clickCell(1, 0);                    // tap the rest between them
+
+        assert.deepStrictEqual(page.loopNotes(1), [], 'a rest is silence, not a chord');
+    });
+
+    // It can be heard already, and the gate would cut the running note short
+    it('leaves a playing loop to sound itself', () => {
+        const page = loadBandage();
+        page.click('edit_0');
+        page.press(60); page.lift();
+        page.click('edit_close');
+        page.click('play_0');
+        page.click('edit_0');
+        page.played.length = 0;
+
+        page.clickCell(0, 0);
+
+        assert.deepStrictEqual(page.loopNotes(1), []);
     });
 
     it('will not run off the front of the sequence', () => {
@@ -1584,6 +1708,30 @@ describe('a whole song, rather than eight loops', () => {
         assert.strictEqual(new Set(lengths).size, 1, `came back as ${lengths.join(' ')}`);
         assert.ok(lengths[0] > 100, 'and it is a song, not a bar');
         assert.strictEqual(page.song().shown, true, 'and can be played whole');
+    });
+
+    // `open` is keyed by channel and pitch, so a second strike on a pitch still
+    // ringing has to say what becomes of the first
+    it('starts a note over when it is struck again while still ringing', () => {
+        const read = smf.decode(song([
+            on(0, 1, 60),                           // step 0, never released
+            on(960, 1, 60), off(1440, 1, 60)        // struck again at step 16
+        ]), loops);
+        const runs = loops.runs(read.loops[0].steps).filter(run => run.midi === 60);
+
+        assert.deepStrictEqual(runs.map(run => `${run.at}+${run.length}`), ['0+16', '16+8'],
+            'the first ends where the second begins, and neither is lost');
+    });
+
+    // Two strikes a tick apart round to one column, and a column holds one of a
+    // pitch - so they are the one note they sounded like, not a note of no length
+    it('keeps two strikes in the same step as one note', () => {
+        const read = smf.decode(song([
+            on(0, 1, 60), on(1, 1, 60), off(480, 1, 60)
+        ]), loops);
+        const runs = loops.runs(read.loops[0].steps).filter(run => run.midi === 60);
+
+        assert.deepStrictEqual(runs.map(run => `${run.at}+${run.length}`), ['0+8']);
     });
 
     it('reads a tempo map rather than one tempo', () => {

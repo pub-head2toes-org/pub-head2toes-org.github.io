@@ -17,7 +17,7 @@
  * be recording is none of the keyboard's business.
  */
 
-const CHANNEL = 0;                  // the hands. Loops take 1 to 4.
+const CHANNEL = 0;                  // the hands. Loops take 1 to 8.
 
 const app = {
   synth: null,
@@ -335,10 +335,13 @@ function init() {
     return;
   }
 
-  // Eight loops of four notes, plus ten fingers, is what the app can now ask
+  // Eight loops of six notes, plus ten fingers, is what the app can now ask
   // for at once; the voice count is the ceiling before the synth starts
-  // stealing notes back from itself.
-  app.synth = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 48 });
+  // stealing notes back from itself. Real music never comes near it - the
+  // sample file peaks at sixteen notes across all eight loops - but the
+  // ceiling is what a held chord runs into, and a stolen voice is a note
+  // that stops in the middle of ringing.
+  app.synth = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 64 });
   app.synth.setMasterVol(Number(app.elements.volume.value) / 100);
   app.synth.setProgram(CHANNEL, keys.VOICES[0].program);
 
