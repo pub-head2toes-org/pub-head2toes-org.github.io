@@ -13,4 +13,3 @@ It is a JS Node app that implements the wrapper around Sqlite3 DB providing a RE
 * Review the Nothern's code base
 * Suggest a plan for phased tasks of code refactoring for improvements and enhancements
 
-

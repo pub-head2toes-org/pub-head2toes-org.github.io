@@ -10,15 +10,15 @@ const crypto = new Crypto();
 import Cookie from './Cookie.js';
 const cookie = new Cookie();
 import fs from 'node:fs';
-import SqliteDB from './SqliteDBWithReplicas.js';
+import SqliteDB from './SqliteDB.js';
 const sub = {};
 
 export default class Server{
-    constructor(port, dbFilePath) {
-        this.init(port, dbFilePath, cookie.getCookie);
+    constructor(port, dbFilePath, sslPort = 9443) {
+        this.init(port, dbFilePath, cookie.getCookie, sslPort);
     }
 
-    init(port, dbFilePath, getCookie){
+    init(port, dbFilePath, getCookie, sslPort = 9443){
         console.log('init::'+port);
         const db = new SqliteDB (dbFilePath);
 
@@ -57,7 +57,7 @@ export default class Server{
                 }
                 render.renderJSON({"clients": Object.keys(sub).length}, res);
               } else if (input.pathname.startsWith("/metrics/counter")) {
-                    db.increment(input.pathname, function(result) {
+                    db.increment(input.pathname, author, group, function(result) {
                        render.renderJSON(result, res);
                     });
               } else {
@@ -121,10 +121,7 @@ export default class Server{
                     });
                     req.on('end', function(){ handlePostPut(input, body, db,  req, res) });
                  } else {
-                    if(path && path.startsWith("/db/insert")){
-                        const data = { type: 'json', value: db.insert(q.path, q.type, q.value) };
-                        render.renderData(data, res);
-                    } else if (path && path.startsWith("/sub/")) {
+                    if (path && path.startsWith("/sub/")) {
                         render.renderSub(sub, path, req, res);
                     } else if(path && path.startsWith("/fs/get")){
                         render.renderFromFS (path, res);
@@ -149,7 +146,11 @@ export default class Server{
 	      );
         const ssl = https.createServer(options,app);
         server.listen(port);
-        ssl.listen(9443);
+        ssl.listen(sslPort);
+
+        this.db = db;
+        this.httpServer = server;
+        this.sslServer = ssl;
     }
 
 }

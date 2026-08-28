@@ -7,6 +7,9 @@
     <script type="text/javascript" src="sjcl.js"></script>
     <script type="text/javascript" src="cookies.js"></script>
     <script type="text/javascript" src="db.js"></script>
+    <script type="text/javascript" src="oo.js"></script>
+    <script type="text/javascript" src="idcard.js"></script>
+    <script type="text/javascript" src="session.js"></script>
     <link rel="stylesheet" media="screen" href="style.css">
 </head>
 
@@ -14,32 +17,60 @@
 <body onLoad = "init();">
 
   <div class="page-wrapper">
-                <section class="intro" id="zen-intro">
-                    <header role="banner">
-                        <h1>head2toes</h1>
-                        <h2>Sign In</h2>
-                    </header>
 
-                    <div></div>
-            
-                    <div class="summary" id="zen-summary" role="article">
-                            <label for="fileinput" class="menu-item">
-                                    Load Id Card
-                                </label>
-                            <input class="button-hidden" type="file" id="fileinput" />
-                    </div>
-                </section> 
-    <section class="intro" id="zen-intro">
-        <header role="banner">
-            <h1>pub.head2toes.org</h1>
-            <h2>Reg</h2>
-        </header>
+    <header role="banner" class="site">
+        <h1>pub.head2toes.org</h1>
+    </header>
 
-        <div id="msg"></div>
+    <!-- Messages: everything the page has to say, in one place. -->
+    <section class="intro board">
+        <h2>Messages</h2>
+        <textarea id="msg" rows="8" readonly aria-live="polite"></textarea>
+    </section>
 
-        <div class="summary" id="zen-summary" role="article">
-          <button class="menu-item" value="Download Keys" onclick="javascript:saveToNamedFile()">Save Id Card & Continue</button>
-          <a id="next" class="menu-item" href="#">Continue</a>
+    <!-- Sign in: for an ID Card that already exists. -->
+    <section class="intro">
+        <h2>Sign in</h2>
+
+        <div class="summary" role="article">
+            <label for="signin_passphrase">Passphrase <small>(optional)</small></label>
+            <input type="password" id="signin_passphrase" name="signin_passphrase"
+                   autocomplete="current-password"
+                   placeholder="only for an ID Card marked with *" />
+
+            <label for="fileinput" class="menu-item">Load Id Card &amp; Continue</label>
+            <input class="button-hidden" type="file" id="fileinput" />
+
+            <p class="hint">An ID Card whose name is marked with <code>*</code> is
+               encrypted &mdash; type its passphrase above before loading it.</p>
+
+            <!-- Shown only while the session cookie is live: no file needed then. -->
+            <a id="continue" class="menu-item" href="#" hidden>Continue</a>
+        </div>
+    </section>
+
+    <!-- Reg: for a brand new identity, which exists only until its card is saved. -->
+    <section class="intro">
+        <h2>Reg</h2>
+
+        <div class="summary" role="article">
+          <label for="username">User name</label>
+          <input type="text" id="username" name="username" autocomplete="username"
+                 placeholder="how you want to be known" maxlength="60" />
+
+          <label for="passphrase">Passphrase <small>(optional)</small></label>
+          <input type="password" id="passphrase" name="passphrase" autocomplete="new-password"
+                 placeholder="leave empty to save an unencrypted ID Card" />
+
+          <label for="passphrase2">Repeat passphrase</label>
+          <input type="password" id="passphrase2" name="passphrase2" autocomplete="new-password"
+                 placeholder="repeat it - a typo here cannot be recovered" />
+
+          <label for="pubkey">Public key</label>
+          <input type="text" id="pubkey" name="pubkey" readonly
+                 placeholder="generated for you" />
+
+          <button class="menu-item" onclick="javascript:saveToNamedFile()">Save Id Card &amp; Continue</button>
         </div>
     </section>
 
@@ -49,109 +80,168 @@
 <script>
         document.getElementById('fileinput').addEventListener('change', function(){
             var file = this.files[0];
-            const msg = document.getElementById("msg");
             console.log("name : " + file.name);
             console.log("size : " + file.size);
             console.log("type : " + file.type);
             console.log("date : " + file.lastModified);
-    
+
             var reader = new FileReader();
-    
-            reader.onload = function(e) {
-            var text = reader.result;
-            var keys = text.split(".");
-            localStorage.pub = keys[0];
-            localStorage.priv = keys[1];
-      
-            msg.innerHTML = `<textarea rows="10">ID loaded!  ID=${localStorage.pub}</textarea>`;
-    
-            keyspub = new sjcl.ecc.ecdsa.publicKey(
-                sjcl.ecc.curves.c256,
-                sjcl.codec.base64.toBits(localStorage.pub)
-            );
-            keyssec = new sjcl.ecc.ecdsa.secretKey(
-                sjcl.ecc.curves.c256,
-                sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
-            );
-            var ssId = 
-            localStorage.pub +
-                "." + 
-                (new Date().getTime());
-            
-            var sig = keyssec.sign(sjcl.hash.sha256.hash(ssId))
-            var sigb64 = sjcl.codec.base64.fromBits(sig);
-    
-            setCookie ('ssid', ssId + "." + sigb64, 1);
-    
-            next.href = getNextURL();   
+
+            reader.onload = async function(e) {
+            const text = reader.result;
+
+            let card;
+            try {
+              card = await idcard.open(text, getSignInPassphrase());
+            } catch (err) {
+              console.log(err);
+              say(`ID Card not loaded: ${err.message}`);
+              return;
+            }
+
+            // The key goes into memory only; session storage keeps the public half.
+            session.unlock(card);
+            session.mintCookie();
+            unsavedIdentity = false;
+
+            if (card.username){
+              document.getElementById("username").value = card.username;
+            }
+            showPub();
+
+            const who = card.username ? `${card.username} (${card.pub})` : card.pub;
+            say(`ID loaded!  ID=${who}`);
+
+            // "Load Id Card & Continue": there is nothing left to do on this page.
+            window.location.href = getNextURL();
 
             }
-    
+
             reader.readAsText(file);
-    
+
         }, false);
-    
- 
+
+
+// Set while a freshly generated identity exists only in this page's memory.
+var unsavedIdentity = false;
+
+// The key pair the Reg section offers, drafted on every visit. It belongs to
+// nobody until Save Id Card is pressed - see currentDraft().
+var draft = null;
+
 async function init() {
-  try { 
+  try {
 
     var localStorage = window.localStorage;
-    var keys = {};
-    var ssId = "";
-    const ts = new Date().getTime();
-    const msg = document.getElementById("msg");
-    const next = document.getElementById("next");
-    next.href = getNextURL();   
- 
+
+    if (session.userName()){
+      document.getElementById("username").value = session.userName();
+    }
+
     if (localStorage.remotectrl){
 
       window.location.href = getNextURL();
+      return;
     }
 
+    currentDraft();
 
-    if (localStorage.pub && localStorage.pub !== "notloggedin"){
+    // A key left in storage by an older version was taken into memory and
+    // scrubbed when session.js loaded; the cookie can be refreshed right away.
+    if (session.unlocked()){
 
-      keys.pub = new sjcl.ecc.ecdsa.publicKey(
-          sjcl.ecc.curves.c256,
-          sjcl.codec.base64.toBits(localStorage.pub)
-      );
-      
-      keys.sec = new sjcl.ecc.ecdsa.secretKey(
-          sjcl.ecc.curves.c256,
-          sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
-      );
+      session.mintCookie();
+      say(`ID key found!  ID=${session.pub()}`);
 
-      msg.innerHTML = `<textarea rows="10">ID key found!  ID=${localStorage.pub}</textarea>`;
+    } else if (session.signedIn()){
+
+      // The cookie is still good, so nothing has to be signed on this visit.
+      say(`Signed in as ${session.userName() || session.pub()}.
+Continue above, or load your ID Card if you want to save a fresh copy.
+The ID Card below is a new identity - saving it replaces this one.`);
+
+    } else if (session.known()){
+
+      say(`Your session has expired.
+Load the ID Card for ${session.userName() || session.pub()} to sign in again,
+or save the ID Card below to register as somebody new.`);
 
     } else {
 
-      keys = 
-          sjcl.ecc.ecdsa.generateKeys(256);
+      session.adopt(currentDraft(), document.getElementById("username").value);
+      session.mintCookie();
+      unsavedIdentity = true;
 
-      var serializedPubKey = 
-         await sjcl.codec.base64.fromBits(keys.pub.get().x.concat(keys.pub.get().y));
-      localStorage.pub = serializedPubKey;
-      
-      var serializedSecKey = 
-          await sjcl.codec.base64.fromBits(keys.sec.get());
-      localStorage.priv = serializedSecKey;
+      say(`New ID keys generated - the public half is shown below.
 
-      msg.innerHTML = `<textarea rows="10">New ID keys generated: pub=${localStorage.pub}</textarea>`;
-      next.href = `javascript:saveIdCard();`;
+These keys are held in this page only - they are NOT saved in the browser.
+Save the ID Card now or the identity is lost when you leave this page.`);
    }
 
-    ssId = 
-      localStorage.pub +
-      "." + 
-      ts;
-   
-    var sig = keys.sec.sign(sjcl.hash.sha256.hash(ssId))
-    var sigb64 = sjcl.codec.base64.fromBits(sig);
-
-    bakeCookie(ssId + "." + sigb64);
+    showPub();
+    showContinue();
 
   } catch(e) {
    console.log(e);
+  }
+}
+
+// A generated key that has not been downloaded yet cannot be recovered.
+window.addEventListener("beforeunload", function (event) {
+  if (unsavedIdentity){
+    event.preventDefault();
+    event.returnValue = "";
+    return "";
+  }
+});
+
+// The message board: read only, and always showing the latest word.
+function say (text){
+  document.getElementById("msg").value = text;
+}
+
+/**
+ * The pair the Reg section is offering. Drafted once per visit and kept until
+ * it is saved: a live session cookie is not a loaded key, so without a draft
+ * there would be nothing for Save Id Card to write.
+ */
+function currentDraft (){
+  if (!draft){
+    draft = session.draft();
+  }
+  return draft;
+}
+
+/** The public key Save Id Card would write: the loaded card's, or the draft's. */
+function savedPub (){
+  return session.unlocked() ? session.pub() : currentDraft().pub;
+}
+
+// The public half of that key, shown in the Reg section. The private half is
+// only ever in the file.
+function showPub (){
+  document.getElementById("pubkey").value = savedPub();
+}
+
+// A short way to name whoever is signed in: the user name, or the head of the
+// public key when there is none - the full key is on the page already.
+function whoAmI (){
+  return session.userName() || `${session.pub().substr(0, 8)}...`;
+}
+
+/**
+ * A live session needs no file, so offer to carry straight on. Hidden while a
+ * newly generated identity is still unsaved: leaving the page then loses the
+ * key, which is why the Continue link was taken off the Reg section.
+ */
+function showContinue (){
+  const button = document.getElementById("continue");
+  const live = !unsavedIdentity && session.signedIn();
+
+  button.hidden = !live;
+  if (live){
+    button.href = getNextURL();
+    button.textContent = `Continue as ${whoAmI()}`;
   }
 }
 
@@ -165,37 +255,91 @@ function getNextURL () {
 }
 
 
+// The user name typed on this page, remembered for the next visit.
+function rememberUserName (){
+  return session.rememberUserName(document.getElementById("username").value);
+}
+
+// The Reg section's passphrase, which encrypts the ID Card being saved.
+function getPassphrase (){
+  return document.getElementById("passphrase").value;
+}
+
+// The Sign in section's passphrase, which decrypts the ID Card being loaded.
+function getSignInPassphrase (){
+  return document.getElementById("signin_passphrase").value;
+}
+
+/**
+ * The ID Card the Reg section would save: the loaded card when there is one,
+ * and otherwise this visit's drafted pair, which nothing has adopted yet.
+ */
+function currentIdCard (){
+  const username = rememberUserName();
+  if (session.unlocked()){
+    return session.card();
+  }
+  return idcard.build(username, currentDraft().pub, currentDraft().priv);
+}
+
 function saveIdCard (){
       const ts = new Date().getTime();
       var ctx = {};
-      payload = {};
-      payload.pub = localStorage.pub;
-      if (localStorage.pub_name){
-        payload.pub_name = localStorage.pub_name;
-      }
+      // Only ever the public half: the private key must not reach the server.
+      rememberUserName();
+      const payload = session.publicRecord();
       ctx.reqPath = `/id/${ts}/${payload.pub}.json?isPublic=true`;
       ctx.payload = JSON.stringify(payload);
       insertOperation (confirmReg, ctx);
 }
- 
+
 
 function bakeCookie (val){
   setCookie ('ssid', val, 1);
 }
 
 function confirmReg (ctx){
-    msg.innerHTML = `<textarea rows="10">New ID keys reistered! ID=${ctx.reqPath}</textarea>`;
+    say(`New ID keys reistered! ID=${ctx.reqPath}`);
     console.log(JSON.stringify(ctx));
     window.location.href = getNextURL();
 }
 
-function saveToNamedFile (){
-  var d = new Date().toISOString().slice(0, 19).replace(/-/g, "");
-  var content = localStorage.pub + "." + localStorage.priv;
-  var uriContent = "data:application/octet-stream," + encodeURIComponent(content);
+async function saveToNamedFile (){
+  const passphrase = getPassphrase();
+
+  if (passphrase && passphrase !== document.getElementById("passphrase2").value){
+    say("The two passphrases do not match. Nothing was saved.");
+    return;
+  }
+
+  let file;
+  try {
+    file = await idcard.toFile(currentIdCard(), passphrase);
+  } catch (err) {
+    console.log(err);
+    say(`ID Card not saved: ${err.message}`);
+    return;
+  }
+
+  // The card is on its way to disk, so the pair it holds becomes this browser's
+  // identity - replacing whoever was signed in, whose own card is untouched.
+  // Nothing was adopted until here, so a card that could not be built changes
+  // nothing at all.
+  if (!session.unlocked()){
+    session.adopt(currentDraft(), document.getElementById("username").value);
+    session.mintCookie();
+    draft = null;
+    showPub();
+    showContinue();
+  }
+
+  // The identity now exists off this page, so leaving is safe again.
+  unsavedIdentity = false;
+
+  var uriContent = "data:application/octet-stream," + encodeURIComponent(file.content);
   var downloadLink = document.createElement("a");
   downloadLink.href = uriContent;
-  downloadLink.download = d + ".id.txt";
+  downloadLink.download = file.name;
 
   document.body.appendChild(downloadLink);
   downloadLink.click();
@@ -203,5 +347,6 @@ function saveToNamedFile (){
 
   saveIdCard();
 }
-        
+
 </script>
+</html>

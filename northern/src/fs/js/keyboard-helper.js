@@ -5,6 +5,7 @@ let text2 = undefined
 function onBodyLoad () {
   text = document.getElementById("text")
   text2 = document.getElementById("text2")
+  textedit.watchAll(["clip", "text", "text2"])
   text.focus()
   text.selectionEnd = pos
   text.addEventListener("input", inputEventListener)
@@ -21,18 +22,16 @@ const inputEventListener = (e) => {
   }
   if (e.inputType === 'appendText'){
     if (pos == text.value.length){
-      text.value = text.value + e.data
+      const appended = text.value + e.data
+      textedit.setText(text, appended, {label: 'key', caret: appended.length})
       pos = text.value.length
       text.focus();
-      text.selectionEnd = pos
     } else {
       const prefix = text.value.substring(0, pos);
       const suffix = text.value.substring(pos);
-      text.value = prefix + e.data + suffix
+      textedit.setText(text, prefix + e.data + suffix, {label: 'key', caret: pos + 1})
       pos = pos + 1
-      
-      text.selectionStart = pos
-      text.selectionEnd = pos
+
       text.focus();
     }
   }
@@ -44,9 +43,8 @@ const inputEventListener = (e) => {
   }
   if (e.inputType === 'block'){
     const sel = text.value.substring(text.selectionStart,text.selectionEnd)
-    text2.value = sel
+    textedit.setText(text2, sel, {label: 'block', caret: 0})
     text2.focus();
-    text2.selectionStart = 0 
   }
   if (e.inputType === 'home'){
     let endPos = pos

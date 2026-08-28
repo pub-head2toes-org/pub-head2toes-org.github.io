@@ -1,5 +1,8 @@
 <script type="text/javascript" src="sjcl.js"></script>
 <script type="text/javascript" src="cookies.js"></script>
+<script type="text/javascript" src="reg/oo.js"></script>
+<script type="text/javascript" src="reg/idcard.js"></script>
+<script type="text/javascript" src="reg/session.js"></script>
 
 <link rel="stylesheet" media="screen" href="style.css">
 
@@ -20,8 +23,12 @@
                                     Load Id Card
                                 </label>
                             <input class="button-hidden" type="file" id="fileinput" />
+                            <label for="passphrase">Passphrase</label>
+                            <input type="password" id="passphrase" autocomplete="current-password"
+                                   placeholder="only for an ID Card marked with *" />
+                            <div id="msg"></div>
                         <p>
-                            <a href="Reg.html">Register</a>
+                            <a href="reg/Reg.html">Register</a>
                             <a href="index.html">Back to home page</a>
                         </p>
                     </div>
@@ -47,29 +54,23 @@
     
             var reader = new FileReader();
     
-            reader.onload = function(e) {
-            var text = reader.result;
-            var keys = text.split(".");
-            localStorage.pub = keys[0];
-            localStorage.priv = keys[1];
-    
-            keyspub = new sjcl.ecc.ecdsa.publicKey(
-                sjcl.ecc.curves.c256,
-                sjcl.codec.base64.toBits(localStorage.pub)
-            );
-            keyssec = new sjcl.ecc.ecdsa.secretKey(
-                sjcl.ecc.curves.c256,
-                sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(localStorage.priv))
-            );
-            var ssId = 
-            localStorage.pub +
-                "." + 
-                (new Date().getTime());
-            
-            var sig = keyssec.sign(sjcl.hash.sha256.hash(ssId))
-            var sigb64 = sjcl.codec.base64.fromBits(sig);
-    
-            setCookie ('ssid', ssId + "." + sigb64, 1);
+            reader.onload = async function(e) {
+            const msg = document.getElementById("msg");
+
+            let card;
+            try {
+              card = await idcard.open(reader.result, document.getElementById("passphrase").value);
+            } catch (err) {
+              console.log(err);
+              msg.innerHTML = `Not signed in: ${err.message}`;
+              return;
+            }
+
+            // The private key stays in memory; only the public half is stored.
+            session.unlock(card);
+            session.mintCookie();
+
+            msg.innerHTML = `Signed in as ${card.username || card.pub}.`;
 
             }
     

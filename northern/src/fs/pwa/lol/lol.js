@@ -6,6 +6,8 @@ const REQUIRED_PARAMS = ['organizer', 'participants', 'sse_link'];
 
 const MOVE_SPEED = 220;              // world px / second
 const MOVE_BROADCAST_MS = 200;       // throttle for in-motion position PUTs
+const HEARTBEAT_MS = 400;            // max gap between broadcasts while idle (< 500ms per spec)
+const BOT_TICK_MS = 2000;            // how often a registered bot's move() is called
 const START_MARGIN = 300;            // world px from the bottom-left corner
 const ZOOM_MIN = 500;
 const ZOOM_MAX = 3000;
@@ -21,9 +23,10 @@ function getParams() {
   return out;
 }
 
-/** Send an envelope to the shared channel via HTTP PUT. */
-function sendEnvelope(sseLink, type, extra) {
-  const body = Object.assign({ type, from: state.player, ts: Date.now() }, extra);
+/** Send an envelope to the shared channel via HTTP PUT, on behalf of `from`
+ *  (the local player's name, or a registered bot's name). */
+function sendEnvelope(sseLink, type, from, extra) {
+  const body = Object.assign({ type, from, ts: Date.now() }, extra);
   return fetch(sseLink, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -69,7 +72,8 @@ const state = {
   mapW: 0,
   mapH: 0,
 
-  players: {},          // name -> { x, y, dir, walking }
+  players: {},          // name -> { x, y, dir, walking, lastBroadcastTs, ... }
+  bots: [],             // [{ name, def }] registered `Bot.<name>` participants
   zoomSpan: ZOOM_DEFAULT,
 
   canvas: null,
@@ -78,7 +82,6 @@ const state = {
   minimapCtx: null,
 
   lastFrameTs: 0,
-  lastBroadcastTs: 0,
   animT: 0,
 
   view: { srcX: 0, srcY: 0, worldViewW: 0, worldViewH: 0, mapScale: 1 },
@@ -136,9 +139,18 @@ function enterGame() {
   setupZoomControls();
   setupChat();
   setupSSE();
+  if (isOrganizer()) setupBotLoop();
   loadMap();
 
   requestAnimationFrame(tick);
+}
+
+/** Only the organizer's tab runs NPC bots — otherwise every participant's
+ *  tab would independently spawn and broadcast the same bot name, racing
+ *  each other. Every other tab still sees bots normally, as ordinary
+ *  remote players received over SSE. */
+function isOrganizer() {
+  return !!state.player && state.player === state.organizer;
 }
 
 function setupCanvas() {
@@ -181,14 +193,91 @@ function loadMap() {
     const startY = state.mapH - START_MARGIN;
     state.players[state.player] = {
       x: startX, y: startY, targetX: startX, targetY: startY,
-      dir: 'down', walking: false,
+      dir: 'down', walking: false, lastBroadcastTs: 0,
     };
 
     state.mapReady = true;
-    sendEnvelope(state.sseLink, 'join', { x: startX, y: startY });
+    sendEnvelope(state.sseLink, 'join', state.player, { x: startX, y: startY });
+    state.players[state.player].lastBroadcastTs = performance.now();
+
+    if (isOrganizer()) registerBots();
+
+    // Ask peers already on the channel to re-announce their position, so we
+    // (and every bot the organizer's tab just registered) catch up without
+    // waiting on the idle heartbeat or the next natural move.
+    sendEnvelope(state.sseLink, 'state_request', state.player, {});
   };
   state.mapImg.onerror = () => console.error('Failed to load map image', MAP_SRC);
   state.mapImg.src = MAP_SRC;
+}
+
+// ---------------------------------------------------------------------------
+// NPC bots (Bot.<name> in `participants` → bots.js's `Bot[name]`)
+// ---------------------------------------------------------------------------
+
+/** Names of participants driven locally by this tab: the human player plus
+ *  every registered bot. Used to step/broadcast them each frame and to
+ *  recognize (and ignore) our own envelopes echoed back over SSE. */
+function getLocalParticipantNames() {
+  const names = [];
+  if (state.player) names.push(state.player);
+  for (const bot of state.bots) names.push(bot.name);
+  return names;
+}
+
+function makeBotCtx(name) {
+  return { name, self: state.players[name], mapW: state.mapW, mapH: state.mapH, players: state.players };
+}
+
+/** Resolve `Bot.<name>` entries in `participants` against bots.js's `Bot`
+ *  namespace, spawn each as a local participant, and run its `init`. The
+ *  `Bot.` prefix is stripped: a bot broadcasts and renders under its plain
+ *  name, indistinguishable from a human player. Only called on the
+ *  organizer's tab (see isOrganizer()) — every other participant just sees
+ *  the bot as an ordinary remote player over SSE. */
+function registerBots() {
+  for (const entry of state.participants) {
+    const match = /^Bot\.(.+)$/.exec(entry);
+    if (!match) continue;
+    const name = match[1];
+    const def = window.Bot && window.Bot[name];
+    if (!def || typeof def.init !== 'function' || typeof def.move !== 'function') {
+      console.warn(`LoL: bot "${name}" not found in Bot namespace (bots.js)`);
+      continue;
+    }
+    if (state.players[name]) continue;
+
+    const startX = clamp(START_MARGIN + Math.random() * 200, 0, state.mapW);
+    const startY = clamp(state.mapH - START_MARGIN - Math.random() * 200, 0, state.mapH);
+    state.players[name] = {
+      x: startX, y: startY, targetX: startX, targetY: startY,
+      dir: 'down', walking: false, lastBroadcastTs: 0, isBot: true,
+    };
+
+    def.init(makeBotCtx(name));
+
+    const p = state.players[name];
+    sendEnvelope(state.sseLink, 'join', name, { x: p.x, y: p.y });
+    p.lastBroadcastTs = performance.now();
+
+    state.bots.push({ name, def });
+  }
+}
+
+/** Separate, coarser loop from the per-frame render/step tick: calls each
+ *  registered bot's move() on a regular interval so it can pick a new
+ *  target. Actual stepping toward that target and broadcasting happens in
+ *  stepParticipant(), same as the human player - move() only decides. */
+function setupBotLoop() {
+  setInterval(() => {
+    for (const bot of state.bots) {
+      try {
+        bot.def.move(makeBotCtx(bot.name));
+      } catch (err) {
+        console.warn('LoL: bot move() failed', bot.name, err);
+      }
+    }
+  }, BOT_TICK_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +290,7 @@ function tick(now) {
   state.animT += dt;
 
   if (state.mapReady) {
-    updateLocalPlayer(dt, now);
+    for (const name of getLocalParticipantNames()) stepParticipant(name, dt, now);
     render();
     renderMinimap();
   } else {
@@ -211,31 +300,39 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-function updateLocalPlayer(dt, now) {
-  const me = state.players[state.player];
-  if (!me) return;
+/** Advance one locally-owned participant (the human player, or a bot) toward
+ *  its target and broadcast as needed: throttled while walking, plus one
+ *  final message on arrival, plus an idle heartbeat (< HEARTBEAT_MS gap)
+ *  so a stationary participant still keeps peers - and late joiners -
+ *  caught up without a KV store. */
+function stepParticipant(name, dt, now) {
+  const p = state.players[name];
+  if (!p) return;
 
-  if (me.walking) {
-    const dx = me.targetX - me.x;
-    const dy = me.targetY - me.y;
+  if (p.walking) {
+    const dx = p.targetX - p.x;
+    const dy = p.targetY - p.y;
     const dist = Math.hypot(dx, dy);
     const step = MOVE_SPEED * dt;
 
     if (dist <= step || dist < 1) {
-      me.x = me.targetX;
-      me.y = me.targetY;
-      me.walking = false;
-      sendEnvelope(state.sseLink, 'move', { x: me.x, y: me.y, dir: me.dir, walking: false });
-      state.lastBroadcastTs = now;
+      p.x = p.targetX;
+      p.y = p.targetY;
+      p.walking = false;
+      sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p.y, dir: p.dir, walking: false });
+      p.lastBroadcastTs = now;
     } else {
-      me.dir = calcDir(dx, dy);
-      me.x += (dx / dist) * step;
-      me.y += (dy / dist) * step;
-      if (now - state.lastBroadcastTs > MOVE_BROADCAST_MS) {
-        sendEnvelope(state.sseLink, 'move', { x: me.x, y: me.y, dir: me.dir, walking: true });
-        state.lastBroadcastTs = now;
+      p.dir = calcDir(dx, dy);
+      p.x += (dx / dist) * step;
+      p.y += (dy / dist) * step;
+      if (now - p.lastBroadcastTs > MOVE_BROADCAST_MS) {
+        sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p.y, dir: p.dir, walking: true });
+        p.lastBroadcastTs = now;
       }
     }
+  } else if (now - p.lastBroadcastTs > HEARTBEAT_MS) {
+    sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p.y, dir: p.dir, walking: false });
+    p.lastBroadcastTs = now;
   }
 }
 
@@ -398,7 +495,7 @@ function setupChat() {
   const doSend = () => {
     const m = input.value.trim();
     if (!m) return;
-    sendEnvelope(state.sseLink, 'chat', { m });
+    sendEnvelope(state.sseLink, 'chat', state.player, { m });
     input.value = '';
   };
   sendBtn.addEventListener('click', doSend);
@@ -433,9 +530,15 @@ function handleEnvelope(data) {
     return;
   }
 
-  // Local player's own position is client-predicted; ignore echoes of it
-  // to avoid overwriting a more up-to-date locally-simulated position.
-  if (data.from === state.player) return;
+  if (data.type === 'state_request') {
+    handleStateRequest(data);
+    return;
+  }
+
+  // Locally-owned participants' positions are client-predicted; ignore
+  // echoes of them to avoid overwriting a more up-to-date locally-simulated
+  // position.
+  if (getLocalParticipantNames().includes(data.from)) return;
 
   if (data.type === 'join') {
     state.players[data.from] = {
@@ -446,6 +549,22 @@ function handleEnvelope(data) {
     state.players[data.from] = Object.assign(existing, {
       x: data.x, y: data.y, dir: data.dir, walking: data.walking,
     });
+  }
+}
+
+/** A peer (late joiner) asked the channel for a state catch-up: re-announce
+ *  every locally-owned participant's current position immediately,
+ *  bypassing the normal broadcast throttle. */
+function handleStateRequest(data) {
+  const localNames = getLocalParticipantNames();
+  if (localNames.includes(data.from)) return;
+
+  const now = performance.now();
+  for (const name of localNames) {
+    const p = state.players[name];
+    if (!p) continue;
+    sendEnvelope(state.sseLink, 'move', name, { x: p.x, y: p.y, dir: p.dir, walking: p.walking });
+    p.lastBroadcastTs = now;
   }
 }
 

@@ -35,7 +35,7 @@ const Keyboard = {
         document.getElementById("keyboard").appendChild(this.elements.main);
 
       if (hash) {
-        clip.value = `get ${hash}`
+        textedit.setText(clip, `get ${hash}`, {label: 'boot'})
         const tokens = ['get', hash]
         parseTokens(tokens)
       }
@@ -45,7 +45,7 @@ const Keyboard = {
         const fragment = document.createDocumentFragment();
         const keyLayout = [
           
-        "tab","home","end","left","up","down","right",
+        "tab","undo","redo","home","end","left","up","down","right",
         
 	    "\\","/","^","()","~`","=","_", "|", "{}","[]","'",'"',"<>",
 	    "run","ts","follow","open","block",
@@ -77,6 +77,26 @@ const Keyboard = {
 
                     break;
 		    
+		case "undo":
+                    keyElement.classList.add("keyboard__key--wide", "keyboard__key--dark");
+                    keyElement.innerHTML = createIconHTML("undo");
+
+                    keyElement.addEventListener("click", () => {
+                        textedit.undo();
+                    });
+
+                    break;
+
+		case "redo":
+                    keyElement.classList.add("keyboard__key--wide", "keyboard__key--dark");
+                    keyElement.innerHTML = createIconHTML("redo");
+
+                    keyElement.addEventListener("click", () => {
+                        textedit.redo();
+                    });
+
+                    break;
+
 		case "up":
                     keyElement.classList.add("keyboard__key--wide", "keyboard__key--dark");
                     keyElement.innerHTML = createIconHTML("arrow_upward");

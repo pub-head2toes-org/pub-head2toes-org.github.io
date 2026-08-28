@@ -1,0 +1,685 @@
+ ▐▛███▜▌   Claude Code v2.1.233
+▝▜█████▛▘  Opus 5 · Claude Pro
+  ▘▘ ▝▝    ~/git/pub-head2toes-org.github.io/northern
+
+ ▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+❯ /model 
+  ⎿  Kept model as Opus 5
+
+❯ Read `src/fs/pwa/bandage/UPDATE_1.md` for instructions.                       
+
+● I'll read the instructions file.
+
+  Searched for 3 patterns, read 5 files, listed 1 directory, ran 9 shell commands (ctrl+o to expand)
+
+● Entered plan mode
+  Claude is now exploring and designing an implementation approach.
+
+● I've read the whole app (index.html, keys.js, bandage.js, styles.css, sw.js,
+  tests/bandage.test.js) and the parts of webaudio-tinysynth.js that matter
+  here. Three things in the spec fork the design, so let me settle those first.
+
+  One finding that drives the answer: loadMIDI() at webaudio-tinysynth.js:948
+  ends with this.reset(); this.locateMIDI(0); — it resets all 16 channels and
+  allSoundOffs them, and the synth holds exactly one song. So tinysynth's SMF
+  player can't host four independently-started loops alongside live playing.
+
+● User answered Claude's questions:
+  ⎿  · How should the loop table in the reserved panel be laid out? → Functions 
+     as rows (Recommended)
+     · How should Record capture what you play? → Real-time, quantised 
+     (Recommended)
+     · Given tinysynth's SMF player can't drive four independent loops, what 
+     should SMF be used for? → Save / load the loops (Recommended)
+
+● All three confirmed. Let me check one layout constraint before writing the
+  plan — how much room the reserved third actually has.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/precious-shimmying-magpie.md · /plan to edit
+     Bandage UPDATE 1 — the recorder
+
+     Context
+
+     src/fs/pwa/bandage/ is a 25-key piano over a vendored webaudio-tinysynth.
+     PLAN.md deliberately left the upper third of the screen empty and listed
+     the
+     recorder as the next piece of work. UPDATE_1.md asks for it: four loop
+     channels, each recordable, playable in the background under the live keys,
+     and
+     editable as a grid of notes.
+
+     Outcome: the reserved panel stops being reserved. It becomes a 4-loop
+     transport
+     you can record into while you play, plus a step editor, plus save/load as a
+     standard MIDI file.
+
+     What tinysynth can and cannot do here
+
+     loadMIDI() (webaudio-tinysynth.js:842) ends with this.reset(); 
+     this.locateMIDI(0); — it resets all 16 channels, allSoundOffs every one of
+     them, and the synth holds exactly one song. So its SMF player cannot host
+     four independently started loops beside a player's hands: starting loop 3
+     would
+     silence loops 1, 2 and whatever the fingers were holding, and reset the
+     voice.
+
+     So the transport is our own, and SMF is the file format rather than the
+     engine:
+
+     ┌──────────────┬──────────────────────────────────────────────────────────┐
+     │     Job      │                           How                            │
+     ├──────────────┼──────────────────────────────────────────────────────────┤
+     │ Loop         │ Own look-ahead scheduler → synth.noteOn(ch, n, v, t)     │
+     │ playback     │                                                          │
+     ├──────────────┼──────────────────────────────────────────────────────────┤
+     │ Save         │ Encode the four loops as a type-1 .mid                   │
+     ├──────────────┼──────────────────────────────────────────────────────────┤
+     │ Load         │ Feed the bytes to synth.loadMIDI(), read back            │
+     │              │ synth.song.ev                                            │
+     └──────────────┴──────────────────────────────────────────────────────────┘
+
+     noteOn(ch,n,v,t) takes an absolute AudioContext time (_tsConv,
+     webaudio-tinysynth.js:1017), which is what makes accurate scheduling
+     possible
+     without touching the library.
+
+     Model
+
+     - 4 loops, MIDI channels 1–4. Live keys keep channel 0 (CHANNEL in
+     bandage.js), so the player's hands are never disturbed by a loop.
+     - One loop = one MIDI channel = one instrument, taken from the Voice
+     selector at the moment Record is pressed. A channel is polyphonic, so "up
+     to
+     4 notes at once" needs no extra plumbing.
+     - A loop is a list of steps; a step holds up to 4 notes (or none — a rest).
+     Length is rounded up to a whole bar of 16 steps, so loops of different
+     lengths
+     stay phase-locked.
+     - One global step clock drives every loop: loop n sounds
+     steps[globalStep % steps.length]. That is how a drum machine behaves and it
+     keeps four transports honest with one counter.
+
+     Files
+
+     New — src/fs/pwa/bandage/loops.js (pure, no DOM, no synth)
+
+     Same split as keys.js: arithmetic that can be tested as numbers.
+
+     - loops.COUNT = 4, loops.ROWS = 4, loops.BAR = 16, loops.DEFAULT_BPM = 120
+     - loops.create() → {steps: [], program, length}; loops.blank(n)
+     - loops.stepSeconds(bpm) — a step is a 1/8 note
+     - loops.quantise(elapsed, bpm) → nearest step index
+     - Edits, each returning a new step array: setNote, clearCell, insertStep,
+     deleteStep, padToBar
+     - Undo/redo per loop, the same shape as src/fs/js/history.js (record /
+     undo / redo / canUndo / canRedo) but snapshotting the step array. It
+     is re-implemented here rather than imported: history.js is text-specific
+     and
+     lives outside the folder sw.js caches.
+
+     New — src/fs/pwa/bandage/smf.js (pure)
+
+     - smf.encode(loops, bpm) → Uint8Array — a type-1 file, one MThd + one MTrk
+     per loop, program change then note on/off pairs, variable-length deltas.
+     - smf.fromEvents(song) → loops — turns the {t, m:[...]} events tinysynth's
+     parser leaves in synth.song.ev back into steps.
+
+     New — src/fs/pwa/bandage/recorder.js (wiring)
+
+     - Scheduler: setInterval at 25 ms, horizon 150 ms; emits each due step at
+     its exact AudioContext time with noteOn(ch, midi, 100, t) /
+     noteOff(ch, midi, t + gate).
+     - Play per loop: toggles that loop into the running set; starts the clock
+     if
+     it was stopped.
+     - Record per loop: takes the current voice as the loop's program, clears
+     it,
+     and writes each live note into its quantised step. Other loops keep playing
+     —
+     that is the overdub. Pressing Record again ends it and pads to a whole bar.
+     - Edit: opens the overlay described below.
+     - Save / Load: smf.encode → Blob → <a download>; a hidden file input →
+     synth.loadMIDI(bytes) → smf.fromEvents(synth.song), then the synth state
+     (programs, master volume) is re-applied because loadMIDI resets it.
+
+     Changed — src/fs/pwa/bandage/bandage.js
+
+     Small, additive: an observer list so the recorder can see notes without the
+     keyboard knowing what a recorder is.
+
+     - app.observers = [] and a notify('on'|'off', midi) called from hold() /
+     release()
+     - silence() and the visibilitychange / blur handlers also stop the
+     transport
+     - Tempo control wired to app.bpm
+
+     Changed — src/fs/pwa/bandage/index.html
+
+     #stage gains the loop table and the editor overlay; #toolbar gains Tempo;
+     scripts load keys.js, loops.js, smf.js, bandage.js, recorder.js.
+
+     +-----------------------------------------------+
+     |          Loop 1   Loop 2   Loop 3   Loop 4    |
+     |  Play    [ > ]    [ > ]    [ > ]    [ > ]     |
+     |  Record  [ o ]    [ o ]    [ o ]    [ o ]     |   #stage, still 33.3333%
+     |  Edit    [ / ]    [ / ]    [ / ]    [ / ]     |
+     +-----------------------------------------------+
+
+     The editor overlay covers the same panel:
+
+     +-----------------------------------------------+
+     | Loop 2   [<] [>]  [Ins] [Del]  [Undo] [Redo]  |
+     |  . C4 .  .  .  .  .  .   <- 4 rows, one per   |
+     |  . E4 .  G4 .  .  .  .      note played at    |
+     |  . G4 .  .  .  .  .  .      once              |
+     |  .  . .  .  .  .  .  .                        |
+     |         ^ cursor              [Close]         |
+     +-----------------------------------------------+
+
+     - 8 step columns visible, sized to fit the panel width; [<] [>] scroll the
+     window and move the cursor.
+     - Ins / Del insert or remove an empty step at the cursor.
+     - Playing keys while the editor is open writes them into the cursor step
+     (up to
+     4, filling the rows); releasing them all advances the cursor. Tapping a
+     filled
+     cell clears it.
+     - Undo / Redo step through that loop's history.
+
+     Changed — styles.css, sw.js
+
+     Table, buttons and overlay styles, folded into the existing
+     @media (max-height: 420px) block so the panel survives a landscape phone.
+     sw.js: cache name to bandage-v2, add loops.js, smf.js, recorder.js.
+
+     Changed — tests/bandage.test.js, tests/helpers/bandagePage.js
+
+     One existing assertion must change. 'reserves the upper third of the 
+     screen'
+     currently asserts #stage contains no <button|input|select> — the whole
+     point
+     of this update is that it now does. The flex: 0 0 33.3333% half of that
+     test
+     stays; the "nothing in it" half becomes "holds the loop table, 4 loop
+     columns".
+
+     New tests:
+
+     - loops.js — quantise, bar padding, insert/delete, the 4-note ceiling per
+     step, undo/redo
+     - smf.js — a round trip: encode → decode → the same loops; header bytes are
+     a
+     valid MThd/MTrk; deltas are variable-length
+     - the wiring, through the stub page — Record captures what is played into
+     the
+     right steps; Play sounds a loop on its own channel while channel 0 stays
+     free;
+     the editor writes, inserts, deletes and undoes
+
+     The helper needs a fake clock and querySelectorAll for a couple more
+     selectors; FakeSynth.noteOn already records calls, and gains the t
+     argument.
+
+     Changed — src/fs/pwa/bandage/PLAN.md
+
+     Fold the recorder into the document: the layout diagram, a Loops section,
+     the
+     finding about loadMIDI and why the transport is ours, and trim "Not done
+     yet".
+
+     Verification
+
+     cd northern && npm test                     # node --test, the whole suite
+     node --test tests/bandage.test.js           # this app alone
+
+     Then in a browser (npm start, open /pwa/bandage/index.html):
+
+     1. Press Record on Loop 1, play a few bars, press it again — the pattern
+     loops.
+     2. Press Record on Loop 2 while Loop 1 plays — Loop 1 keeps time under it.
+     3. Play the keys while both loop: live notes sound on the chosen voice,
+     loops on
+     theirs, nothing cuts out.
+     4. Edit Loop 1: scroll, insert a rest, delete a step, overwrite a chord,
+     undo it
+     all back.
+     5. Save, reload the page, Load the file — the four loops come back.
+     6. Switch tabs mid-loop and come back: silence while away, nothing left
+     ringing.
+
+● Starting with loops.js — the pure model.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Now smf.js — the file format.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me round-trip it through tinysynth's own parser to prove the format is
+  right.
+
+  Ran 6 shell commands (ctrl+o to expand)
+● The round trip works through tinysynth's real parser, trailing rests and all.
+  Now the bandage.js hooks.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now the markup: the loop table and the editor overlay in the reserved panel.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now recorder.js — the transport, the table wiring and the editor.
+
+  Read 1 file (ctrl+o to expand)
+
+● A phase problem I need to fix: a loop punched in mid-cycle would play back
+  offset from where it was played. Let me correct the model.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now the styles for the panel and the editor.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now the test helper — a fake clock, and tinysynth itself as the MIDI reader.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Three failures, all the ones the plan anticipated. Now the tests.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● All 51 green. Now the new suites for the loops, the file format, and the
+  recorder wiring.
+
+  Read 1 file, ran 3 shell commands (ctrl+o to expand)
+
+● Cross-realm arrays — the vm sandbox's Array isn't the host's. Let me load the
+  pure modules in the host realm instead.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Three real findings — one of them a bug in insertStep.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● 106 passing. Let me run the full suite and check nothing else regressed.
+
+  Ran 3 shell commands (ctrl+o to expand)
+● A few refinements from re-reading: changing octave shouldn't stop the loops.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now let me see it actually render in a browser.
+
+● Skill(claude-in-chrome)
+  ⎿  Successfully loaded skill
+
+● No browser in this session. Let me verify statically instead — every id the JS
+  reaches for must exist in the markup.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now the design document.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+● The recorder is in. Everything from UPDATE_1.md is implemented and tested —
+  107 tests in tests/bandage.test.js, all passing.
+
+  What the reserved third now holds — functions down the side, four loop
+  channels across, exactly as the table in the spec:
+
+  ┌────────┬────────┬────────┬────────┬────────┐
+  │        │ Loop 1 │ Loop 2 │ Loop 3 │ Loop 4 │
+  ├────────┼────────┼────────┼────────┼────────┤
+  │ Play   │ ▶      │ ▶      │ ▶      │ ▶      │
+  ├────────┼────────┼────────┼────────┼────────┤
+  │ Record │ ●      │ ●      │ ●      │ ●      │
+  ├────────┼────────┼────────┼────────┼────────┤
+  │ Edit   │ ✎      │ ✎      │ ✎      │ ✎      │
+  └────────┴────────┴────────┴────────┴────────┘
+
+  Each loop is one MIDI channel (1–4) on one instrument, taken from the Voice
+  selector when Record is pressed. The hands keep channel 0, so starting a loop
+  can never cut off a note being held. Record captures in real time, quantised
+  to eighth-note steps; the strip is trimmed and rounded to a whole bar. The
+  editor overlays the same panel — four rows for the notes at once, eight step
+  columns, insert/delete an empty step, keys write into the cursor column,
+  undo/redo.
+
+  New files: loops.js (the model — steps, edits, history), smf.js (the file
+  format), recorder.js (transport, table, editor).
+
+  On the SMF question. loadMIDI at webaudio-tinysynth.js:948 ends with
+  this.reset(); this.locateMIDI(0); and the synth holds one song, so its player
+  can't host four independently started loops — pressing Play on the third would
+  silence the other two and the player's chord with them. The transport is
+  therefore a look-ahead scheduler over noteOn(ch, n, v, when). The library
+  still does the job it's good at: smf.js writes a type-1 .mid (file confirms it
+  as "Standard MIDI data (format 1) using 5 tracks at 1/96"), and Load hands
+  the bytes back to synth.loadMIDI() and reads the loops out of synth.song.ev.
+  The test suite builds a real synth over a stub Web Audio, so the round trip is
+  proved against the library's own parser.
+
+  Two things worth flagging:
+
+  - A bug I hit in loops.insertStep — inserting at the end grew the strip by two
+  steps, because extend had already made room for the index before the splice.
+  Fixed and covered.
+  - silence() and panic() are now distinct. The octave buttons use silence (the
+  board moved under the hands, which has nothing to do with a loop playing);
+  visibilitychange and blur use panic, which stops the loops too.
+
+  Not verified: the browser pass. The Chrome extension isn't connected in this
+  session, so the layout, the audio and the file download are checked only
+  statically (markup balances, every id the JS fetches exists, CSS folded into
+  the existing max-height: 420px block for landscape phones). Steps 1–6 of the
+  plan's verification section are still worth walking through by hand.
+
+  One unrelated note: tests/SqliteDB.test.js has a failing subtest at line 200.
+  It fails identically on a clean tree — I confirmed by stashing — so it
+  predates this work and I left it alone.
+
+✻ Baked for 24m 24s
+
+※ recap: Built the Bandage recorder from UPDATE_1.md: four loop channels with play, record and edit, plus MIDI save/load. All 107 tests pass. Next: try it in a browser, since Chrome wasn't available here to verify layout and audio. (disable recaps in /config)
+
+❯ Read `src/fs/pwa/bandage/UPDATE_2.md` for instructions.                       
+
+  Read 1 file (ctrl+o to expand)
+
+● Three items. Let me look at the current geometry and toolbar first.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The black-key length lives in CSS and is duplicated in the test helper. Moving
+  it into keys.js beside the width gives one source of truth.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the app name on the toolbar strip.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the recorder change — capturing how long a key was held.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Passing, but the helper still hard-codes the old black-key height and never
+  holds a key. Let me fix the helper and cover all three changes.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the tests for the three changes.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the note-length tests — the substantive change.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● One failure, and it's a real wart: notes fill on release, so a chord's rows
+  come out ragged across steps. Let me tidy each step when a recording ends.
+
+  Ran 3 shell commands (ctrl+o to expand)
+● All 120 bandage tests pass (the 4 remaining suite failures are the same
+  pre-existing SqliteDB ones). Updating the design doc.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● All three items from UPDATE_2.md are done — 120 tests in
+  tests/bandage.test.js, all passing (the suite's other 4 failures are the
+  pre-existing SqliteDB ones).
+
+  Black keys shortened. 62% → 46.5% of the board, which is 3/4 of what it was.
+  The number was in the stylesheet and copied into the test helper's hit
+  testing, so I moved it into keys.js as keys.BLACK_HEIGHT and had keys.layout
+  return a height alongside left and width. bandage.js writes all three as
+  percentages; the stylesheet now sets no key measurement at all, and the tests
+  assert that it doesn't.
+
+  BANDAGE on the control strip. An <h1 id="brand"> at the end of #toolbar,
+  pushed right with margin: 0 0 0 auto, uppercase in the theme colour, shrinking
+  in the landscape-phone media query. One caveat: #toolbar is a horizontally
+  scrolling strip, so on a narrow phone where the controls already overflow, the
+  name sits at the end of the scroll rather than pinned to the visible right
+  edge. Making it stick would take position: sticky; right: 0 plus a background
+  — happy to add it, but I couldn't verify the sticky behaviour visually in this
+  session, so I left the guaranteed-correct version in.
+
+  Note length recorded. The recorder now keeps the step each key was struck on
+  (rec.held), and on release writes the note into every step it covered —
+  loops.holdNote. A key held a full second at 120 bpm comes back as four steps
+  of C4; a tap is still one step. Two keys held for different lengths give the
+  shorter one fewer steps. A key still down when Record is pressed again is
+  closed out at that step rather than lost.
+
+  One thing that fell out of this and needed fixing: notes are written as keys
+  are let go, so a chord released out of order left the same two notes swapped
+  between one column and the next in the editor. loops.tidy sorts each step low
+  to high when the recording ends — rows are slots, not voices, so nothing
+  changes about what's heard, but the grid reads straight.
+
+  Worth flagging on that last item: repeated notes give you the right duration,
+  but the note re-attacks on every step rather than sustaining, because the grid
+  has no way to say "hold this one". That's inherent to capturing length as
+  repeated notes. A tie — a cell meaning "keep the last one ringing" — would fix
+  the articulation and give the editor note lengths too; I've noted it in
+  PLAN.md under what's not done.
+
+  As before, I couldn't do the browser pass — no Chrome extension in this
+  session — so the black-key proportions and the name's placement are verified
+  by test and by inspection, not by eye.
+
+✻ Cogitated for 5m 52s
+
+※ recap: Goal was building out the Bandage PWA recorder; both UPDATE_1 (loops, editor, MIDI save/load) and UPDATE_2 (shorter black keys, app name, note-length recording) are complete with 120 tests passing. Next step is a browser check, which needs the Chrome extension connected. (disable recaps in /config)
+
+❯ add the tie so held notes sustain instead of re-attacking                     
+
+● A real tie it is — a marker that carries its pitch, so a repeated note and a
+  held note stay distinguishable. Starting with the model.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The model behaves. Now playback and the editor.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the file format — a tied run should be one long MIDI note, not four short
+  ones.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Page-load failure — the helper is missing the new element and WeakMap.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Down to the six tests that encode the old re-attack behaviour. Updating those,
+  then covering the tie itself.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● My test arithmetic was wrong, not the code: a 3-step run rings (3 − 1 + GATE)
+  steps. Let me express it from the constants.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now tests for the parts the tie adds: runs, the editor's Tie button and
+  display, and real note durations in the file.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The isStruck guard was too blunt — it made an orphan tie strike twice. The
+  head-of-run rule only needs it when wrapping.
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+● Two test call sites still omit the model. Let me check why they didn't fail.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● A broken suite my grep was hiding — the whole SMF block was throwing at
+  registration and never ran. Fixing the call sites, and checking properly.
+
+  Ran 6 shell commands (ctrl+o to expand)
+● The same four, unchanged by this work. Now the design doc and a final id
+  check.
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+● The editor's detail was in my plan file, not PLAN.md — that sub failed so
+  nothing was written. Redoing it, and adding the editor section that was
+  missing.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The tie is in. 136 tests pass; the four remaining failures in the full suite
+  (Crypto, Render, Server, SqliteDB) are unchanged — I confirmed by stashing.
+
+  How a tie is stored. A slot holds nothing, a note struck, or a tie — the pitch
+  made negative, so a strip stays an array of numbers and a tie can never lose
+  track of which note it continues:
+
+  [ 60, -60, -60, null ]   C4 struck, held three steps, then silence
+  [ 60,  60,  60, null ]   C4 struck three times over
+
+  That distinction is the whole point. Before, those two strips were the same
+  thing, which is why a held note came back as a stutter.
+
+  One definition of what a tie means. loops.runs reads a strip as runs — a
+  pitch, the step it starts on, how many steps it rings — and both the player
+  and the file writer go through it. Recording writes a strike then ties
+  (loops.holdNote); playback strikes once at run.at and stops at (length − 1 + 
+  GATE) steps later. A held note is now one attack.
+
+  Two edge cases it handles: a run can carry past the end of the loop and round
+  to the start, which is where a punched-in part lands once the strip has been
+  rotated; and a tie with nothing left to carry on — you deleted the step it
+  hung off — is struck rather than dropped, so no edit silently loses a note.
+
+  In the editor, a Tie button holds whatever was ringing in the previous step
+  through this one and advances, so a note grows by tapping. A run reads across
+  the row as C4 — — —, piano-roll style: the name where it's struck, the fill
+  carrying through the ties.
+
+  In the file, a run is now one MIDI note of that length rather than one note
+  per step — verified through tinysynth's own parser, and a held note produces 1
+  note-on/off pair where two strikes produce 2. That's also better MIDI for
+  anything else opening the file.
+
+  Two things worth telling you:
+
+  - I had a bug in the head-of-run rule. My guard against an all-ties strip
+  going silent also made an orphan tie strike twice. The guard is only needed
+  when runs wrap, since read straight the first step is always a head. Caught by
+  the test I'd written for it.
+  - My earlier check was hiding a broken suite. I'd been grepping for failures
+  at a two-space indent, which misses suite-level ✖ — and the whole Standard 
+  MIDI File block was throwing at registration because two smf.encode calls
+  hadn't been updated for its new signature. Those five tests were silently not
+  running, including through my last report. Fixed, and I now grep for ✖ at any
+  indent. Test count went 131 → 136 as a result.
+
+  PLAN.md has the tie in the loops section and a new editor section — the
+  editor's controls had never been written up.
+
+  Still unverified: the browser pass. No Chrome extension in this session, so
+  the tied-cell styling and the Tie button's placement in the editor head are
+  checked by test and inspection, not by eye.
+
+✻ Crunched for 11m 44s
+
+※ recap: Goal was the Bandage PWA recorder; UPDATE_2's three items are done, including the tie so held notes sustain. All 136 bandage tests pass. Next: check it in a browser, since no Chrome extension was available here. (disable recaps in /config)
+
+❯ Can we add 4 more loops to have total of 8 loops?                             
+
+● Eight works cleanly — loops take channels 1–8, and channel 9 is tinysynth's
+  drum channel, so that's the natural ceiling. Twenty-four hand-written buttons
+  is the wrong way to get there though: the table should be built from
+  loops.COUNT, the way the keys are built from keys.layout.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the table shell in markup, with recorder.js filling it from loops.COUNT.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now the stub document needs to find elements the page creates, and the CSS
+  needs to fit eight columns.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The five tests that hard-code "four". Updating them, including turning the
+  markup assertion into a page test now that the table is built.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now tests for the eight loops themselves — the built table, and that the upper
+  four actually work end to end.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● A 4-loop file still loads cleanly into the 8-loop app. Worth a test.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Cross-realm array again — the value is right, deepStrictEqual compares
+  prototypes. Asserting on length instead.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the design doc and a final structural check.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Yes — eight loops, done. 143 tests pass; the four remaining suite failures are
+  the same pre-existing ones elsewhere.
+
+  Eight is the natural ceiling, and it's worth knowing why. Loops take MIDI
+  channels 1–8 with the hands on 0. Channel 9 is the drum channel — tinysynth
+  sets rhythm[9] = 1 in reset — so a ninth loop would come out as a kit instead
+  of a pitch. There's a test asserting the last loop stays below it. I also
+  raised the synth from 24 voices to 48: eight loops of four notes plus two
+  hands is what the app can now ask for at once, and 24 would have had it
+  stealing notes back from itself.
+
+  The table is now built, not written out. Twenty-four hand-typed buttons would
+  have been a second place saying how many loops there are, and one of the two
+  eventually goes wrong. So #stage keeps an empty <table id="loop_table"> shell
+  and recorder.js fills it from loops.COUNT — the same arrangement as #keyboard
+  and keys.layout. Changing the count is now one number. The markup test became
+  a page test that checks the built table has a column per loop.
+
+  That needed one honest improvement to the test stub: its document only knew
+  about pre-registered ids, so it couldn't find elements the page creates.
+  createElement now registers anything given an id, which is what a real
+  document does.
+
+  Older files still open. A .mid saved when there were four loops fills loops
+  1–4 and leaves 5–8 empty — verified against a real 4-loop file and covered by
+  a test.
+
+  One thing to flag: eight columns across a third of a phone in portrait is 
+  tight. At 375px wide, after the row labels, each button is roughly 38px —
+  under the 44px that thumbs like. It works, and landscape is comfortable, but I
+  shrank the label column and the glyph size to buy the room. If it turns out
+  too cramped in the hand, the fix is a different panel layout (two banks of
+  four, or a wider stage), not a smaller font — I've noted that in PLAN.md under
+  what's not done.
+
+  And the standing caveat: still no browser in this session, so the eight-column
+  density is reasoned from the CSS rather than seen. That's the one thing here
+  I'd want you to eyeball on a real phone.
+
+✻ Sautéed for 6m 44s
+
+※ recap: Goal: build out the Bandage PWA recorder. Just finished expanding it from four loops to eight, with all 143 tests passing. Next: check the eight-column loop table on a real phone, since portrait buttons are only about 38px wide.

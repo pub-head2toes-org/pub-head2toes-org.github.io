@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#005E7A">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Bandage</title>
+</head>
+<body>
+
+  <!--
+    The upper third. It was reserved; this is what landed in it. The keyboard
+    below is still sized off what is left, so the loops can take the whole panel
+    without the keys having to move - the editor overlay covers this same space.
+
+  -->
+  <section id="stage" aria-label="Loops">
+
+    <!--
+      The rows are the functions, the columns the loop channels. Both are built
+      by recorder.js from loops.COUNT, the way the keys are built from
+      keys.layout: one number decides how many there are, and the markup cannot
+      drift away from it.
+    -->
+    <table id="loop_table">
+      <caption class="sr-only">Loop channels</caption>
+    </table>
+
+    <div id="loop_foot">
+      <button type="button" id="loop_all" aria-pressed="false">Play all</button>
+      <span id="transport" aria-live="polite">Stopped</span>
+      <span class="spacer"></span>
+      <button type="button" id="loop_save">Save</button>
+      <button type="button" id="loop_load">Load</button>
+      <input type="file" id="loop_file" accept=".mid,.midi,audio/midi" hidden>
+    </div>
+
+    <!--
+      A loaded file is two things. Split across the loops it is something to
+      take a part out of and play with; played whole it is the song, and that
+      is the library's own player rather than ours - see recorder.js. Nothing
+      to show until a file has been read.
+    -->
+    <div id="song_bar" hidden>
+      <button type="button" id="song_play" aria-pressed="false" aria-label="Play the whole song">&#9654;</button>
+      <span id="song_time">0:00 / 0:00</span>
+      <input type="range" id="song_seek" min="0" max="1000" step="1" value="0" aria-label="Position in the song">
+    </div>
+
+    <!--
+      The editor, over the table rather than beside it: the panel is a third of
+      a phone and there is no room for both. Six rows are the six notes that
+      can sound at once; the columns are the sequence.
+    -->
+    <div id="editor" hidden>
+      <div id="editor_head">
+        <!--
+          The two most-used buttons, first and widest, with a gap as wide as
+          they are between them: moving the cursor is what a hand does most in
+          here, and stepping the wrong way is the easiest mistake to make.
+
+          A bar either side of them, for getting somewhere rather than nudging:
+          a strip runs to hundreds of steps and the window shows eight. They sit
+          outside the pair and point the same way, so the row reads outwards
+          from the middle and the wide gap still separates the two easy to
+          confuse buttons rather than the four of them.
+        -->
+        <div class="stepper">
+          <button type="button" id="edit_bar_left" class="jump" aria-label="Back one bar">&#171;</button>
+          <button type="button" id="edit_left" aria-label="Back one step">&#9664;</button>
+          <button type="button" id="edit_right" aria-label="On one step">&#9654;</button>
+          <button type="button" id="edit_bar_right" class="jump" aria-label="On one bar">&#187;</button>
+        </div>
+        <span id="editor_title">Loop 1</span>
+        <span class="spacer"></span>
+        <button type="button" id="edit_insert" aria-label="Insert an empty step">Ins</button>
+        <button type="button" id="edit_delete" aria-label="Delete this step">Del</button>
+        <button type="button" id="edit_tie" aria-label="Hold the last notes through this step">Tie</button>
+        <button type="button" id="edit_undo" aria-label="Undo">&#8630;</button>
+        <button type="button" id="edit_redo" aria-label="Redo">&#8631;</button>
+        <button type="button" id="edit_close">Close</button>
+      </div>
+      <table id="edit_grid"><tbody></tbody></table>
+      <div id="editor_hint">Tap a step to aim; play a key to write it, let go to move on.</div>
+    </div>
+
+  </section>
+
+  <section id="console">
+    <div id="toolbar">
+      <label class="control">
+        <span class="control-label">Voice</span>
+        <select id="voice_select" aria-label="Instrument"></select>
+      </label>
+
+      <div class="control">
+        <span class="control-label">Octave</span>
+        <div class="octave">
+          <button type="button" id="octave_down" aria-label="Octave down">&minus;</button>
+          <span id="range_label" aria-live="polite">C3&ndash;C5</span>
+          <button type="button" id="octave_up" aria-label="Octave up">+</button>
+        </div>
+      </div>
+
+      <label class="control">
+        <span class="control-label">Volume</span>
+        <input type="range" id="volume" min="0" max="100" value="60" aria-label="Volume">
+      </label>
+
+      <div class="control">
+        <span class="control-label">Sustain</span>
+        <button type="button" id="sustain" aria-pressed="false">Off</button>
+      </div>
+
+      <label class="control">
+        <span class="control-label">Tempo <span id="tempo_label">120 bpm</span></span>
+        <input type="range" id="tempo" min="40" max="240" step="1" value="120" aria-label="Tempo">
+      </label>
+
+      <div class="control readout">
+        <span class="control-label">Playing</span>
+        <span id="readout" aria-live="polite">&mdash;</span>
+      </div>
+
+      <!-- The name, pushed to the far end of the strip by margin-left: auto -->
+      <h1 id="brand">Bandage</h1>
+    </div>
+
+    <!-- The 25 keys are built by bandage.js from the geometry in keys.js -->
+    <div id="keyboard" role="group" aria-label="25 key piano"></div>
+  </section>
+
+  <script src="./webaudio-tinysynth.js"></script>
+  <script src="./keys.js"></script>
+  <script src="./loops.js"></script>
+  <script src="./smf.js"></script>
+  <script src="./bandage.js"></script>
+  <script src="./recorder.js"></script>
+</body>
+</html>
