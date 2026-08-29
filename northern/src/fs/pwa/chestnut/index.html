@@ -86,21 +86,6 @@
         <svg id="pieces" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
       </div>
 
-      <!-- Only while setting a position up: pick a piece, then a square. -->
-      <div id="palette" hidden>
-        <div id="palette_pieces" role="group" aria-label="Pieces to place"></div>
-        <div class="palette_row">
-          <label class="control"><span>To play</span>
-            <select id="turn" aria-label="Who plays first">
-              <option value="white" selected>White</option>
-              <option value="black">Black</option>
-            </select>
-          </label>
-          <button type="button" id="setup_standard">Standard</button>
-          <button type="button" id="setup_clear">Empty</button>
-          <button type="button" id="setup_done">Done</button>
-        </div>
-      </div>
     </section>
 
     <!--
@@ -128,6 +113,27 @@
         <button type="button" id="main_line" aria-label="Make this line the main one">Main</button>
       </div>
     </section>
+
+    <!--
+      Only while setting a position up: pick a piece, then a square. It stands
+      to the right of the move list rather than under the board, in two columns
+      of six - White's pieces and Black's - so that setting a position up takes
+      nothing off the height the board has to play with.
+    -->
+    <div id="palette" hidden>
+      <div id="palette_pieces" role="group" aria-label="Pieces to place"></div>
+      <div class="palette_row">
+        <label class="control"><span>To play</span>
+          <select id="turn" aria-label="Who plays first">
+            <option value="white" selected>White</option>
+            <option value="black">Black</option>
+          </select>
+        </label>
+        <button type="button" id="setup_standard">Standard</button>
+        <button type="button" id="setup_clear">Empty</button>
+        <button type="button" id="setup_done">Done</button>
+      </div>
+    </div>
 
   </main>
 

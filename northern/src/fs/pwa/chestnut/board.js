@@ -40,8 +40,12 @@ board.glyph = function (piece) {
     return board.GLYPHS[String(piece).toLowerCase()] || '';
 };
 
-/** The pieces a player may put on the board in set-up, White's first. */
-board.PALETTE = ['K', 'Q', 'R', 'B', 'N', 'P', 'k', 'q', 'r', 'b', 'n', 'p'];
+/**
+ * The pieces a player may put on the board in set-up, in pairs: king and king,
+ * queen and queen. Laid out two to a row that puts White down one side and
+ * Black down the other, with the same piece on both sides of every row.
+ */
+board.PALETTE = ['K', 'k', 'Q', 'q', 'R', 'r', 'B', 'b', 'N', 'n', 'P', 'p'];
 
 /** The playing area: the board less the margin the labels sit in. */
 board.field = function (side) {

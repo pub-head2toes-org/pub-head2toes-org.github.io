@@ -195,9 +195,14 @@ main {
 
 /* ---------- setting a position up ---------- */
 
+/* A column beside the move list, not a bar under the board: the board's height
+   is the scarcest thing on the page, and setting a position up should not cost
+   any of it. */
 #palette {
-  width: 100%;
-  max-width: 100%;
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 8.5rem;
+  overflow: auto;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -207,11 +212,11 @@ main {
   gap: 6px;
 }
 
+/* Two columns of six: White's pieces and Black's, in the same order. */
 #palette_pieces {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
-  justify-content: center;
 }
 
 .brush {
@@ -224,15 +229,17 @@ main {
 
 .brush.white { color: #fdf8f2; text-shadow: 0 0 2px #000; }
 .brush.black { color: #1a1310; background: #b8a894; }
+.brush.erase { grid-column: 1 / -1; font-size: 1rem; }
 .brush.held { background: var(--theme); border-color: var(--theme-light); }
 
 .palette_row {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
-  flex-wrap: wrap;
 }
+
+.palette_row .control { justify-content: space-between; }
 
 body.setting-up #board { box-shadow: 0 0 0 2px var(--theme-light), 0 6px 22px rgba(0, 0, 0, 0.45); }
 
@@ -288,4 +295,9 @@ body.setting-up #board { box-shadow: 0 0 0 2px var(--theme-light), 0 6px 22px rg
 
   #notation { width: 100%; max-width: 100%; flex: 1 1 auto; min-height: 8rem; }
   #brand { display: none; }
+
+  /* Stacked, there is no column to stand the palette in: it lies across the
+     foot of the page instead, six pieces to a row. */
+  #palette { width: 100%; align-self: auto; }
+  #palette_pieces { grid-template-columns: repeat(6, 1fr); }
 }

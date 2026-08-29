@@ -634,8 +634,9 @@ describe('the board in the room it is given', () => {
     it('is a square that fits the row, and gives the move list the same height', () => {
         const page = loadChestnut();
 
-        assert.deepStrictEqual(page.boardBox(), { width: 600, height: 600 }, 'as tall as the row');
-        assert.strictEqual(page.element('notation').style.height, '600px');
+        assert.deepStrictEqual(page.boardBox(), { width: 580, height: 580 },
+            'as tall as the row, less the padding the row carries');
+        assert.strictEqual(page.element('notation').style.height, '580px');
     });
 
     it('gives the room back when the header takes another line', () => {
@@ -644,14 +645,24 @@ describe('the board in the room it is given', () => {
         // The buttons wrapped onto a second row, so the row below is shorter.
         page.resizeTo(1000, 420);
 
-        assert.ok(page.boardBox().height <= 420, 'the board is inside the row, not over the header');
-        assert.strictEqual(page.boardBox().height, 420);
+        assert.ok(page.boardBox().height <= 420 - 20, 'the board is inside the row, not over the header');
+        assert.strictEqual(page.boardBox().height, 400);
+    });
+
+    it('sets a position up beside the move list, not under the board', () => {
+        const page = loadChestnut({ room: { width: 1400, height: 600 } });
+        const before = page.boardBox().height;
+
+        page.click('setup');
+
+        assert.strictEqual(page.boardBox().height, before, 'the palette costs width, not the board');
+        assert.ok(!page.element('palette').hidden);
     });
 
     it('stacks under the buttons on a tall window, leaving the list room below', () => {
         const page = loadChestnut({ room: { width: 420, height: 800 } });
 
-        assert.ok(page.boardBox().width <= 420);
-        assert.ok(page.boardBox().height <= 800 - 180, 'the move list is not pushed off the bottom');
+        assert.ok(page.boardBox().width <= 420 - 20);
+        assert.ok(page.boardBox().height <= 800 - 20 - 180, 'the move list is not pushed off the bottom');
     });
 });

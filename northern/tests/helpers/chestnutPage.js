@@ -99,6 +99,11 @@ export function loadChestnut({ pgn = null, room = ROOM } = {}) {
     elements.movetext.tagName = 'TEXTAREA';
 
     elements.main.getBoundingClientRect = () => ({ left: 0, top: 0, ...space });
+    // The palette is a column beside the move list; it has a width when it is
+    // shown and none when it is not, which is what the board is sized around.
+    elements.palette.getBoundingClientRect = () => ({
+        left: 0, top: 0, width: elements.palette.hidden ? 0 : 136, height: 0
+    });
     elements.board.getBoundingClientRect = () => ({
         left: 0, top: 0, width: parseFloat(elements.board.style.width) || 0,
         height: parseFloat(elements.board.style.height) || 0
@@ -151,7 +156,13 @@ export function loadChestnut({ pgn = null, room = ROOM } = {}) {
         navigator: {},
         console: { log() {}, warn() {} },
         Math, Number, String, Object, Array, Set, Map, JSON, Boolean, isNaN, parseInt, parseFloat, Infinity,
-        getComputedStyle: () => ({ getPropertyValue: name => '#' + name.replace(/\W/g, '').slice(0, 6) }),
+        // The row carries 10px of padding, as the stylesheet gives it: the board
+        // is sized to the content box, and a stub without padding would not
+        // notice a board sized to the border box instead.
+        getComputedStyle: () => ({
+            paddingTop: '10px', paddingBottom: '10px', paddingLeft: '10px', paddingRight: '10px',
+            getPropertyValue: name => '#' + name.replace(/\W/g, '').slice(0, 6)
+        }),
         Blob: class { constructor(parts, options) { this.text = parts.join(''); this.options = options; } },
         URL: { createObjectURL(blob) { saved.push(blob); return 'blob:game'; }, revokeObjectURL() {} },
         FileReader: class {

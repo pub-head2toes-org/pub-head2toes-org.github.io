@@ -256,18 +256,27 @@ function drawControls() {
  * row that has since shrunk is a board drawn over the buttons.
  */
 function resize() {
-    const room = page.main.getBoundingClientRect();
-    if (!room.width || !room.height) return;              // not laid out yet
+    const box = page.main.getBoundingClientRect();
+    if (!box.width || !box.height) return;                // not laid out yet
+
+    // The row's padding is not room the board can have. Measuring the border
+    // box and sizing to that is what leaves the board a little too tall, and a
+    // board too tall for its row is a board tucked under the buttons above it.
+    const style = getComputedStyle(page.main);
+    const gap = function (name) { return parseFloat(style[name]) || 0; };
+    const room = {
+        width: box.width - gap('paddingLeft') - gap('paddingRight'),
+        height: box.height - gap('paddingTop') - gap('paddingBottom')
+    };
     const wide = room.width > room.height * 1.25;
 
-    // In set-up the palette sits under the board and wants its share of the row.
-    const palette = app.mode === 'setup' ? (page.palette.getBoundingClientRect().height || 0) + 8 : 0;
-    const tall = room.height - palette;
+    // In set-up the palette stands beside the move list, so it costs width.
+    const palette = app.mode === 'setup' ? (page.palette.getBoundingClientRect().width || 0) + 12 : 0;
     // Side by side the move list wants a column beside the board; stacked, it
     // wants a few lines under it.
     const side = wide
-        ? Math.min(tall, room.width - 260)
-        : Math.min(room.width, tall - 180);
+        ? Math.min(room.height, room.width - 260 - palette)
+        : Math.min(room.width, room.height - 180);
 
     const wanted = Math.max(120, Math.floor(side));
     if (wanted === app.side) return;                      // nothing moved
@@ -473,7 +482,9 @@ function buildPalette() {
     for (const piece of board.PALETTE.concat([''])) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'brush' + (piece && chess.colourOf(piece) === 'white' ? ' white' : ' black');
+        button.className = piece
+            ? 'brush ' + chess.colourOf(piece)
+            : 'brush erase';                    // the eraser takes the row to itself
         button.textContent = piece ? board.glyph(piece) : '␡';
         button.title = piece ? piece : 'Clear a square';
         button.setAttribute('aria-label', piece ? piece : 'Clear a square');

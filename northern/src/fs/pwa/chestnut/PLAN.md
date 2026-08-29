@@ -67,7 +67,9 @@ engine, so without either there is no board and no game.
    it sits in, and the row is `flex: 1 1 0` with `overflow: hidden` so it is
    exactly what the header leaves — on `flex: auto` a board too big for the
    space grows the row instead, and a centred row that has outgrown its space
-   spills at both ends, which is a board drawn over the buttons above it. A
+   spills at both ends, which is a board drawn over the buttons above it. What
+   is measured is the row's *content* box: its padding is not room the board can
+   have, and sizing to the border box leaves the board that much too tall. A
    `ResizeObserver` on the row catches the header wrapping onto a second line,
    which no window resize event announces.
 9. **One move to a line in the text area.** The list is read-only, as asked, so
@@ -87,20 +89,25 @@ engine, so without either there is no board and no game.
 +-----------------------------------------------------+
 | #message   what just happened                       |
 | #actions   play through | engine | board | files    |
-+-----------------------+-----------------------------+
-|                       |  #variation  which line     |
-|   #board              |  #movetext   one move to a  |
-|   canvas + SVG,       |              line, the      |
-|   square, as tall     |              caret on the   |
-|   as the row          |              move shown     |
-|                       |  #editbar    while editing  |
-+-----------------------+-----------------------------+
++-----------------------+------------------+--------+
+|                       | #variation  line | #pal-   |
+|   #board              | #movetext   one  | ette    |
+|   canvas + SVG,       |   move to a line,| pieces  |
+|   square, as tall     |   caret on the   | to put  |
+|   as the row          |   move shown     | down,   |
+|                       | #editbar  editing| set-up  |
++-----------------------+------------------+--------+
 ```
 
 The board is a square as tall as the row it sits in and the move list is given
 the same height — which is why the size in pixels is worked out in `chestnut.js`
 rather than left to the stylesheet: a canvas needs a number. Below an aspect
 ratio of 5:4 the row becomes a column, board first.
+
+The set-up palette is a column to the right of the move list rather than a bar
+under the board, and it is only there while a position is being set up. Height
+is the scarcest thing the board has; taking a strip of width for the pieces
+costs it nothing.
 
 ## Controls
 
@@ -111,7 +118,7 @@ ratio of 5:4 the row becomes a column, board first.
 | Analyze | What the engine would play here, drawn as an arrow. Play it on the board to take it |
 | Level | 0 to 3, how hard the engine thinks |
 | Flip | Turn the board round |
-| Setup | Put a position together by hand: a piece, then a square |
+| Setup | Put a position together by hand: a piece from the palette, then a square |
 | Edit | Show the edit bar and, in a puzzle, show the moves |
 | Puzzle | Hide the moves after the one on the board |
 | Reveal | One move of the solution (a puzzle only) |
