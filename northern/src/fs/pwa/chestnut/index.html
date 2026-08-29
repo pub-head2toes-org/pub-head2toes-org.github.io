@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#4a3121">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Chestnut</title>
+</head>
+<body>
+
+  <!--
+    The header is two bars: what the app has to say, then what can be asked of
+    it. The message bar is the only place anything is ever reported - a move
+    made, a line dropped by an edit, what the engine thinks - so there is one
+    place to look and nothing has to interrupt with a dialog.
+  -->
+  <header>
+    <p id="message" role="status" aria-live="polite">Chestnut</p>
+
+    <div id="actions">
+      <div class="group" role="group" aria-label="Play through the game">
+        <button type="button" id="first" aria-label="The starting position">&#124;&#9664;&#9664;</button>
+        <button type="button" id="back" aria-label="Back one move">&#9664;</button>
+        <button type="button" id="play" aria-label="Play the game through" aria-pressed="false">&#9654;</button>
+        <button type="button" id="step" aria-label="One move on">&#9654;&#124;</button>
+        <button type="button" id="last" aria-label="The end of the line">&#9654;&#9654;&#124;</button>
+        <label class="control"><span>Speed</span>
+          <select id="speed" aria-label="Speed of the play-through">
+            <option value="2000">Slow</option>
+            <option value="1000" selected>Steady</option>
+            <option value="500">Brisk</option>
+            <option value="200">Fast</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="group" role="group" aria-label="The engine">
+        <button type="button" id="analyze">Analyze</button>
+        <label class="control"><span>Level</span>
+          <select id="level" aria-label="How hard the engine thinks">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="group" role="group" aria-label="The board and the game">
+        <button type="button" id="flip">Flip</button>
+        <button type="button" id="setup" aria-pressed="false">Setup</button>
+        <button type="button" id="edit" aria-pressed="false">Edit</button>
+        <button type="button" id="puzzle" aria-pressed="false">Puzzle</button>
+        <button type="button" id="reveal" hidden>Reveal</button>
+      </div>
+
+      <div class="group" role="group" aria-label="Files">
+        <button type="button" id="new_game">New</button>
+        <button type="button" id="load">Load</button>
+        <button type="button" id="save">Save</button>
+        <input type="file" id="file" accept=".pgn,.txt,text/plain" hidden>
+      </div>
+
+      <h1 id="brand">Chestnut</h1>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!--
+      The board is two layers over one another: a canvas for the squares, the
+      marks and the engine's arrow, and an SVG for the pieces. Both are drawn
+      from board.js, so the piece and the square it stands on are placed by the
+      same arithmetic. The size in pixels is set by chestnut.js - a canvas
+      needs a number, and the move list is given the same one.
+    -->
+    <section id="boardwrap">
+      <div id="board" aria-label="Chess board">
+        <canvas id="squares"></canvas>
+        <svg id="pieces" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+      </div>
+
+      <!-- Only while setting a position up: pick a piece, then a square. -->
+      <div id="palette" hidden>
+        <div id="palette_pieces" role="group" aria-label="Pieces to place"></div>
+        <div class="palette_row">
+          <label class="control"><span>To play</span>
+            <select id="turn" aria-label="Who plays first">
+              <option value="white" selected>White</option>
+              <option value="black">Black</option>
+            </select>
+          </label>
+          <button type="button" id="setup_standard">Standard</button>
+          <button type="button" id="setup_clear">Empty</button>
+          <button type="button" id="setup_done">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <!--
+      The game, written out. The select above it is the line being read - the
+      main one, or any variation in the game. The text area is read only and
+      holds one move to a line, so the caret points at exactly one move: that
+      is how the list says which move the board is showing, and how a tap on a
+      line says which move to go to.
+    -->
+    <section id="notation">
+      <select id="variation" aria-label="Which line to read"></select>
+      <textarea id="movetext" readonly spellcheck="false" aria-label="The moves of the game"></textarea>
+
+      <!--
+        Up and down move a move past the same player's move before or after it.
+        Past the move in the line above it would hand it to the other player,
+        and no such swap could ever be played.
+      -->
+      <div id="editbar" hidden>
+        <button type="button" id="up" aria-label="Play this move before the same player's move before it">&#9650;</button>
+        <button type="button" id="down" aria-label="Play this move after the same player's move after it">&#9660;</button>
+        <button type="button" id="add" aria-label="Add a move">&#43;</button>
+        <button type="button" id="del" aria-label="Take this move out">&minus;</button>
+        <button type="button" id="note" aria-label="Note against this move">&#8220;&#8221;</button>
+        <button type="button" id="main_line" aria-label="Make this line the main one">Main</button>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="./js-chess-engine.js"></script>
+  <script src="./chess.js"></script>
+  <script src="./board.js"></script>
+  <script src="./pgn.js"></script>
+  <script src="./game.js"></script>
+  <script src="./chestnut.js"></script>
+</body>
+</html>

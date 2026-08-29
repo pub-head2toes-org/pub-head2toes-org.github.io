@@ -1,0 +1,291 @@
+:root {
+  --theme: #4a3121;               /* the chestnut the app is named for */
+  --theme-light: #6b4730;
+  --bg: #14100d;
+  --panel: #1d1815;
+  --border: #2f2721;
+  --text: #f0e7de;
+  --muted: #a08e7e;
+
+  /* The board. The canvas reads these off the root element rather than
+     carrying a palette of its own, so a change here changes the drawing. */
+  --light-square: #e8d3b4;
+  --dark-square: #9e6b43;
+  --board-frame: #241a13;
+  --held: rgba(255, 214, 122, 0.45);      /* the square a piece was picked up from */
+  --target: rgba(30, 24, 18, 0.55);       /* where it may go */
+  --played: rgba(255, 214, 122, 0.28);    /* the move that made this position */
+  --hint: rgba(96, 176, 224, 0.85);       /* the engine's arrow */
+
+  --thumb: 2.25rem;                        /* a button a thumb can find */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ---------- the header: what happened, then what can be done ---------- */
+
+header {
+  flex: 0 0 auto;
+  background: linear-gradient(180deg, var(--panel), var(--bg));
+  border-bottom: 1px solid var(--border);
+  padding: 6px calc(8px + env(safe-area-inset-left)) 6px calc(8px + env(safe-area-inset-right));
+}
+
+#message {
+  margin: 0 0 6px;
+  min-height: 1.4em;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--theme-light);
+  border-radius: 4px;
+  padding: 5px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+}
+
+.group:last-of-type { border-right: none; }
+
+button {
+  min-height: var(--thumb);
+  min-width: var(--thumb);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover { background: var(--theme); }
+button:active { background: var(--theme-light); }
+button[aria-pressed="true"] {
+  background: var(--theme);
+  border-color: var(--theme-light);
+  box-shadow: inset 0 0 0 1px var(--theme-light);
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+select {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 6px;
+  min-height: 2rem;
+}
+
+#brand {
+  margin: 0 0 0 auto;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---------- the main row: board left, game right ---------- */
+
+/* `flex: 1 1 0` rather than `auto`: the row is exactly what the header leaves,
+   whatever is in it. On `auto` a board too big for the space would grow the row
+   instead, and a centred row that has outgrown its space spills at both ends -
+   which is a board drawn over the buttons above it. `overflow: hidden` is the
+   second lock on the same door. */
+main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px calc(10px + env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-right));
+}
+
+#boardwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The canvas and the SVG are the same square, one over the other. */
+#board {
+  position: relative;
+  touch-action: none;             /* a board is dragged on, not scrolled */
+  user-select: none;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+
+#squares, #pieces {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#pieces { pointer-events: none; }
+
+/* The glyph asks for its text form with U+FE0E; this asks a second time, for
+   the browsers that read the property rather than the character, and names
+   fonts that draw chess pieces as letters before any emoji font is reached. */
+.piece, .brush {
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Noto Sans Symbols",
+               "DejaVu Sans", "Apple Symbols", system-ui, sans-serif;
+  font-variant-emoji: text;
+}
+
+.piece {
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke fill;       /* the outline goes behind the fill, not over it */
+}
+
+.piece.white { fill: #fdf8f2; stroke: #241a13; stroke-width: 1.6px; }
+.piece.black { fill: #201812; stroke: #d8c6b4; stroke-width: 1.1px; }
+
+/* ---------- setting a position up ---------- */
+
+#palette {
+  width: 100%;
+  max-width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#palette_pieces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.brush {
+  font-size: 1.35rem;
+  line-height: 1;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 6px;
+}
+
+.brush.white { color: #fdf8f2; text-shadow: 0 0 2px #000; }
+.brush.black { color: #1a1310; background: #b8a894; }
+.brush.held { background: var(--theme); border-color: var(--theme-light); }
+
+.palette_row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+body.setting-up #board { box-shadow: 0 0 0 2px var(--theme-light), 0 6px 22px rgba(0, 0, 0, 0.45); }
+
+/* ---------- the game as text ---------- */
+
+#notation {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 260px;
+  max-width: 420px;
+  min-width: 0;
+}
+
+#movetext {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre;
+  overflow: auto;
+  cursor: pointer;
+}
+
+#movetext::selection { background: var(--theme-light); color: #fff; }
+#movetext:focus { outline: 1px solid var(--theme-light); }
+
+#editbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#editbar button { flex: 1 1 auto; }
+
+/* ---------- narrow and tall: the row becomes a column ---------- */
+
+@media (max-aspect-ratio: 5/4) {
+  main {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: auto;
+  }
+
+  #notation { width: 100%; max-width: 100%; flex: 1 1 auto; min-height: 8rem; }
+  #brand { display: none; }
+}
