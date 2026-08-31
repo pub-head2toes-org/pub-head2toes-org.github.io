@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bandage-v6';
+const CACHE_NAME = 'bandage-v8';
 const urlsToCache = [
   './index.html',
   './error.html',

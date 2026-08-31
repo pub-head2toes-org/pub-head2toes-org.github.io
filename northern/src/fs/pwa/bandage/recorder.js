@@ -482,8 +482,7 @@ function openEditor(index) {
     rec.histories[index] = loops.history(rec.loops[index].steps);
   }
   rec.elements.editor.hidden = false;
-  rec.elements.editorTitle.textContent = `Loop ${index + 1}`;
-  drawEditor();
+  drawEditor();                          // which writes the title
   showTable();
 }
 
@@ -540,6 +539,30 @@ function audition() {
     app.synth.noteOn(channel, loops.pitch(note), loops.VELOCITY, at);
     app.synth.noteOff(channel, loops.pitch(note), until);
   });
+}
+
+/**
+ * On to the next notes: past every rest between here and them.
+ *
+ * The bar jumps are for reading a part that is playing all the way through; a
+ * part taken out of a song is mostly silence, and eight steps at a time over
+ * hundreds of empty ones is not a way to find the phrase after this one.
+ *
+ * With nothing struck ahead, the cursor goes to the last step instead of
+ * refusing to move: everything to the right *is* empty, so the end is where
+ * skipping it lands. A press that does nothing reads as a broken button.
+ */
+function skipToNotes() {
+  if (rec.editing === null) {
+    return;
+  }
+  const steps = rec.loops[rec.editing].steps;
+  const found = loops.nextStruck(steps, rec.cursor);
+  const to = found >= 0 ? found : steps.length - 1;
+  if (to <= rec.cursor) {
+    return;                              // already at the last of it
+  }
+  moveCursor(to - rec.cursor);
 }
 
 function moveCursor(by) {
@@ -673,6 +696,25 @@ function showTransport() {
   }
 }
 
+/**
+ * What a loop is playing, in words.
+ *
+ * The name comes from the synth's own table of the 128 General MIDI programs
+ * rather than from `keys.VOICES`, which is the dozen the toolbar offers: a part
+ * read off a file arrives on whatever program it was written with, and there is
+ * no telling what "program 33" sounds like.
+ *
+ * Loop 10 is channel 9 and plays a kit, so its program number says nothing
+ * about what comes out of it - see `loops.channel`.
+ */
+function voiceName(index) {
+  if (loops.channel(index) === 9) {
+    return 'Drum Kit';
+  }
+  const program = rec.loops[index].program || 0;
+  return app.synth.getTimbreName(0, program) || `Program ${program}`;
+}
+
 /** The grid: a row per note that can sound at once, a column per step. */
 function drawEditor() {
   if (rec.editing === null) {
@@ -719,6 +761,10 @@ function drawEditor() {
   rec.elements.redo.disabled = !stack.canRedo();
   rec.elements.editorTitle.textContent =
     `Loop ${rec.editing + 1} · ${rec.cursor + 1}/${loop.steps.length}`;
+  // Which one it is and where the cursor is are the two things that change
+  // under a thumb; the instrument is context. So it is a second element, and
+  // the one that gives up its width first when the toolbar is short of room.
+  rec.elements.editorVoice.textContent = voiceName(rec.editing);
 }
 
 /* ------------------------------------------------------------- save and load
@@ -868,6 +914,7 @@ function initRecorder() {
     transport: document.getElementById('transport'),
     editor: document.getElementById('editor'),
     editorTitle: document.getElementById('editor_title'),
+    editorVoice: document.getElementById('editor_voice'),
     grid: document.getElementById('edit_grid').querySelector('tbody'),
     undo: document.getElementById('edit_undo'),
     redo: document.getElementById('edit_redo'),
@@ -891,6 +938,7 @@ function initRecorder() {
     .addEventListener('click', () => moveCursor(-loops.BAR));
   document.getElementById('edit_bar_right')
     .addEventListener('click', () => moveCursor(loops.BAR));
+  document.getElementById('edit_next').addEventListener('click', skipToNotes);
   document.getElementById('edit_insert').addEventListener('click', () =>
     applyEdit(steps => loops.insertStep(steps, rec.cursor)));
   document.getElementById('edit_delete').addEventListener('click', () =>

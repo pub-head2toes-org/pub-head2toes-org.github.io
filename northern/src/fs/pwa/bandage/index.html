@@ -71,14 +71,23 @@
           outside the pair and point the same way, so the row reads outwards
           from the middle and the wide gap still separates the two easy to
           confuse buttons rather than the four of them.
+
+          Then the skip, on the right arm: past every rest to the next notes.
+          A part lifted out of a song is mostly silence, and a bar at a time is
+          no way to cross it - see loops.nextStruck.
         -->
         <div class="stepper">
           <button type="button" id="edit_bar_left" class="jump" aria-label="Back one bar">&#171;</button>
           <button type="button" id="edit_left" aria-label="Back one step">&#9664;</button>
           <button type="button" id="edit_right" aria-label="On one step">&#9654;</button>
+          <button type="button" id="edit_next" class="jump" aria-label="On to the next notes" title="On to the next notes">&#8677;</button>
           <button type="button" id="edit_bar_right" class="jump" aria-label="On one bar">&#187;</button>
         </div>
         <span id="editor_title">Loop 1</span>
+        <!-- What the loop plays, written out: a part off a file can be any of
+             the 128 programs. It truncates rather than pushing the row on to a
+             second line - see recorder.js voiceName. -->
+        <span id="editor_voice">Acoustic Grand Piano</span>
         <span class="spacer"></span>
         <button type="button" id="edit_insert" aria-label="Insert an empty step">Ins</button>
         <button type="button" id="edit_delete" aria-label="Delete this step">Del</button>

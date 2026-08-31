@@ -114,6 +114,32 @@ loops.isStruck = function (steps, midi) {
         value !== null && !loops.isTie(value) && loops.pitch(value) === midi));
 };
 
+/**
+ * The next step after `from` that a note is *struck* in, or -1 if the strip
+ * runs out first.
+ *
+ * A part read off a file is mostly rests - `Clocks.mid` fills a loop of over a
+ * thousand steps - and getting to where the music is by the bar is a lot of
+ * pressing. This is the jump that finds it.
+ *
+ * A tie is passed over rather than landed on. It is not a rest, so a reading of
+ * "the next step that is not empty" would stop on one - but a tie is the note
+ * already under the cursor still ringing, so stopping there is stopping in the
+ * middle of what the cursor was on rather than arriving at anything new. What
+ * is being looked for is the next thing struck.
+ */
+loops.nextStruck = function (steps, from) {
+    const strip = steps || [];
+    const start = Math.max(-1, Math.floor(Number(from) || 0));
+    for (let at = start + 1; at < strip.length; at++) {
+        const step = strip[at] || [];
+        if (step.some(value => value !== null && !loops.isTie(value))) {
+            return at;
+        }
+    }
+    return -1;
+};
+
 /** An empty step: six rows, all silent. */
 loops.emptyStep = function () {
     return new Array(loops.ROWS).fill(null);

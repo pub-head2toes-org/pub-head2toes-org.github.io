@@ -285,6 +285,13 @@ body {
   color: var(--muted);
 }
 
+/* Not a third bar jump: it is the one button that goes as far as it has to, so
+   it is coloured rather than muted like the two either side of it. */
+#editor_head .stepper #edit_next {
+  color: var(--theme);
+  font-size: 0.9rem;
+}
+
 #editor_title {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -292,6 +299,21 @@ body {
   color: var(--theme);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  flex: 0 0 auto;                  /* the loop and the step never give way */
+}
+
+/* The instrument is context rather than state, so it is muted, and it is the
+   one thing in the row allowed to shrink: a name like "Acoustic Grand Piano"
+   would otherwise push the buttons after it on to a second line, and the panel
+   is a third of a phone. */
+#editor_voice {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #editor_head button {
