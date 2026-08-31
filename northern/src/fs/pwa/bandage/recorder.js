@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * The eight loops: the transport, the table that drives them, and the editor.
+ * The sixteen loops: the transport, the table that drives them, and the editor.
  *
  * `loops.js` holds the arithmetic and `smf.js` the file format; this file is
  * the wiring, the way `bandage.js` is the wiring for the keys.
@@ -11,9 +11,9 @@
  * The loops are scheduled here rather than by the library. `tinysynth` can play
  * a Standard MIDI File, but `loadMIDI` ends in `reset()` and `locateMIDI(0)` -
  * it resets all sixteen channels and silences them - and the synth holds
- * exactly one song. Eight loops that start and stop independently, under hands
- * that are still playing, cannot live in one song: starting the third would
- * cut off the other two and the player's chord with them.
+ * exactly one song. Sixteen loops that start and stop independently, under
+ * hands that are still playing, cannot live in one song: starting the third
+ * would cut off the other two and the player's chord with them.
  *
  * A whole song is the other job, and there the library's player is the right
  * one and ours is not - see the song section below. `smf.js` reads and writes
@@ -188,10 +188,11 @@ function sound(tick, at, step) {
  * A loaded file is two things at once, and they want two different players.
  *
  * Split across the loops it is something to play with: take a part, edit it,
- * jam over it. That is `smf.decode`, and it is lossy on purpose - eight loops
- * have eight channels between them where a song has sixteen, so channel 0 and
- * the drums on channel 9 have nowhere to go, and the grid is eighth notes
- * where a song is not. Reading a whole song that way loses about half of it.
+ * jam over it. That is `smf.decode`, and every channel of the file now has a
+ * loop to land in - a loop's index is its channel - so nothing is dropped for
+ * want of somewhere to go. It is still lossy: the grid is eighth notes where a
+ * song is not, and velocity, bend and the rest of the controllers are not
+ * things a loop holds.
  *
  * Played whole it is the song, and the library's own player is right for that
  * and ours is not: every channel including the drums, the file's own timing
@@ -240,17 +241,20 @@ function stopSong() {
 
 /**
  * A song sends its own program changes and channel volumes, on every channel it
- * touches, and stopping it does not take them back. So the app's own voices go
- * on again after one: otherwise the keys come back as whatever the song left on
- * channel 0, and each loop as whatever the song left on its.
+ * touches, and stopping it does not take them back. So the loops' voices go on
+ * again after one: otherwise each loop comes back as whatever the song left on
+ * its channel.
+ *
+ * The keys are not touched here. They are on their own synth now, and a song
+ * played on the loops' one cannot reach them.
  */
 function restoreVoices() {
-  for (let channel = 0; channel <= loops.COUNT; channel++) {
+  for (let index = 0; index < loops.COUNT; index++) {
+    const channel = loops.channel(index);
     app.synth.resetAllControllers(channel);
     app.synth.setChVol(channel, 100);
   }
-  app.synth.setMasterVol(Number(app.elements.volume.value) / 100);
-  app.synth.setProgram(0, Number(app.elements.voice.value) || 0);
+  setVolume(Number(app.elements.volume.value) / 100);
   rec.loops.forEach((loop, index) =>
     app.synth.setProgram(loops.channel(index), loop.program));
 }
@@ -297,8 +301,8 @@ function togglePlay(index) {
 
 /**
  * Every loop with something in it, from one press - and everything stopped from
- * the same press. A song split across the loops needs all eight going together,
- * and eight taps to start it means seven of them join late.
+ * the same press. A song split across the loops needs all sixteen going
+ * together, and sixteen taps to start it means fifteen of them join late.
  *
  * From a standstill the clock starts at step 0, so the parts begin together.
  */
@@ -748,9 +752,9 @@ function loadLoops(file) {
     rec.loops = read.loops;
     rec.histories = rec.loops.map(loop => loops.history(loop.steps));
 
-    // loadMIDI resets all sixteen channels, so the app's own state goes back on.
-    app.synth.setMasterVol(Number(app.elements.volume.value) / 100);
-    app.synth.setProgram(0, Number(app.elements.voice.value) || 0);
+    // loadMIDI resets all sixteen channels of the loops' synth, so their state
+    // goes back on. The keys are on the other synth and were never disturbed.
+    setVolume(Number(app.elements.volume.value) / 100);
     rec.loops.forEach((loop, index) =>
       app.synth.setProgram(loops.channel(index), loop.program));
     setTempo(read.bpm);
@@ -769,57 +773,80 @@ function loadLoops(file) {
 /**
  * Draws the loop table: the functions down the side, one column per loop.
  *
+ * Sixteen columns across a phone leaves each button about as wide as a pencil,
+ * so they go in banks of eight, one block above the other. Every loop is on the
+ * table at once - a part is picked out of a song by looking for it, and half of
+ * them behind a switch is half a song you cannot see.
+ *
  * It is built rather than written out because `loops.COUNT` is what says how
  * many loops there are, and a table typed into the page by hand is a second
  * place to say it - one that can disagree.
  */
+const BANK = 8;                          // loops to a block - see buildTable
+
 function buildTable() {
   const table = document.getElementById('loop_table');
-  const head = document.createElement('thead');
-  const across = document.createElement('tr');
-
-  const corner = document.createElement('th');
-  corner.setAttribute('scope', 'col');
-  corner.textContent = 'Loop';
-  across.appendChild(corner);
-
-  for (let i = 0; i < loops.COUNT; i++) {
-    const heading = document.createElement('th');
-    heading.setAttribute('scope', 'col');
-    heading.textContent = String(i + 1);
-    across.appendChild(heading);
-  }
-  head.appendChild(across);
-  table.appendChild(head);
-
-  const body = document.createElement('tbody');
   FUNCTIONS.forEach((fn) => {
     rec.elements[fn.key] = [];
-    const row = document.createElement('tr');
-
-    const label = document.createElement('th');
-    label.setAttribute('scope', 'row');
-    label.textContent = fn.label;
-    row.appendChild(label);
-
-    for (let i = 0; i < loops.COUNT; i++) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `loop-button ${fn.key}`;
-      button.id = `${fn.key}_${i}`;
-      button.textContent = fn.glyph;
-      button.setAttribute('aria-label', `${fn.verb} loop ${i + 1}`);
-      button.setAttribute('aria-pressed', 'false');
-      button.addEventListener('click', () => press(fn.key, i));
-
-      const cell = document.createElement('td');
-      cell.appendChild(button);
-      row.appendChild(cell);
-      rec.elements[fn.key].push(button);
-    }
-    body.appendChild(row);
   });
-  table.appendChild(body);
+
+  for (let from = 0; from < loops.COUNT; from += BANK) {
+    const upto = Math.min(from + BANK, loops.COUNT);
+    // A tbody a bank, each with its own row of numbers at the top: a thead
+    // can only be had once, and the second block needs its numbers as much
+    // as the first - eight buttons with nothing over them is a guess.
+    const bank = document.createElement('tbody');
+    bank.className = 'bank';
+
+    const across = document.createElement('tr');
+    across.className = 'bank-head';
+    const corner = document.createElement('th');
+    corner.setAttribute('scope', 'col');
+    corner.textContent = 'Loop';
+    across.appendChild(corner);
+
+    for (let i = from; i < upto; i++) {
+      const heading = document.createElement('th');
+      heading.setAttribute('scope', 'col');
+      heading.textContent = String(i + 1);
+      // Channel 9 is the drum channel every MIDI file is written to, and
+      // the synth plays a kit on it rather than a pitch. Worth saying:
+      // otherwise this loop is the one that records as noise.
+      if (loops.channel(i) === 9) {
+        heading.classList.add('drums');
+        heading.title = 'Drum channel';
+      }
+      across.appendChild(heading);
+    }
+    bank.appendChild(across);
+
+    FUNCTIONS.forEach((fn) => {
+      const row = document.createElement('tr');
+
+      const label = document.createElement('th');
+      label.setAttribute('scope', 'row');
+      label.textContent = fn.label;
+      row.appendChild(label);
+
+      for (let i = from; i < upto; i++) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `loop-button ${fn.key}`;
+        button.id = `${fn.key}_${i}`;
+        button.textContent = fn.glyph;
+        button.setAttribute('aria-label', `${fn.verb} loop ${i + 1}`);
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', () => press(fn.key, i));
+
+        const cell = document.createElement('td');
+        cell.appendChild(button);
+        row.appendChild(cell);
+        rec.elements[fn.key].push(button);
+      }
+      bank.appendChild(row);
+    });
+    table.appendChild(bank);
+  }
 }
 
 /** What a button in the table does, by the row it sits in. */

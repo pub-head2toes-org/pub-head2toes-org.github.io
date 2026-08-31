@@ -15,12 +15,21 @@
  * The keyboard knows nothing about the loops. It only announces what the player
  * struck, on `app.observers`; `recorder.js` is what listens, and what happens to
  * be recording is none of the keyboard's business.
+ *
+ * There are two synths, and which one a note goes to is the whole of the split.
+ * `app.synth` belongs to the loops and all sixteen of its channels are theirs -
+ * a MIDI file has sixteen and every one can hold a part, so there is none left
+ * over. `app.hands` is this file's, and the keys play channel 0 of it. They
+ * share an AudioContext, so there is still one clock and one output.
  */
 
-const CHANNEL = 0;                  // the hands. Loops take 1 to 8.
+const CHANNEL = 0;                  // the hands, on their own synth
 
 const app = {
+  /** the loops' instrument: sixteen channels, one per loop */
   synth: null,
+  /** the keyboard's own instrument - see CHANNEL */
+  hands: null,
   lowest: keys.DEFAULT_LOWEST,
   sustain: false,
   /** midi -> holder count */
@@ -60,7 +69,7 @@ function hold(midi) {
   const held = app.sounding.get(midi) || 0;
   app.sounding.set(midi, held + 1);
   if (held === 0) {
-    app.synth.noteOn(CHANNEL, midi, 100);
+    app.hands.noteOn(CHANNEL, midi, 100);
     paint(midi, true);
   }
   showReadout();
@@ -71,7 +80,7 @@ function release(midi) {
   const held = app.sounding.get(midi) || 0;
   if (held <= 1) {
     app.sounding.delete(midi);
-    app.synth.noteOff(CHANNEL, midi);
+    app.hands.noteOff(CHANNEL, midi);
     paint(midi, false);
   } else {
     app.sounding.set(midi, held - 1);
@@ -113,7 +122,7 @@ function silence() {
   app.typed.clear();
   app.latched.clear();
   app.sounding.clear();
-  app.synth.allSoundOff(CHANNEL);
+  app.hands.allSoundOff(CHANNEL);
   const board = app.elements.keyboard;
   Array.prototype.forEach.call(board.querySelectorAll('.key.down'),
     (key) => key.classList.remove('down'));
@@ -295,6 +304,17 @@ function setTempo(bpm) {
   app.elements.tempoLabel.textContent = `${app.bpm} bpm`;
 }
 
+/**
+ * The one fader, over both instruments. The hands and the loops are separate
+ * synths and each has a master gain of its own, so a volume set on one of them
+ * only would leave the other where it was.
+ */
+function setVolume(fraction) {
+  const level = Math.min(1, Math.max(0, Number(fraction) || 0));
+  app.synth.setMasterVol(level);
+  app.hands.setMasterVol(level);
+}
+
 function fillVoices() {
   const select = app.elements.voice;
   keys.VOICES.forEach((voice) => {
@@ -307,6 +327,32 @@ function fillVoices() {
 }
 
 /* -------------------------------------------------------------------- boot */
+
+/**
+ * Moves `synth` onto the context `owner` opened, and lets go of the one it made
+ * for itself. The library's constructor always opens its own - there is no way
+ * to ask it not to - so the second instrument is rehoused after the fact.
+ *
+ * Two contexts would be two clocks, and `recorder.js` schedules every loop
+ * against `app.synth.actx.currentTime`; they would also be two sets of hardware
+ * buffers for one app, which is what a phone notices.
+ */
+function shareContext(synth, owner) {
+  const shared = owner.getAudioContext();
+  const own = synth.getAudioContext();
+  if (own === shared) {
+    return;
+  }
+  synth.setAudioContext(shared);
+  if (own && own.close) {
+    // It was never played through, so there is nothing to lose by shutting it.
+    // Older browsers return nothing rather than a promise from close().
+    const closing = own.close();
+    if (closing && closing.catch) {
+      closing.catch(() => {});
+    }
+  }
+}
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
@@ -335,15 +381,17 @@ function init() {
     return;
   }
 
-  // Eight loops of six notes, plus ten fingers, is what the app can now ask
-  // for at once; the voice count is the ceiling before the synth starts
-  // stealing notes back from itself. Real music never comes near it - the
-  // sample file peaks at sixteen notes across all eight loops - but the
-  // ceiling is what a held chord runs into, and a stolen voice is a note
-  // that stops in the middle of ringing.
-  app.synth = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 64 });
-  app.synth.setMasterVol(Number(app.elements.volume.value) / 100);
-  app.synth.setProgram(CHANNEL, keys.VOICES[0].program);
+  // Sixteen loops of six notes is what the loops can ask for at once, and the
+  // voice count is the ceiling before the synth starts stealing notes back
+  // from itself. Real music never comes near it - the sample file peaks at
+  // sixteen notes across every loop it fills - but the ceiling is what a held
+  // chord runs into, and a stolen voice is a note that stops in the middle of
+  // ringing. The hands get their own, smaller: ten fingers and a sustain latch.
+  app.synth = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 128 });
+  app.hands = new WebAudioTinySynth({ quality: 1, useReverb: 1, voices: 32 });
+  shareContext(app.hands, app.synth);
+  setVolume(Number(app.elements.volume.value) / 100);
+  app.hands.setProgram(CHANNEL, keys.VOICES[0].program);
 
   fillVoices();
   drawKeyboard();
@@ -363,10 +411,10 @@ function init() {
   window.addEventListener('keyup', onKeyUp);
 
   app.elements.voice.addEventListener('change', (event) => {
-    app.synth.setProgram(CHANNEL, Number(event.target.value));
+    app.hands.setProgram(CHANNEL, Number(event.target.value));
   });
   app.elements.volume.addEventListener('input', (event) => {
-    app.synth.setMasterVol(Number(event.target.value) / 100);
+    setVolume(Number(event.target.value) / 100);
   });
   app.elements.sustain.addEventListener('click', () => setSustain(!app.sustain));
   app.elements.tempo.addEventListener('input', (event) => setTempo(event.target.value));

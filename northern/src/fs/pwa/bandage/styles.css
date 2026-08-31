@@ -39,7 +39,7 @@ body {
   height: 100dvh;                   /* the phone's real estate, minus its bars */
 }
 
-/* ---------- The upper third: the four loops ---------- */
+/* ---------- The upper third: the sixteen loops ---------- */
 
 #stage {
   position: relative;                 /* the editor is laid over this */
@@ -65,7 +65,9 @@ body {
 
 .spacer { flex: 1 1 auto; }
 
-/* Rows are the functions, columns are the loops */
+/* Rows are the functions, columns are the loops - two banks of eight, one
+   block above the other, because sixteen across a phone is not a thumb's
+   width. Each bank is a tbody with its own row of numbers; see buildTable. */
 #loop_table {
   flex: 1 1 auto;
   min-height: 0;
@@ -85,14 +87,26 @@ body {
   white-space: nowrap;
 }
 
-#loop_table thead th {
+#loop_table .bank-head th {
   text-align: center;
   padding: 0 0 2px;
 }
 
-/* The labels take what they need; the eight loop columns divide the rest */
-#loop_table thead th:first-child,
-#loop_table tbody th {
+/* The second bank needs air above it; the first sits at the top of the panel */
+#loop_table .bank + .bank .bank-head th {
+  padding-top: 6px;
+}
+
+/* The kit rather than a pitch - see buildTable */
+#loop_table .bank-head th.drums {
+  color: var(--rec);
+}
+
+/* The labels take what they need; the eight loop columns divide the rest.
+   Only the first cell of a row is a label - the numbers along the top of a bank
+   are headers too, and now that a bank is a tbody they would otherwise take a
+   label's width and squeeze the buttons out. */
+#loop_table th:first-child {
   width: 3.4rem;
 }
 
@@ -101,11 +115,13 @@ body {
   text-align: center;
 }
 
+/* Six rows of these now rather than three, so the floor is lower: the panel is
+   still a third of the screen and the second bank has to fit inside it. */
 .loop-button {
   width: 100%;
-  min-height: 26px;
+  min-height: 22px;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   line-height: 1;
   color: var(--text);
   background: var(--bg);
@@ -532,8 +548,9 @@ body {
   #stage { gap: 2px; padding-top: 4px; }
   #editor_head button { min-height: 1.6rem; padding: 1px 6px; }
   #loop_table { font-size: 0.6rem; }
-  #loop_table thead th, #loop_table tbody th { width: 2.8rem; }
-  .loop-button { min-height: 20px; padding: 1px 0; font-size: 0.7rem; }
+  #loop_table th:first-child { width: 2.8rem; }
+  #loop_table .bank + .bank .bank-head th { padding-top: 2px; }
+  .loop-button { min-height: 16px; padding: 0; font-size: 0.6rem; }
   #loop_foot { font-size: 0.6rem; }
   #song_bar { font-size: 0.6rem; gap: 6px; }
   #editor_hint { display: none; }

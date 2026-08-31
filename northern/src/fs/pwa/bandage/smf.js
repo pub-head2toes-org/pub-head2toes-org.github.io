@@ -1,12 +1,12 @@
 'use strict';
 
 /**
- * The four loops, as a Standard MIDI File.
+ * The sixteen loops, as a Standard MIDI File.
  *
  * This is where `tinysynth`'s SMF ability is used - as the *format*, not the
  * engine. Its player cannot drive the loops: `loadMIDI` ends with `reset()`
  * and `locateMIDI(0)`, which silences all sixteen channels and resets every
- * program, and the synth holds exactly one song. Four loops that start and
+ * program, and the synth holds exactly one song. Sixteen loops that start and
  * stop independently, under hands that are still playing, need their own
  * transport - `recorder.js` has it.
  *
@@ -15,7 +15,9 @@
  * turns those events back into loops. Only the writer is ours.
  *
  * The file is a type 1: a tempo track, then one track per loop, each on its
- * own channel with its own program. Anything else that reads MIDI can open it.
+ * own channel with its own program. A loop's index *is* its channel, so a file
+ * read and written back out keeps every part where it was. Anything else that
+ * reads MIDI can open it.
  */
 const smf = {};
 
@@ -77,7 +79,7 @@ smf.track = function (events) {
  * harmless to anything else that reads the file, and it survives the read.
  */
 smf.loopTrack = function (loop, index, model) {
-    const channel = index + 1;
+    const channel = model.channel(index);
     const steps = (loop && loop.steps) || [];
     const gap = Math.max(1, Math.round(smf.TICKS_PER_STEP * 0.1));
     const events = [{ tick: 0, bytes: [0xc0 | channel, (loop && loop.program) || 0] }];
@@ -98,7 +100,7 @@ smf.loopTrack = function (loop, index, model) {
     return smf.track(events);
 };
 
-/** The four loops and the tempo they were played at, as file bytes. */
+/** The sixteen loops and the tempo they were played at, as file bytes. */
 smf.encode = function (all, bpm, model) {
     const tracks = (all || []).map((loop, index) => smf.loopTrack(loop, index, model));
     const tempo = Math.round(60000000 / (bpm || 120));
@@ -244,9 +246,9 @@ smf.decode = function (song, model) {
             bpm = message[1];
             return;
         }
-        const index = (message[0] & 0x0f) - 1;
-        if (index < 0 || index >= made.length) {
-            return;                              // channel 0 is the hands, not a loop
+        const index = message[0] & 0x0f;      // the channel is the loop
+        if (index >= made.length) {
+            return;
         }
         const at = Math.round(event.t / perStep);
 
@@ -288,7 +290,15 @@ smf.decode = function (song, model) {
     const whole = !marked;
     if (whole) {
         const longest = Math.max(0, ...lengths);
-        lengths.fill(longest);
+        // Only the parts that are there. A file rarely fills all sixteen
+        // channels, and a channel it never touched has no length of its own -
+        // stretched to the longest it would come back as a loop of hundreds of
+        // rests, which reads on the table as a part waiting to be played.
+        lengths.forEach((length, index) => {
+            if (length > 0) {
+                lengths[index] = longest;
+            }
+        });
     }
 
     // The marker says where a loop ends; the rests up to it are put back.

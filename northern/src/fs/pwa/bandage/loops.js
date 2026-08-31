@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * The eight loops, as numbers.
+ * The sixteen loops, as numbers.
  *
  * Nothing here touches the DOM or the synth - the same split `keys.js` uses.
  * A loop is a list of *steps*; a step is up to six notes sounding at once, or
@@ -32,7 +32,7 @@
  */
 const loops = {};
 
-loops.COUNT = 8;                 // eight loop channels - see loops.channel
+loops.COUNT = 16;                // one per MIDI channel - see loops.channel
 /*
  * Six, rather than the four the grid started with. Four is what a hand plays
  * and what the editor draws comfortably; it is not what a file holds. A real
@@ -50,15 +50,26 @@ loops.GATE = 0.9;                // of a step: a note stops just before the next
 loops.VELOCITY = 100;
 
 /**
- * The MIDI channel a loop plays on. Channel 0 is the player's hands and is
- * never touched, so a loop starting can never cut off a note being held.
+ * The MIDI channel a loop plays on: its own index, and nothing else.
  *
- * This is what puts the ceiling at eight: channel 9 is the drum channel, which
- * `tinysynth` sets up in `reset` and which plays a kit rather than a pitch. A
- * ninth loop would land on it and come out as percussion.
+ * A file has sixteen channels and every one of them can hold a part, so the
+ * loops are sixteen too and the mapping is the identity - channel 5 of a file
+ * loaded is loop 6 on the table, and a loop saved goes back out on the channel
+ * it came in on. Anything else would need a translation table, and a part would
+ * come back somewhere other than where it was written.
+ *
+ * That leaves nothing over for the player's hands, which used to have channel 0
+ * to themselves. They have their own synth instead - see `bandage.js`. Two
+ * instruments over one AudioContext is cheaper than the alternative, which is
+ * losing a channel of every file that is loaded.
+ *
+ * Loop 10 is channel 9, which `tinysynth` sets up as the drum channel in
+ * `reset` and which plays a kit rather than a pitch. That is not a limit being
+ * worked around - it is the convention every MIDI file is written to, so a
+ * drum part loaded from one lands on loop 10 and sounds like drums.
  */
 loops.channel = function (index) {
-    return index + 1;
+    return index;
 };
 
 /** A step is an eighth note, so a beat is two of them. */
@@ -121,7 +132,7 @@ loops.create = function (program) {
     };
 };
 
-/** The eight of them, as the app starts with. */
+/** The sixteen of them, as the app starts with. */
 loops.blank = function () {
     const made = [];
     for (let i = 0; i < loops.COUNT; i++) {
