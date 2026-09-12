@@ -192,23 +192,39 @@ describe('PUT a key', () => {
         assert.strictEqual(await (await get('/notes/edit')).text(), 'second');
     });
 
-    it('acknowledges with an empty body', { todo: 'db.update() returns undefined, so nothing is serialised (REFACTORING.md #4)' }, async () => {
+    it('acknowledges the write with the new counter', async () => {
         await post('/notes/edit2', 'first');
         const res = await put('/notes/edit2', 'second');
 
-        assert.deepStrictEqual(await res.json(), { status: 'OK', path: '/notes/edit2' });
+        assert.deepStrictEqual(await res.json(), { status: 'OK', path: '/notes/edit2', counter: 1 });
+    });
+
+    it('keeps the previous value under <path>/<counter>', async () => {
+        await post('/notes/hist', 'first');
+        await put('/notes/hist', 'second');
+        await put('/notes/hist', 'third');
+
+        assert.strictEqual(await (await get('/notes/hist')).text(), 'third');
+        assert.strictEqual(await (await get('/notes/hist/1')).text(), 'first');
+        assert.strictEqual(await (await get('/notes/hist/2')).text(), 'second');
+    });
+
+    it('answers a PUT on a missing key as unavailable', async () => {
+        const res = await put('/notes/never-posted', 'x');
+
+        assert.deepStrictEqual(await res.json(), { unavailable: '/notes/never-posted', author: 'public' });
     });
 });
 
 // Feature D2 over HTTP: re-POSTing a key keeps the previous value as a version
 describe('versioning over HTTP', () => {
-    it('moves a re-posted value to <path>/<counter>', async () => {
+    it('moves a re-posted value to <path>/<counter + 1>', async () => {
         await post('/notes/versioned', 'v1');
         await post('/notes/versioned', 'v2');
         await new Promise(r => setTimeout(r, 300));
 
         assert.strictEqual(await (await get('/notes/versioned')).text(), 'v1');
-        assert.strictEqual(await (await get('/notes/versioned/0')).text(), 'v2');
+        assert.strictEqual(await (await get('/notes/versioned/1')).text(), 'v2');
     });
 });
 

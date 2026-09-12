@@ -8,7 +8,7 @@ import { freshDb, promisify1 } from './helpers/db.js';
 
 let db;
 let dbFile;
-let get, insert, search, searchPlus, keyword, increment;
+let get, insert, update, search, searchPlus, keyword, increment;
 
 /** Polls until the predicate holds - the write paths finish work after their callback. */
 async function eventually(fn, timeoutMs = 2000) {
@@ -28,6 +28,7 @@ before(async () => {
 
     get = promisify1(db.get, db);
     insert = promisify1(db.insert, db);
+    update = promisify1(db.update, db);
     search = promisify1(db.search, db);
     searchPlus = promisify1(db.searchPlus, db);
     keyword = promisify1(db.keyword, db);
@@ -122,9 +123,9 @@ describe('SqliteDB.insert versioning', () => {
         assert.strictEqual(result.code, 'SQLITE_CONSTRAINT');
     });
 
-    it('moves the new value to <path>/<counter> and bumps the counter', async () => {
+    it('moves the new value to <path>/<counter + 1> and bumps the counter', async () => {
         const versioned = await eventually(async () => {
-            const row = await get('/t/ver/0', 'alice', 'public');
+            const row = await get('/t/ver/1', 'alice', 'public');
             return row.unavailable ? null : row;
         });
 
@@ -136,12 +137,26 @@ describe('SqliteDB.insert versioning', () => {
     it('keeps versioning further writes under increasing counters', async () => {
         await insert('/t/ver', 'txt', 'v3', 'alice', 'public');
         const versioned = await eventually(async () => {
-            const row = await get('/t/ver/1', 'alice', 'public');
+            const row = await get('/t/ver/2', 'alice', 'public');
             return row.unavailable ? null : row;
         });
 
         assert.strictEqual(versioned.value, 'v3');
+        assert.strictEqual(versioned.counter, 2);
         assert.strictEqual((await get('/t/ver', 'alice', 'public')).counter, 2);
+    });
+
+    it('shares the slot numbering with update history, so the two never collide', async () => {
+        await insert('/t/mix', 'txt', 'v0', 'alice', 'public');
+        await update('/t/mix', 'txt', 'v1', 'alice', 'public');     // history /1 = v0
+        await insert('/t/mix', 'txt', 'posted', 'alice', 'public'); // version /2 = posted
+        await update('/t/mix', 'txt', 'v2', 'alice', 'public');     // history /3 = v1
+
+        assert.strictEqual((await get('/t/mix/1', 'alice', 'public')).value, 'v0');
+        assert.strictEqual((await get('/t/mix/2', 'alice', 'public')).value, 'posted');
+        assert.strictEqual((await get('/t/mix/3', 'alice', 'public')).value, 'v1');
+        assert.strictEqual((await get('/t/mix', 'alice', 'public')).value, 'v2');
+        assert.strictEqual((await get('/t/mix', 'alice', 'public')).counter, 3);
     });
 
     it('inherits the author and group of the original row when versioning', async () => {
@@ -149,7 +164,7 @@ describe('SqliteDB.insert versioning', () => {
         await insert('/t/ver2', 'txt', 'b', 'mallory', 'public');
 
         const versioned = await eventually(async () => {
-            const row = await get('/t/ver2/0', 'alice', 'friends');
+            const row = await get('/t/ver2/1', 'alice', 'friends');
             return row.unavailable ? null : row;
         });
 
@@ -195,9 +210,85 @@ describe('SqliteDB.update', () => {
         await eventually(async () => (await get('/t/upd4', 'bob', 'public')).value === 'edited by bob');
     });
 
-    it('reports the outcome of the write', { todo: 'update() always returns undefined (REFACTORING.md #4)' }, () => {
-        const result = db.update('/t/upd', 'txt', 'x', 'alice', 'public');
-        assert.deepStrictEqual(result, { status: 'OK', path: '/t/upd' });
+    it('reports the outcome of the write', async () => {
+        await insert('/t/upd5', 'txt', 'x', 'alice', 'public');
+        const result = await update('/t/upd5', 'txt', 'y', 'alice', 'public');
+
+        assert.deepStrictEqual(result, { status: 'OK', path: '/t/upd5', counter: 1 });
+    });
+
+    it('reports an update it was not allowed to make as unavailable', async () => {
+        await insert('/t/upd6', 'txt', 'mine', 'alice', 'public');
+
+        assert.deepStrictEqual(await update('/t/upd6', 'txt', 'hijacked', 'mallory', 'public'),
+            { unavailable: '/t/upd6', author: 'mallory' });
+    });
+});
+
+// Feature D3: update keeps the history of the row
+describe('SqliteDB.update history', () => {
+    it('copies the previous record to <path>/<counter + 1> before overwriting it', async () => {
+        await insert('/t/h1', 'txt', 'original', 'alice', 'public');
+        await update('/t/h1', 'txt', 'first edit', 'alice', 'public');
+
+        const history = await get('/t/h1/1', 'alice', 'public');
+        assert.strictEqual(history.value, 'original');
+        assert.strictEqual(history.counter, 1);
+    });
+
+    it('updates the requested path in place, with the new value and the new counter', async () => {
+        const row = await get('/t/h1', 'alice', 'public');
+
+        assert.strictEqual(row.path, '/t/h1');
+        assert.strictEqual(row.value, 'first edit');
+        assert.strictEqual(row.counter, 1);
+    });
+
+    it('files every further update under the next counter', async () => {
+        await update('/t/h1', 'txt', 'second edit', 'alice', 'public');
+
+        assert.strictEqual((await get('/t/h1/1', 'alice', 'public')).value, 'original');
+        assert.strictEqual((await get('/t/h1/2', 'alice', 'public')).value, 'first edit');
+        assert.strictEqual((await get('/t/h1', 'alice', 'public')).value, 'second edit');
+        assert.strictEqual((await get('/t/h1', 'alice', 'public')).counter, 2);
+    });
+
+    it('keeps the type, author and group the record had before the update', async () => {
+        await insert('/t/h2', 'txt', 'plain', 'alice', 'alice');
+        await update('/t/h2', 'html', '<b>rich</b>', 'alice', 'friends');
+
+        const history = await get('/t/h2/1', 'alice', 'alice');
+        assert.strictEqual(history.value, 'plain');
+        assert.strictEqual(history.type, 'txt');
+        assert.strictEqual(history.author, 'alice');
+        assert.strictEqual(history.public, 'alice');
+    });
+
+    it('writes no history for an update from another author', async () => {
+        await insert('/t/h3', 'txt', 'mine', 'alice', 'public');
+        await update('/t/h3', 'txt', 'hijacked', 'mallory', 'public');
+
+        assert.ok((await get('/t/h3/1', 'alice', 'public')).unavailable);
+        assert.strictEqual((await get('/t/h3', 'alice', 'public')).counter, 0);
+    });
+
+    it('creates nothing when the key does not exist', async () => {
+        const result = await update('/t/h4', 'txt', 'ghost', 'alice', 'public');
+
+        assert.deepStrictEqual(result, { unavailable: '/t/h4', author: 'alice' });
+        assert.ok((await get('/t/h4', 'alice', 'public')).unavailable);
+        assert.ok((await get('/t/h4/1', 'alice', 'public')).unavailable);
+    });
+
+    it('gives concurrent updates of one key their own history slots', async () => {
+        await insert('/t/h5', 'txt', 'v0', 'alice', 'public');
+        const results = await Promise.all(['v1', 'v2', 'v3'].map(v => update('/t/h5', 'txt', v, 'alice', 'public')));
+
+        assert.deepStrictEqual(results.map(r => r.counter), [1, 2, 3]);
+        assert.strictEqual((await get('/t/h5', 'alice', 'public')).value, 'v3');
+        assert.deepStrictEqual(
+            [await get('/t/h5/1', 'alice', 'public'), await get('/t/h5/2', 'alice', 'public'), await get('/t/h5/3', 'alice', 'public')].map(r => r.value),
+            ['v0', 'v1', 'v2']);
     });
 });
 

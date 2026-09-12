@@ -65,8 +65,8 @@ index on `path`.
 | # | Feature | Code | Tests |
 | --- | --- | --- | --- |
 | D1 | Schema and unique index are created on start-up if missing | `SqliteDB.js:12-13` | `SqliteDB.test.js` › schema |
-| D2 | **Auto-versioning**: re-posting an existing key does not overwrite it. The unique-index violation is caught, the new value is written to `<path>/<counter>`, and the original row's counter is bumped. The original key keeps the first value; each later write lands on the next numbered key | `SqliteDB.js:26-49` | `SqliteDB.test.js` › insert versioning, `Server.test.js` › versioning over HTTP |
-| D3 | `PUT` updates value, type and group in place, but only for the row's author (or rows authored by `public`) | `SqliteDB.js:60-74` | `SqliteDB.test.js` › update |
+| D2 | **Auto-versioning**: re-posting an existing key does not overwrite it. The unique-index violation is caught, the new value is written to `<path>/<counter + 1>`, and the original row's counter moves to that number — the same slot rule as the `PUT` history (D3), and queued with it, so the two never claim the same slot. The original key keeps the first value; each later write lands on the next numbered key. Rows versioned before UPDATE_5 used `<path>/<counter>`, so an old key simply skips one number | `SqliteDB.js:21-67` | `SqliteDB.test.js` › insert versioning, `Server.test.js` › versioning over HTTP |
+| D3 | `PUT` updates value, type and group in place, but only for the row's author (or rows authored by `public`). **History**: before the update the previous record is copied to `<path>/<counter + 1>`, then the row at `<path>` takes the new value and that counter. Updates are queued, so concurrent ones get their own slots. The response is `{status, path, counter}`, or `{unavailable}` when there is no row the caller may update | `SqliteDB.js:69-99`, `Server.js:63-69` | `SqliteDB.test.js` › update, update history; `Server.test.js` › PUT a key |
 | D4 | Reads are access-controlled: a row is visible to its author, to everybody when its group is `public`, or to the group named in the request | `SqliteDB.js:133` | `SqliteDB.test.js` › access control |
 | D5 | `?search=<pattern>` — prefix/LIKE search returning keys and metadata but not values, newest path first, 100 per page | `SqliteDB.js:147`, `Render.js:11` | `SqliteDB.test.js` › search modes |
 | D6 | `?searchPlus=<pattern>` — the same, with values included | `SqliteDB.js:165` | same |
@@ -188,6 +188,6 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 | `tests/bandage.test.js` | I8: the key layout as numbers, the PWA shell, and the app itself in a DOM stub |
 | `tests/Example.test.js` | pre-existing placeholder, tests a function defined inside itself |
 
-The four remaining `todo` tests describe behaviour the code is meant to have but
+The two remaining `todo` tests describe behaviour the code is meant to have but
 does not, and each names the entry in `REFACTORING.md` that explains why
-(#1 path traversal, #4 silent writes, #8 the dead RSA branch).
+(#1 path traversal, #8 the dead RSA branch).

@@ -96,7 +96,11 @@ If replication is ever implemented, the ingest endpoint should come back as a
 `POST` behind the session check plus an allow-list of replica hosts, not as a
 side effect of a `GET`.
 
-### 4. Writes are fire-and-forget: `PUT` never reports success or failure
+### 4. Writes are fire-and-forget: `PUT` never reports success or failure — **FIXED**
+`update` now takes a callback and `PUT` answers with `{status, path, counter}`,
+the SQL error, or `{unavailable}` when no row matched the author check. It also
+keeps the previous record as history under `<path>/<counter + 1>` (UPDATE_5).
+
 `SqliteDB.update` returns the result object from inside the `db.serialize`
 callback, not from the method, so it always returns `undefined`
 (`SqliteDB.js:60-74`). `Server.js:64-68` then serialises that into
@@ -189,7 +193,13 @@ picked up again.
 versioning scheme is not commutative, so two nodes that accept writes to the
 same key independently cannot be merged by replaying inserts.
 
-### 10. No transactions, no atomicity on the versioning path
+### 10. No transactions, no atomicity on the versioning path — **FIXED in-process**
+Versioning (re-`POST`) and update history (`PUT`) now run through one write
+queue in `SqliteDB` (`queueWrite`), and both take `<path>/<counter + 1>`, so
+concurrent writes to a key get distinct slots. This holds for one `SqliteDB`
+instance per DB file, which is how `Cluster.js` runs; several processes on one
+file would still need the transaction described below.
+
 The duplicate-key path does read → insert → update as three independent
 statements on a connection in parallel mode
 (`SqliteDB.js:32-48`). Two concurrent `POST`s to the same key can
