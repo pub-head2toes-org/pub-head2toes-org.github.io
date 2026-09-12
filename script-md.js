@@ -147,10 +147,6 @@ function markdownToHtml(markdownText) {
           return response.text();
       })
       .then(html => {
-          // Simple HTML sanitization to prevent XSS
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const content = doc.body.innerText.replace(/\n/g, '\n\n');
-
             mainArea.innerHTML = mdConverter.makeHtml(html);//markdownToHtml(html);
             mainArea.scrollTop = 0;
             sysMsg.textContent = `Loaded: ${url}`;

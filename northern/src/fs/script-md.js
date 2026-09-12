@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
+  // Markdown is converted locally by showdown (no external service needed)
+  // ref: https://github.com/showdownjs/showdown
+  // tables is off by default in showdown; GitHub's API rendered them, so keep them.
+  const mdConverter = new showdown.Converter({ tables: true });
   // Initialize menu
   const menuContainer = document.getElementById('menu-container');
   const hash = window.location.hash.substr(1);
@@ -79,29 +83,10 @@ document.addEventListener('DOMContentLoaded', function() {
           return response.text();
       })
       .then(html => {
-          // Simple HTML sanitization to prevent XSS
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const content = doc.body.innerText.replace(/\n/g, '\n\n');
-
-        let mdurl = "https://api.github.com/markdown/raw"
-        let hdrs = new Headers({"X-GitHub-Api-Version": "2022-11-28","Accept": "text/html"});
-        let data = html 
-        let fetchData = { 
-          method: 'POST', 
-          mode: 'cors',
-          body: data,
-          headers: hdrs
-        }
-        fetch(mdurl, fetchData).then(function(response) {
-          response.text().then(function (text) {
-            mainArea.innerHTML = text;
-            mainArea.scrollTop = 0;
-            sysMsg.textContent = `Loaded: ${url}`;
-            footerArea.innerHTML = ''
-          });
-        }).catch(function(error) {
-          console.log('Looks like there was a problem: \n', error);
-        });
+          mainArea.innerHTML = mdConverter.makeHtml(html);
+          mainArea.scrollTop = 0;
+          sysMsg.textContent = `Loaded: ${url}`;
+          footerArea.innerHTML = ''
       })
       .catch(error => {
           sysMsg.textContent = `Error loading ${url}: ${error.message}`;

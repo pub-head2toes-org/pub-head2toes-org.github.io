@@ -99,6 +99,24 @@ a {
     overflow-y: auto;
 }
 
+/* Markdown tables rendered into #main_area */
+#main_area table {
+    border-collapse: collapse;
+    margin: 10px 0;
+}
+
+#main_area th,
+#main_area td {
+    border: 1px solid #0f0;
+    padding: 4px 8px;
+    text-align: left;
+}
+
+#main_area th {
+    background-color: #0f0;
+    color: #000;
+}
+
 /* Cursor blink effect */
 #cmd_line_area::after {
     content: "▓";
