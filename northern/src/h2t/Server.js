@@ -61,11 +61,12 @@ export default class Server{
                        render.renderJSON(result, res);
                     });
               } else {
-                    const result = db.update(input.pathname, input.type, body, author, group);
                     if (Object.keys(sub).includes(input.pathname)) {
                         sendSSE(sub[input.pathname], body);
                     }
-                    render.renderJSON(result, res);
+                    db.update(input.pathname, input.type, body, author, group, function(result){
+                        render.renderJSON(result, res);
+                    });
               }
           }
         }

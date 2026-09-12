@@ -8,6 +8,7 @@ const __dirname = import.meta.dirname;
 export default class SqliteDB {
     constructor(dbFilePath) {
         this.dbPath = dbFilePath;
+        this.writeQueue = Promise.resolve();
         this.db = new sqlite3.Database(path.join(__dirname + "/" + dbFilePath));
         this.db.run("CREATE TABLE IF NOT EXISTS abcd (path TEXT, type TEXT, value TEXT, counter INTEGER, author TEXT, public TEXT)");
         this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS PathUniqueIndex ON abcd (path)")
@@ -26,29 +27,13 @@ export default class SqliteDB {
             stmt.run(path, type, value, 0, author, group, function(err){
                 if(err){
                     result = err;
-			
-			console.log(err);
-			Promise.resolve(err);
-            		stmt = _this.db.prepare("INSERT INTO abcd SELECT path || '/' || counter as newpath, type, ?, counter, author, public from abcd WHERE path = ?");  
-            		stmt.run(value, path, function(err){
-				if (err){
-					console.log(err);
-					Promise.resolve(err);
-					result = err;
-				} else {
-            				var stmt = _this.db.prepare("UPDATE abcd set counter = counter + 1 where path = ?");  
-            				stmt.run( path, function(err){
-						if (err){
-							result = err;
-						} else {
-							result.increment = true;
-						}
-					});
-				}
-			});
+                    console.log(err);
+                    if (err.code === 'SQLITE_CONSTRAINT'){
+                        _this.queueWrite(() => _this.insertVersion(path, value));
+                    }
                 }
                 cb(result);
-            });   
+            });
             stmt.finalize();
 
       });
@@ -57,20 +42,60 @@ export default class SqliteDB {
       }
     }
 
-    update (path, type, value, author, group){
-        let _this = this;
-        this.db.serialize(function() {  
-            try {
-            var stmt = _this.db.prepare("UPDATE abcd set value = ?, type = ?, public = ? where path = ? and (author = ? or author = 'public')");  
-            
-            stmt.run(value, type, group, path, author);   
-            stmt.finalize();
-                
-            return {status:'OK', path:path};
-            } catch (err) {
-                return err;
+    // A re-posted key keeps its value; the new one is filed as a version under
+    // <path>/<counter + 1> and the key's counter moves to that number - the
+    // same slot rule update() uses for its history.
+    async insertVersion (path, value){
+        try {
+            const old = await this.getRow("SELECT counter FROM abcd WHERE path = ?", [path]);
+            if (!old){
+                return;
             }
-        }); 
+            const counter = (old.counter || 0) + 1;
+            await this.runSql("INSERT INTO abcd SELECT ?, type, ?, ?, author, public FROM abcd WHERE path = ?", [path + '/' + counter, value, counter, path]);
+            await this.runSql("UPDATE abcd set counter = ? where path = ?", [counter, path]);
+        } catch (err) {
+            console.log(err);
+        }
+    }
+
+    // Writes that read a counter and then take a slot from it run one after
+    // another, so two of them on the same key cannot claim the same slot.
+    queueWrite (step){
+        this.writeQueue = this.writeQueue.then(step);
+        return this.writeQueue;
+    }
+
+    // Updates keep the previous version: the old row is copied to
+    // <path>/<counter + 1>, then the row at <path> takes the new value and
+    // that counter.
+    update (path, type, value, author, group, cb = function(){}){
+        this.queueWrite(() => this.updateWithHistory(path, type, value, author, group)).then(cb);
+      }
+
+      async updateWithHistory (path, type, value, author, group){
+        try {
+            const old = await this.getRow("SELECT path, type, value, counter, author, public FROM abcd WHERE path = ? and (author = ? or author = 'public')", [path, author]);
+            if (!old){
+                return {unavailable: path, author: author};
+            }
+            const counter = (old.counter || 0) + 1;
+            // History first: if its slot is taken, the row itself stays untouched.
+            await this.runSql("INSERT INTO abcd VALUES (?,?,?,?,?,?)", [path + '/' + counter, old.type, old.value, counter, old.author, old.public]);
+            await this.runSql("UPDATE abcd set value = ?, type = ?, public = ?, counter = ? where path = ?", [value, type, group, counter, path]);
+            return {status:'OK', path:path, counter:counter};
+        } catch (err) {
+            console.log(err);
+            return err;
+        }
+      }
+
+      getRow (sql, params){
+        return new Promise((resolve, reject) => this.db.get(sql, params, (err, row) => err ? reject(err) : resolve(row)));
+      }
+
+      runSql (sql, params){
+        return new Promise((resolve, reject) => this.db.run(sql, params, err => err ? reject(err) : resolve()));
       }
 
       increment (path, author, group, cb){
