@@ -20,15 +20,29 @@ const input = {};
 input.DEAD = 0.22;           // how far a stick must go before it is meant
 input.TRIGGER = 0.3;         // how far an analogue trigger is a press
 
-/** The standard pad, by the names the browser gives its buttons. */
+/**
+ * The standard pad, by the numbers the browser gives its buttons.
+ *
+ * R3 is the right stick pressed in - the same stick the rocket is aimed with.
+ * Pushing a stick straight down without leaning on it takes a firm thumb, and
+ * a thumb that leans swings the aim as it fires, so the torpedoes answer to R1
+ * as well: the same gun, on a button that can be pressed without letting go of
+ * the aim. R2 is the laser, as asked.
+ */
 input.PAD = {
     confirm: 0,              // A / cross
     emp: 1,                  // B / circle - the bomb
     laser: 7,                // R2
-    torpedo: 11,             // R3, the right stick pressed in
+    torpedo: [11, 5],        // R3, and R1 beside it
     back: 8,
     start: 9,
     up: 12, down: 13, left: 14, right: 15
+};
+
+/** What the buttons are called, for the readout on the welcome screen. */
+input.NAMES = {
+    0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2',
+    8: 'Back', 9: 'Start', 10: 'L3', 11: 'R3', 12: 'Up', 13: 'Down', 14: 'Left', 15: 'Right'
 };
 
 /** The keys that stand in for it. */
@@ -60,7 +74,8 @@ input.idle = function () {
         start: false,
         up: false,
         down: false,
-        pad: false
+        pad: false,
+        pressing: []
     };
 };
 
@@ -72,6 +87,12 @@ input.stick = function (x, y) {
     // nudge rather than a jump to a fifth of full speed.
     const scale = Math.min(1, (length - input.DEAD) / (1 - input.DEAD)) / length;
     return { x: x * scale, y: y * scale, length: Math.min(1, (length - input.DEAD) / (1 - input.DEAD)) };
+};
+
+/** Whether any of the buttons a control answers to is down. */
+input.any = function (pad, which) {
+    const list = Array.isArray(which) ? which : [which];
+    return list.some(index => input.down(pad, index));
 };
 
 /** Whether a pad button is down, trigger or not. */
@@ -98,6 +119,11 @@ input.read = function (state, pads, keys) {
     const axes = (pad && pad.axes) || [];
     const intent = input.idle();
     intent.pad = !!pad;
+    // What is down right now, for the readout: a pad that sends its buttons at
+    // numbers of its own is a pad this mapping does not fit, and the only way
+    // to see that is to be told what it is sending.
+    intent.pressing = pad ? pad.buttons.map((button, index) => (input.down(pad, index) ? index : -1))
+        .filter(index => index >= 0) : [];
 
     const move = input.stick(axes[0] || 0, axes[1] || 0);
     const aim = input.stick(axes[2] || 0, axes[3] || 0);
@@ -115,16 +141,16 @@ input.read = function (state, pads, keys) {
     intent.move = input.cap(intent.move);
     intent.aim = input.cap(intent.aim);
 
-    intent.laser = input.down(pad, input.PAD.laser) || input.KEYS.laser.some(key => held.has(key));
-    intent.torpedo = input.down(pad, input.PAD.torpedo) || input.KEYS.torpedo.some(key => held.has(key));
+    intent.laser = input.any(pad, input.PAD.laser) || input.KEYS.laser.some(key => held.has(key));
+    intent.torpedo = input.any(pad, input.PAD.torpedo) || input.KEYS.torpedo.some(key => held.has(key));
 
     // The pressed ones: down now, not down when we last looked.
-    intent.emp = input.pressed(state, 'emp', input.down(pad, input.PAD.emp) || input.KEYS.emp.some(key => held.has(key)));
-    intent.confirm = input.pressed(state, 'confirm', input.down(pad, input.PAD.confirm) || input.KEYS.confirm.some(key => held.has(key)));
-    intent.back = input.pressed(state, 'back', input.down(pad, input.PAD.back) || input.KEYS.back.some(key => held.has(key)));
-    intent.start = input.pressed(state, 'start', input.down(pad, input.PAD.start));
-    intent.up = input.pressed(state, 'up', input.down(pad, input.PAD.up) || aim.y < -0.6 || move.y < -0.6);
-    intent.down = input.pressed(state, 'down', input.down(pad, input.PAD.down) || aim.y > 0.6 || move.y > 0.6);
+    intent.emp = input.pressed(state, 'emp', input.any(pad, input.PAD.emp) || input.KEYS.emp.some(key => held.has(key)));
+    intent.confirm = input.pressed(state, 'confirm', input.any(pad, input.PAD.confirm) || input.KEYS.confirm.some(key => held.has(key)));
+    intent.back = input.pressed(state, 'back', input.any(pad, input.PAD.back) || input.KEYS.back.some(key => held.has(key)));
+    intent.start = input.pressed(state, 'start', input.any(pad, input.PAD.start));
+    intent.up = input.pressed(state, 'up', input.any(pad, input.PAD.up) || aim.y < -0.6 || move.y < -0.6);
+    intent.down = input.pressed(state, 'down', input.any(pad, input.PAD.down) || aim.y > 0.6 || move.y > 0.6);
 
     state.intent = intent;
     return intent;

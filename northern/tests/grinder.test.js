@@ -339,6 +339,24 @@ describe('the pad, and the keys that stand in for it', () => {
         assert.strictEqual(intent.emp, true);
     });
 
+    it('takes R1 for the torpedoes as well, so the aim need not be let go of', () => {
+        const state = input.create();
+
+        const intent = input.read(state, padding([0, 0, 0, 0], { 5: true }), new Set());
+
+        assert.strictEqual(intent.torpedo, true);
+        assert.strictEqual(intent.laser, false, 'and it is not the other gun');
+    });
+
+    it('says which buttons are down, by the names on a pad', () => {
+        const state = input.create();
+
+        const intent = input.read(state, padding([0, 0, 0, 0], { 7: true, 11: true }), new Set());
+
+        assert.deepStrictEqual(intent.pressing, [7, 11]);
+        assert.deepStrictEqual(intent.pressing.map(index => input.NAMES[index]), ['R2', 'R3']);
+    });
+
     it('gives the bomb once however long the button is leant on', () => {
         const state = input.create();
         const held = padding([0, 0, 0, 0], { 1: true });
@@ -712,7 +730,7 @@ describe('the page', () => {
         assert.strictEqual(page.app.screen, 'scores');
     });
 
-    it('says when a pad has been found', () => {
+    it('says when a pad has been found, and names what is pressed on it', () => {
         const page = loadGrinder();
 
         page.frame();
@@ -721,6 +739,28 @@ describe('the page', () => {
         page.pad();
         page.frame();
         assert.strictEqual(page.element('pad').hidden, false);
+        assert.strictEqual(page.element('pad').textContent, 'Pad connected');
+
+        page.pad([0, 0, 0, 0], { 11: true });
+        page.frame();
+        assert.strictEqual(page.element('pad').textContent, 'Pad connected \u2014 R3');
+    });
+
+    it('fires torpedoes from the pad, off R3 and off R1', () => {
+        for (const button of [11, 5]) {
+            const page = loadGrinder();
+            page.element('play').click();
+            page.app.state.foes.length = 0;
+            page.pad([0, 0, 0, 0], { [button]: true });
+
+            const fired = new Set();
+            for (let frame = 0; frame < 120; frame++) {
+                page.frame(16);
+                page.app.state.shots.forEach(shot => fired.add(shot));
+            }
+
+            assert.ok(fired.size >= 2, 'a shot a second off button ' + button + ', not ' + fired.size);
+        }
     });
 
     it('holds the game on Escape and lets it go again', () => {

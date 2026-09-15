@@ -93,20 +93,32 @@ is nothing to show and nothing to fly.
     and the page is free to clamp a frame — a tab left in the background comes
     back with a gap of minutes in it, and moving everything by minutes in one
     step would put the rocket through a wall and every foe on top of it.
-13. **The pad and the keyboard end in one object.** `input.read` takes what
+13. **The torpedoes answer to R1 as well as R3.** R3 is the right stick
+    pressed in - the same stick the rocket is aimed with. Pushing a stick
+    straight down without leaning on it takes a firm thumb, and a thumb that
+    leans swings the aim in the moment it fires, so the same gun is on R1 too:
+    a button that can be pressed without letting go of the aim. R3 is what the
+    prompt asks for and R3 still fires; R1 is so that firing is not a wrestle
+    with the aiming.
+14. **The pad says what it is sending.** A pad the browser does not report as a
+    standard one sends its buttons at numbers of its own, and then R3 is not 11
+    and the game sees nothing where the torpedoes should be - which looks
+    exactly like a broken gun. The line on the menus names the buttons as they
+    are pressed, so that case can be told apart from a bug without a debugger.
+15. **The pad and the keyboard end in one object.** `input.read` takes what
     `navigator.getGamepads()` handed over and the set of keys currently down,
     and gives back one intent. Firing is held, the bomb is pressed — down now
     and not down when we last looked — because two of the two bombs on one
     thumb press is not a game. Nothing downstream of that function knows which
     was used.
-14. **The menus are HTML, the game is canvas.** The welcome, the scores and the
+16. **The menus are HTML, the game is canvas.** The welcome, the scores and the
     game over are plain sections lying over the field; they are shown and
     hidden and nothing is built at run time. The loop runs on them too, because
     the pad is read in it — a menu that only listened for clicks would be a
     menu you had to put the pad down to get out of. The stick walks the
     buttons, A presses the one it is standing on, and the focus ring is what
     says where it is.
-15. **Nothing off the network.** No libraries, no fonts, no sounds. `sw.js`
+17. **Nothing off the network.** No libraries, no fonts, no sounds. `sw.js`
     caches the eight scripts, the stylesheet, the page and the icons, so the
     game is played the same with the aeroplane mode on.
 
