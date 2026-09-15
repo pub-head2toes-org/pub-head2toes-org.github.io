@@ -641,6 +641,29 @@ describe('the painting', () => {
     });
 });
 
+describe('the stylesheet', () => {
+    const css = read('styles.css');
+
+    /**
+     * The page shows and hides everything with the `hidden` attribute, and that
+     * attribute is only a rule in the browser's own stylesheet - so any id here
+     * with a `display` of its own would beat it and go on being shown. `#paused`
+     * did exactly that: the game carried on underneath a panel saying it was
+     * held.
+     */
+    it('lets the hidden attribute beat any display an id gives an element', () => {
+        assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/,
+            'a global [hidden] rule, with the weight to win');
+    });
+
+    it('draws the panels the page hides with a display of their own, which is why that rule is there', () => {
+        for (const id of ['#hud', '#paused']) {
+            const rule = css.slice(css.indexOf(id + ' {'));
+            assert.match(rule.slice(0, rule.indexOf('}')), /display:/, id + ' sets its own display');
+        }
+    });
+});
+
 describe('the page', () => {
     it('opens on the welcome screen, with the world already drawn behind it', () => {
         const page = loadGrinder();

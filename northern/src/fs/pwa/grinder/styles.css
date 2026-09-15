@@ -17,6 +17,15 @@
 
 * { box-sizing: border-box; }
 
+/*
+  The `hidden` attribute is only a rule in the browser's own stylesheet, and an
+  id with a `display` of its own beats it - so `#paused` would have gone on
+  saying the game was held while the game carried on underneath it, whatever
+  the attribute said. Everything on this page is shown and hidden by that
+  attribute, so it is settled here, once, for all of them.
+*/
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -104,8 +113,6 @@ html, body {
   overflow-y: auto;
   text-align: center;
 }
-
-.screen[hidden] { display: none; }
 
 .screen h1 {
   margin: 0;
