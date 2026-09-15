@@ -18,11 +18,11 @@ const read = name => fs.readFileSync(path.join(PWA, name), 'utf8');
  *
  * `grinder.js` is the page, and is tested through the stub DOM at the end.
  */
-const { world, foes, weapons, input, scores, game, render } = (function () {
+const { world, foes, weapons, input, scores, game, render, text, screens } = (function () {
     const source = [
-        read('world.js'), read('foes.js'), read('weapons.js'), read('input.js'),
-        read('scores.js'), read('game.js'), read('render.js'),
-        'return { world, foes, weapons, input, scores, game, render };'
+        read('font.js'), read('text.js'), read('world.js'), read('foes.js'), read('weapons.js'),
+        read('input.js'), read('scores.js'), read('game.js'), read('render.js'), read('screens.js'),
+        'return { world, foes, weapons, input, scores, game, render, text, screens };'
     ].join('\n');
     return new Function(source)();
 })();
@@ -272,7 +272,12 @@ describe('the foes', () => {
 });
 
 describe('the guns', () => {
-    it('start at a shot a second, halve the wait every thousand points, and stop at twenty milliseconds', () => {
+    it('start the laser at a shot a second and the torpedoes at two, as asked', () => {
+        assert.strictEqual(weapons.LASER.every, 1000);
+        assert.strictEqual(weapons.TORPEDO.every, 500);
+    });
+
+    it('halve the wait every thousand points, and stop at twenty milliseconds', () => {
         assert.strictEqual(weapons.every(1000, 0), 1000);
         assert.strictEqual(weapons.every(1000, 1000), 500);
         assert.strictEqual(weapons.every(1000, 2000), 250);
@@ -329,23 +334,32 @@ describe('the pad, and the keys that stand in for it', () => {
         assert.ok(Math.abs(pushed.move.x - 1) < 1e-9, 'and all the way is all the way');
     });
 
-    it('reads R2 as the laser, R3 as the torpedoes and B as the bomb', () => {
+    it('reads R2 as the laser, L3 as the torpedoes and B as the bomb', () => {
         const state = input.create();
 
-        const intent = input.read(state, padding([0, 0, 0, 0], { 7: true, 11: true, 1: true }), new Set());
+        const intent = input.read(state, padding([0, 0, 0, 0], { 7: true, 10: true, 1: true }), new Set());
 
         assert.strictEqual(intent.laser, true);
         assert.strictEqual(intent.torpedo, true);
         assert.strictEqual(intent.emp, true);
     });
 
-    it('takes R1 for the torpedoes as well, so the aim need not be let go of', () => {
+    it('leaves R3 alone now that the torpedoes have moved off it', () => {
         const state = input.create();
 
-        const intent = input.read(state, padding([0, 0, 0, 0], { 5: true }), new Set());
+        const intent = input.read(state, padding([0, 0, 0, 0], { 11: true }), new Set());
 
-        assert.strictEqual(intent.torpedo, true);
-        assert.strictEqual(intent.laser, false, 'and it is not the other gun');
+        assert.strictEqual(intent.torpedo, false);
+        assert.strictEqual(intent.laser, false);
+    });
+
+    it('gives the four ways as presses, off either stick or the cross', () => {
+        const state = input.create();
+
+        assert.strictEqual(input.read(state, padding([0, 0, 0, -1], {}), new Set()).up, true);
+        assert.strictEqual(input.read(state, padding([0, 0, 0, -1], {}), new Set()).up, false, 'held is not pressed again');
+        assert.strictEqual(input.read(state, padding([0, 0, 0, 0], { 15: true }), new Set()).right, true);
+        assert.strictEqual(input.read(state, padding([1, 0, 0, 0], {}), new Set()).right, false, 'the stick was already over');
     });
 
     it('says which buttons are down, by the names on a pad', () => {
@@ -659,38 +673,130 @@ describe('the painting', () => {
     });
 });
 
-describe('the stylesheet', () => {
-    const css = read('styles.css');
+describe('the writing', () => {
+    /** A canvas that remembers the rectangles, which is all the font draws. */
+    const brush = () => {
+        const paint = { fillStyle: '', shadowBlur: 0, rects: [] };
+        paint.fillRect = (x, y, w, h) => paint.rects.push({ x, y, w, h, fill: paint.fillStyle });
+        return paint;
+    };
 
-    /**
-     * The page shows and hides everything with the `hidden` attribute, and that
-     * attribute is only a rule in the browser's own stylesheet - so any id here
-     * with a `display` of its own would beat it and go on being shown. `#paused`
-     * did exactly that: the game carried on underneath a panel saying it was
-     * held.
-     */
-    it('lets the hidden attribute beat any display an id gives an element', () => {
-        assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/,
-            'a global [hidden] rule, with the weight to win');
+    it('reads the font the way the table is written: the low bit at the left', () => {
+        const rows = text.glyph('A');
+        const lit = row => {
+            let out = '';
+            for (let column = 0; column < 8; column++) out += (rows[row] & (1 << column)) ? '#' : '.';
+            return out;
+        };
+
+        assert.strictEqual(lit(0), '..##....');
+        assert.strictEqual(lit(2), '##..##..');
+        assert.strictEqual(lit(4), '######..');
     });
 
-    it('draws the panels the page hides with a display of their own, which is why that rule is there', () => {
-        for (const id of ['#hud', '#paused']) {
-            const rule = css.slice(css.indexOf(id + ' {'));
-            assert.match(rule.slice(0, rule.indexOf('}')), /display:/, id + ' sets its own display');
-        }
+    it('falls back to the blank for anything the font has not got', () => {
+        assert.deepStrictEqual(text.glyph('\u00e9'), text.glyph(' '));
+    });
+
+    it('measures a line as eight dots to the letter', () => {
+        assert.strictEqual(text.width('ABC', 1), 24);
+        assert.strictEqual(text.width('ABC', 4), 96);
+    });
+
+    it('draws a run of dots as one rectangle rather than one each', () => {
+        const paint = brush();
+
+        text.draw(paint, 'A', 0, 0, 2, '#fff');
+
+        const top = paint.rects.filter(rect => rect.y === 0);
+        assert.strictEqual(top.length, 1, 'the two dots at the top of an A are one run');
+        assert.strictEqual(top[0].x, 4, 'starting at the third column');
+        assert.ok(top[0].w > 2 && top[0].w <= 4, 'two dots wide, less the gap');
+        assert.ok(paint.rects.every(rect => rect.fill === '#fff'));
+    });
+
+    it('centres a line on a point', () => {
+        const paint = brush();
+
+        text.centre(paint, 'AB', 100, 0, 1, '#fff');
+
+        assert.ok(paint.rects.every(rect => rect.x >= 92 && rect.x <= 108), 'sixteen dots wide, about 100');
+    });
+});
+
+describe('the cards', () => {
+    const lines = card => card.lines.map(line => line.text);
+
+    it('says on the welcome what presses what, the torpedoes on L3', () => {
+        const said = lines(screens.welcome());
+
+        assert.strictEqual(said[0], 'GRINDER');
+        assert.ok(said.some(line => /^L3\s+TORPEDO/.test(line)), said.join(' | '));
+        assert.ok(said.some(line => /^R2\s+LASER/.test(line)));
+        assert.ok(said.includes('PRESS START'), 'and Start is the only thing to press');
+        assert.ok(!said.some(line => /HIGH SCORES/.test(line)), 'no button to the table any more');
+    });
+
+    it('pads its columns to one length so centred lines line up', () => {
+        const rows = screens.columns([['LEFT STICK', 'FLY'], ['B', 'EMP BOMB']]);
+
+        assert.strictEqual(rows[0].length, rows[1].length);
+        assert.strictEqual(rows[1].indexOf('EMP'), rows[0].indexOf('FLY'), 'the right column starts in one place');
+    });
+
+    it('writes the table with the initials that were spelt for it', () => {
+        const said = lines(screens.scores([{ score: 4321, who: 'NEB' }, { score: 10, who: '' }]));
+
+        assert.match(said[1], /1 +NEB +4321/);
+        assert.match(said[2], /2 +--- +10/, 'and dashes for a score that was never asked');
+    });
+
+    it('says the table is empty when it is', () => {
+        assert.ok(lines(screens.scores([])).includes('NONE YET'));
+    });
+
+    it('says what a game came to and where it put it', () => {
+        assert.ok(lines(screens.over({ score: 900, place: 1, of: 3 })).includes('A NEW BEST'));
+        assert.ok(lines(screens.over({ score: 900, place: 2, of: 3 })).includes('NUMBER 2 OF 3'));
+        assert.ok(lines(screens.over({ score: 90, place: 0 })).includes('NOT ONE FOR THE TABLE'));
+    });
+
+    it('puts the mark under the letter being spelt', () => {
+        const said = lines(screens.initials({ letters: ['N', 'E', 'B'], at: 1, score: 40 }));
+        const letters = said[2];
+        const caret = said[3];
+
+        assert.strictEqual(letters, 'N E B');
+        assert.strictEqual(caret.length, letters.length, 'the same length, so centring aligns them');
+        assert.strictEqual(caret.indexOf('^'), 2, 'under the middle letter');
+    });
+
+    it('tells the keys apart from the pad on the last line of the welcome', () => {
+        assert.match(screens.hands({ pad: false }), /KEYS/);
+        assert.strictEqual(screens.hands({ pad: true, pressing: [] }), 'PAD CONNECTED');
+        assert.strictEqual(screens.hands({ pad: true, pressing: [10, 7] }), 'PAD  L3 R2');
+    });
+
+    it('sizes a card to the window it is going into, and never past the biggest', () => {
+        const card = screens.welcome();
+
+        const phone = screens.fit(card, { width: 400, height: 800 });
+        const television = screens.fit(card, { width: 3840, height: 2160 });
+
+        assert.ok(phone >= 1 && phone < 3, 'small enough to fit across a phone: ' + phone);
+        assert.ok(screens.tall(card, phone) <= 800, 'and down it');
+        assert.strictEqual(television, screens.BIGGEST, 'and no dot is ever bigger than this');
     });
 });
 
 describe('the page', () => {
-    it('opens on the welcome screen, with the world already drawn behind it', () => {
+    it('opens on the welcome card, over the world it is played in', () => {
         const page = loadGrinder();
 
         assert.strictEqual(page.app.screen, 'welcome');
-        assert.strictEqual(page.element('welcome').hidden, false);
-        assert.strictEqual(page.element('hud').hidden, true);
+        assert.deepStrictEqual(Array.from(page.app.rotation), ['welcome', 'scores']);
         page.frame();
-        assert.ok(page.paint().calls.length > 0, 'the dots are there to look at');
+        assert.ok(page.paint().calls.length > 100, 'the dots, and the writing over them');
     });
 
     it('sends a browser with no canvas to the error page', () => {
@@ -700,82 +806,143 @@ describe('the page', () => {
         assert.strictEqual(page.app.state, null, 'and starts nothing');
     });
 
-    it('starts a game on Play and shows the score', () => {
+    it('turns the cards over by itself, and there is no button to press', () => {
+        const page = loadGrinder({ scores: [{ score: 300, at: '2026-09-14', who: 'NEB' }] });
+
+        page.run(1000);
+        assert.strictEqual(page.app.screen, 'welcome');
+
+        page.run(6000);
+        assert.strictEqual(page.app.screen, 'scores', 'the table comes round on its own');
+        assert.ok(page.card().some(line => /NEB/.test(line)), 'and it has been read out of the store');
+
+        page.run(6100);
+        assert.strictEqual(page.app.screen, 'welcome', 'and back again');
+    });
+
+    it('starts a game on Start', () => {
         const page = loadGrinder();
 
-        page.element('play').click();
+        page.press(9);
 
         assert.strictEqual(page.app.screen, 'playing');
-        assert.strictEqual(page.element('hud').hidden, false);
-        assert.strictEqual(page.element('welcome').hidden, true);
-        assert.strictEqual(page.element('score').textContent, '0');
-        assert.strictEqual(page.element('bombs').textContent, '◆◆', 'two in the rack');
+        assert.strictEqual(page.app.state.score, 0);
+        assert.strictEqual(page.app.state.bombs, 2);
     });
 
-    it('walks the buttons with the stick and presses the one it is standing on', () => {
-        const page = loadGrinder();
-
-        page.pad([0, 0, 0, 0], {});
-        page.frame();
-        assert.strictEqual(page.document.activeElement, page.element('play'), 'the first one, to begin with');
-
-        page.pad([0, 1, 0, 0], {});             // the stick, pushed down
-        page.frame();
-        assert.strictEqual(page.document.activeElement, page.element('high'));
-
-        page.pad([0, 0, 0, 0], {});
-        page.frame();
-        page.pad([0, 0, 0, 0], { 0: true });    // A
-        page.frame();
-        assert.strictEqual(page.app.screen, 'scores');
-    });
-
-    it('says when a pad has been found, and names what is pressed on it', () => {
-        const page = loadGrinder();
-
-        page.frame();
-        assert.strictEqual(page.element('pad').hidden, true);
-
-        page.pad();
-        page.frame();
-        assert.strictEqual(page.element('pad').hidden, false);
-        assert.strictEqual(page.element('pad').textContent, 'Pad connected');
-
-        page.pad([0, 0, 0, 0], { 11: true });
-        page.frame();
-        assert.strictEqual(page.element('pad').textContent, 'Pad connected \u2014 R3');
-    });
-
-    it('fires torpedoes from the pad, off R3 and off R1', () => {
-        for (const button of [11, 5]) {
+    it('starts one from the keyboard too, since a keyboard has no Start', () => {
+        for (const key of ['enter', ' ']) {
             const page = loadGrinder();
-            page.element('play').click();
-            page.app.state.foes.length = 0;
-            page.pad([0, 0, 0, 0], { [button]: true });
+            page.frame();
 
-            const fired = new Set();
-            for (let frame = 0; frame < 120; frame++) {
-                page.frame(16);
-                page.app.state.shots.forEach(shot => fired.add(shot));
-            }
+            page.key.down(key);
+            page.frame();
 
-            assert.ok(fired.size >= 2, 'a shot a second off button ' + button + ', not ' + fired.size);
+            assert.strictEqual(page.app.screen, 'playing', 'on ' + JSON.stringify(key));
         }
+    });
+
+    it('starts one from the game over card too', () => {
+        const page = loadGrinder({
+            scores: [50000, 40000, 30000, 20000, 10000].map(score => ({ score, at: '', who: 'ZZZ' }))
+        });
+        page.press(9);
+        page.app.state.score = 10;
+        page.app.state.over = true;
+        page.run(1000);
+        assert.strictEqual(page.app.screen, 'over', 'no initials for sixth place');
+
+        page.press(9);
+
+        assert.strictEqual(page.app.screen, 'playing');
+        assert.strictEqual(page.app.state.score, 0);
+    });
+
+    it('asks three letters of a score in the top five, and keeps them', () => {
+        const page = loadGrinder();
+        page.press(9);
+        page.app.state.score = 4321;
+        page.app.state.over = true;
+        page.run(1000);
+
+        assert.strictEqual(page.app.screen, 'initials');
+        assert.strictEqual(page.app.entry.letters.join(''), 'AAA');
+
+        page.press(13);                     // down: A to B
+        page.press(15);                     // right, to the second letter
+        page.press(13); page.press(13);     // down twice: A to C
+        page.press(9);                      // Start: done with it
+
+        assert.strictEqual(page.app.screen, 'over');
+        assert.strictEqual(page.stored().length, 1);
+        assert.strictEqual(page.stored()[0].score, 4321);
+        assert.strictEqual(page.stored()[0].who, 'BCA');
+        assert.ok(page.card().includes('A NEW BEST'));
+    });
+
+    it('asks nothing of a score too low for the top five', () => {
+        const page = loadGrinder({
+            scores: [500, 400, 300, 200, 100].map(score => ({ score, at: '', who: 'ZZZ' }))
+        });
+        page.press(9);
+        page.app.state.score = 50;
+        page.app.state.over = true;
+
+        page.run(1000);
+
+        assert.strictEqual(page.app.screen, 'over');
+        assert.strictEqual(page.stored().length, 6);
+        assert.strictEqual(page.stored()[5].who, '---');
+    });
+
+    it('lets the letters be typed as well as spelt on the stick', () => {
+        const page = loadGrinder();
+        page.press(9);
+        page.app.state.score = 4321;
+        page.app.state.over = true;
+        page.run(1000);
+
+        for (const key of ['n', 'e', 'b']) { page.key.down(key); page.key.up(key); }
+        page.frame();
+
+        assert.strictEqual(page.app.entry.letters.join(''), 'NEB');
+    });
+
+    it('turns the game over card, the welcome and the table over after a game', () => {
+        const page = loadGrinder({
+            scores: [50000, 40000, 30000, 20000, 10000].map(score => ({ score, at: '', who: 'ZZZ' }))
+        });
+        page.press(9);
+        page.app.state.score = 10;
+        page.app.state.over = true;
+        page.run(1000);
+
+        assert.strictEqual(page.app.screen, 'over');
+        page.run(6100);
+        assert.strictEqual(page.app.screen, 'welcome');
+        page.run(6100);
+        assert.strictEqual(page.app.screen, 'scores');
+        page.run(6100);
+        assert.strictEqual(page.app.screen, 'over', 'and round again');
     });
 
     it('holds the game on Escape and lets it go again', () => {
         const page = loadGrinder();
-        page.element('play').click();
+        page.press(9);
         page.frame();
         const was = page.app.state.time;
 
         page.key.down('escape');
         page.run(200);
         assert.strictEqual(page.app.paused, true);
-        assert.strictEqual(page.element('paused').hidden, false);
         assert.strictEqual(page.app.state.time, was, 'and the clock stops with it');
+        assert.ok(page.of('screens').paused().lines.some(line => line.text === 'HELD'),
+            'and the card over it says so');
 
+        // A frame between the two, as there would be in a browser: the key must
+        // be seen to come up before it can be seen to go down again.
         page.key.up('escape');
+        page.run(50);
         page.key.down('escape');
         page.run(200);
         assert.strictEqual(page.app.paused, false);
@@ -784,86 +951,48 @@ describe('the page', () => {
 
     it('holds the game when the window is left', () => {
         const page = loadGrinder();
-        page.element('play').click();
+        page.press(9);
 
         page.window.dispatch('blur');
 
         assert.strictEqual(page.app.paused, true);
     });
 
-    it('puts the score in the table at the end and says where it came', () => {
-        const page = loadGrinder({ scores: [{ score: 5000, at: '2026-01-01' }] });
-        page.element('play').click();
-        page.app.state.score = 120;
-        page.app.state.over = true;
-
-        page.run(1200);
-
-        assert.strictEqual(page.app.screen, 'over');
-        assert.strictEqual(page.element('final').textContent, '120');
-        assert.strictEqual(page.element('place').textContent, 'Number 2 of 2.');
-        assert.deepStrictEqual(page.stored().map(one => one.score), [5000, 120]);
-    });
-
-    it('calls a new best a new best', () => {
-        const page = loadGrinder();
-        page.element('play').click();
-        page.app.state.score = 700;
-        page.app.state.over = true;
-
-        page.run(1200);
-
-        assert.strictEqual(page.element('place').textContent, 'A new best.');
-    });
-
-    it('plays again from the game over screen', () => {
-        const page = loadGrinder();
-        page.element('play').click();
-        page.app.state.score = 700;
-        page.app.state.over = true;
-        page.run(1200);
-
-        page.element('again').click();
-
-        assert.strictEqual(page.app.screen, 'playing');
-        assert.strictEqual(page.app.state.score, 0);
-        assert.strictEqual(page.app.state.over, false);
-    });
-
-    it('writes the table out, and says so when there is nothing in it', () => {
-        const empty = loadGrinder();
-        empty.element('high').click();
-        assert.strictEqual(empty.element('table').children[0].className, 'empty');
-
-        const kept = loadGrinder({ scores: [{ score: 300, at: '2026-09-14T10:00:00.000Z' }] });
-        kept.element('high').click();
-        const list = kept.element('table').children[0];
-        assert.strictEqual(list.tagName, 'OL');
-        assert.strictEqual(list.children.length, 1);
-        assert.strictEqual(list.children[0].children[0].textContent, '300');
-        assert.strictEqual(list.children[0].children[1].textContent, '2026-09-14', 'the day, and no more of it');
-    });
-
     it('keeps the game to the window when the window changes size', () => {
         const page = loadGrinder();
-        page.element('play').click();
+        page.press(9);
 
         page.window.innerWidth = 500;
         page.window.innerHeight = 400;
         page.window.dispatch('resize');
 
         assert.strictEqual(page.app.state.world.width, 600);
-        assert.strictEqual(page.element('field').width, 1000, 'at twice the density of the screen');
+        assert.strictEqual(page.field.width, 1000, 'at twice the density of the screen');
     });
 
     it('flies the rocket from the pad, once a game is on', () => {
         const page = loadGrinder();
-        page.element('play').click();
+        page.press(9);
         const was = page.app.state.rocket.x;
 
         page.pad([1, 0, 0, 0], {});
         page.run(500);
 
         assert.ok(page.app.state.rocket.x > was, 'the left stick flew it');
+    });
+
+    it('fires torpedoes off L3', () => {
+        const page = loadGrinder();
+        page.press(9);
+        page.app.state.foes.length = 0;
+        page.pad([0, 0, 0, 0], { 10: true });
+
+        const fired = new Set();
+        for (let frame = 0; frame < 120; frame++) {
+            page.frame(16);
+            page.app.state.shots.forEach(shot => fired.add(shot));
+        }
+
+        assert.ok(fired.size >= 3, 'two a second at the start, not ' + fired.size);
     });
 });

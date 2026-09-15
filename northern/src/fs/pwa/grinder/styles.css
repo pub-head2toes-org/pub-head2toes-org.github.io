@@ -1,30 +1,22 @@
+/*
+  There is one element on the page, and this is what keeps it filling the
+  window. Everything else that used to be here - the panels, the buttons, the
+  score, the table - is now drawn on the canvas out of the matrix font, so the
+  only thing left to say in CSS is that the page is black and the canvas is all
+  of it.
+
+  `error.html` is the exception and the reason for what follows: it is reached
+  when the browser has no canvas, so it has nothing but HTML to say it with.
+*/
+
 :root {
-  --void: #05060a;                 /* the field, and the page behind it */
-  --panel: rgba(8, 12, 22, 0.86);  /* a screen laid over the field */
-  --edge: #1d2b4a;
+  --void: #05060a;
   --text: #e8f1ff;
   --muted: #8ba0c4;
-  --live: #4cc9f0;                 /* the colour of anything that can be pressed */
-
-  /* The foes, the same values render.js draws them in. Here they are only
-     ever ink on the welcome screen, but a table of scores that disagreed with
-     the game about what colour a triangle is would be a poor table. */
-  --triangle: #ffd94a;
-  --square: #2ee06a;
-  --circle: #ff8c1a;
-  --laser: #ff2d2d;
+  --edge: #1d2b4a;
 }
 
 * { box-sizing: border-box; }
-
-/*
-  The `hidden` attribute is only a rule in the browser's own stylesheet, and an
-  id with a `display` of its own beats it - so `#paused` would have gone on
-  saying the game was held while the game carried on underneath it, whatever
-  the attribute said. Everything on this page is shown and hidden by that
-  attribute, so it is settled here, once, for all of them.
-*/
-[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -38,8 +30,6 @@ html, body {
   touch-action: none;
 }
 
-/* ---------- the field ---------- */
-
 #field {
   display: block;
   position: fixed;
@@ -48,57 +38,7 @@ html, body {
   background: var(--void);
 }
 
-/* ---------- what is laid over it ---------- */
-
-#hud {
-  position: fixed;
-  top: calc(8px + env(safe-area-inset-top));
-  left: calc(10px + env(safe-area-inset-left));
-  right: calc(10px + env(safe-area-inset-right));
-  display: flex;
-  gap: 18px;
-  align-items: flex-end;
-  pointer-events: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.tile { display: flex; flex-direction: column; line-height: 1; }
-.tile b { font-size: clamp(1.1rem, 4vw, 1.7rem); letter-spacing: 0.02em; }
-.tile i { font-style: normal; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
-.tile:nth-child(3) b { color: var(--live); }
-
-#pad {
-  position: fixed;
-  right: calc(10px + env(safe-area-inset-right));
-  bottom: calc(8px + env(safe-area-inset-bottom));
-  margin: 0;
-  font-size: 0.7rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-  pointer-events: none;
-}
-
-#paused {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 6, 10, 0.72);
-  font-size: clamp(1rem, 3vw, 1.4rem);
-}
-
-.key {
-  display: inline-block;
-  padding: 1px 7px;
-  border: 1px solid var(--edge);
-  border-radius: 4px;
-  color: var(--live);
-  font-size: 0.85em;
-}
-
-/* ---------- the screens: welcome, scores, game over ---------- */
+/* ---------- error.html, which has no canvas to draw itself on ---------- */
 
 .screen {
   position: fixed;
@@ -109,8 +49,6 @@ html, body {
   justify-content: center;
   gap: 14px;
   padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
-  background: var(--panel);
-  overflow-y: auto;
   text-align: center;
 }
 
@@ -119,109 +57,20 @@ html, body {
   font-size: clamp(2rem, 9vw, 4rem);
   font-weight: 800;
   letter-spacing: 0.24em;
+  text-indent: 0.24em;
   text-transform: uppercase;
-  text-indent: 0.24em;                       /* the letter spacing puts it off centre */
-  color: var(--text);
-  text-shadow: 0 0 22px rgba(76, 201, 240, 0.5);
 }
 
-.lead { margin: 0; color: var(--muted); font-size: clamp(0.9rem, 2.6vw, 1.05rem); }
-
-.final { margin: 0; }
-.final b {
-  font-size: clamp(2.6rem, 12vw, 5rem);
-  font-variant-numeric: tabular-nums;
-  color: var(--live);
-}
-
-.row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
-
-button {
-  min-width: 9rem;
-  min-height: 2.75rem;                       /* a target a thumb can find */
-  padding: 0 1.4rem;
-  font: inherit;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--live);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-button:hover { background: rgba(76, 201, 240, 0.12); }
-
-/* The pad walks the buttons with the stick and presses with A, so which one it
-   is standing on has to be plain - this is the only thing that says so. */
-button:focus-visible,
-button:focus {
-  outline: none;
-  background: rgba(76, 201, 240, 0.2);
-  box-shadow: 0 0 0 2px var(--live), 0 0 22px rgba(76, 201, 240, 0.55);
-}
-
-/* ---------- the two lists on the welcome screen ---------- */
-
-.controls, .worth {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 14px;
+.lead {
   margin: 0;
   max-width: 34rem;
-  width: 100%;
-  text-align: left;
-  font-size: clamp(0.8rem, 2.4vw, 0.95rem);
-}
-
-.controls dt, .worth dt { color: var(--live); font-weight: 600; }
-.controls dd, .worth dd { margin: 0; color: var(--muted); }
-.also { color: #5d719b; font-size: 0.85em; }
-.also::before { content: "\2022\00a0"; }
-
-.worth { margin-top: 6px; }
-.worth dt.triangle { color: var(--triangle); }
-.worth dt.square { color: var(--square); }
-.worth dt.circle { color: var(--circle); }
-.worth dd { font-variant-numeric: tabular-nums; }
-
-/* ---------- the table of scores ---------- */
-
-#table { width: 100%; max-width: 26rem; }
-
-#table ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: place;
-}
-
-#table li {
-  counter-increment: place;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--edge);
-}
-
-#table li::before {
-  content: counter(place) ".";
-  width: 2.2rem;
   color: var(--muted);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
 }
 
-#table li:first-child .points { color: var(--live); }
-.points { flex: 1 1 auto; text-align: left; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
-.when { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.empty { margin: 0; color: var(--muted); }
-
-/* A short screen - a phone on its side - has no room for the lists, and the
-   buttons matter more than the reading does. */
-@media (max-height: 520px) {
-  .controls, .worth { display: none; }
-  .screen { gap: 10px; }
+.lead code {
+  padding: 1px 6px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  color: var(--text);
 }
