@@ -84,7 +84,7 @@ screens.welcome = function (app) {
         ['LEFT STICK', 'FLY'],
         ['RIGHT STICK', 'TURN'],
         ['R2', 'LASER'],
-        ['L3', 'TORPEDO'],
+        ['L2', 'TORPEDO'],
         ['B', 'EMP BOMB']
     ]);
     const worth = screens.columns([

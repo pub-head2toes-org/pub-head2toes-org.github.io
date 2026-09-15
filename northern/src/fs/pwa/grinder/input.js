@@ -23,16 +23,16 @@ input.TRIGGER = 0.3;         // how far an analogue trigger is a press
 /**
  * The standard pad, by the numbers the browser gives its buttons.
  *
- * R2 is the laser and L3 - the left stick pressed in - is the torpedoes. The
- * left stick is the flying one, and a stick leant on as it is clicked flies
- * the rocket a little way with it; that is a thumb's business, and better than
- * the alternative of clicking the stick the guns are aimed with.
+ * The two guns are on the two triggers: R2 the laser, L2 the torpedoes. Both
+ * are analogue, so a trigger counts as down once it is far enough in - see
+ * `input.down` - and neither asks a thumb to click the stick it is flying or
+ * aiming with.
  */
 input.PAD = {
     confirm: 0,              // A / cross
     emp: 1,                  // B / circle - the bomb
     laser: 7,                // R2
-    torpedo: 10,             // L3, the left stick pressed in
+    torpedo: 6,              // L2
     back: 8,
     start: 9,
     up: 12, down: 13, left: 14, right: 15

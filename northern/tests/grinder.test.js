@@ -334,23 +334,38 @@ describe('the pad, and the keys that stand in for it', () => {
         assert.ok(Math.abs(pushed.move.x - 1) < 1e-9, 'and all the way is all the way');
     });
 
-    it('reads R2 as the laser, L3 as the torpedoes and B as the bomb', () => {
+    it('reads R2 as the laser, L2 as the torpedoes and B as the bomb', () => {
         const state = input.create();
 
-        const intent = input.read(state, padding([0, 0, 0, 0], { 7: true, 10: true, 1: true }), new Set());
+        const intent = input.read(state, padding([0, 0, 0, 0], { 7: true, 6: true, 1: true }), new Set());
 
         assert.strictEqual(intent.laser, true);
         assert.strictEqual(intent.torpedo, true);
         assert.strictEqual(intent.emp, true);
     });
 
-    it('leaves R3 alone now that the torpedoes have moved off it', () => {
+    it('leaves the stick clicks alone now that the torpedoes are on a trigger', () => {
         const state = input.create();
 
-        const intent = input.read(state, padding([0, 0, 0, 0], { 11: true }), new Set());
+        for (const stick of [10, 11]) {
+            const intent = input.read(state, padding([0, 0, 0, 0], { [stick]: true }), new Set());
+            assert.strictEqual(intent.torpedo, false, 'button ' + stick);
+            assert.strictEqual(intent.laser, false);
+        }
+    });
 
-        assert.strictEqual(intent.torpedo, false);
-        assert.strictEqual(intent.laser, false);
+    it('takes a trigger half pulled as a trigger pulled, since both guns are on one', () => {
+        const state = input.create();
+        const squeezed = value => [{
+            connected: true,
+            axes: [0, 0, 0, 0],
+            buttons: Array.from({ length: 17 }, (ignored, index) => ({
+                pressed: false, value: index === 6 ? value : 0
+            }))
+        }];
+
+        assert.strictEqual(input.read(state, squeezed(0.1), new Set()).torpedo, false, 'a finger resting on it');
+        assert.strictEqual(input.read(state, squeezed(0.9), new Set()).torpedo, true);
     });
 
     it('gives the four ways as presses, off either stick or the cross', () => {
@@ -727,11 +742,11 @@ describe('the writing', () => {
 describe('the cards', () => {
     const lines = card => card.lines.map(line => line.text);
 
-    it('says on the welcome what presses what, the torpedoes on L3', () => {
+    it('says on the welcome what presses what, both guns on the triggers', () => {
         const said = lines(screens.welcome());
 
         assert.strictEqual(said[0], 'GRINDER');
-        assert.ok(said.some(line => /^L3\s+TORPEDO/.test(line)), said.join(' | '));
+        assert.ok(said.some(line => /^L2\s+TORPEDO/.test(line)), said.join(' | '));
         assert.ok(said.some(line => /^R2\s+LASER/.test(line)));
         assert.ok(said.includes('PRESS START'), 'and Start is the only thing to press');
         assert.ok(!said.some(line => /HIGH SCORES/.test(line)), 'no button to the table any more');
@@ -774,7 +789,7 @@ describe('the cards', () => {
     it('tells the keys apart from the pad on the last line of the welcome', () => {
         assert.match(screens.hands({ pad: false }), /KEYS/);
         assert.strictEqual(screens.hands({ pad: true, pressing: [] }), 'PAD CONNECTED');
-        assert.strictEqual(screens.hands({ pad: true, pressing: [10, 7] }), 'PAD  L3 R2');
+        assert.strictEqual(screens.hands({ pad: true, pressing: [6, 7] }), 'PAD  L2 R2');
     });
 
     it('sizes a card to the window it is going into, and never past the biggest', () => {
@@ -981,11 +996,11 @@ describe('the page', () => {
         assert.ok(page.app.state.rocket.x > was, 'the left stick flew it');
     });
 
-    it('fires torpedoes off L3', () => {
+    it('fires torpedoes off L2', () => {
         const page = loadGrinder();
         page.press(9);
         page.app.state.foes.length = 0;
-        page.pad([0, 0, 0, 0], { 10: true });
+        page.pad([0, 0, 0, 0], { 6: true });
 
         const fired = new Set();
         for (let frame = 0; frame < 120; frame++) {
