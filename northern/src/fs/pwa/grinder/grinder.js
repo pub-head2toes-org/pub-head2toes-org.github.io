@@ -178,6 +178,7 @@ function loop(now) {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const intent = input.read(app.reader, pads, app.keys);
     if (app.page.pad.hidden === intent.pad) app.page.pad.hidden = !intent.pad;
+    if (intent.pad && app.screen !== 'playing') named(intent.pressing);
 
     if (app.screen === 'playing') {
         if (intent.start || (intent.pad && intent.back)) hold(!app.paused);
@@ -193,6 +194,23 @@ function loop(now) {
     }
 
     if (app.state) render.frame(paint(), app.state, app.density);
+}
+
+/**
+ * The pad line, on the menus: what is connected, and what is being pressed on
+ * it as it is pressed.
+ *
+ * It is a readout, not decoration. A pad that does not report itself as a
+ * standard one sends its buttons at numbers of its own, and then R3 is not 11
+ * and the game sees nothing where the torpedoes should be. Holding the button
+ * down here says what the browser is really sending, which is the difference
+ * between a bug and a pad.
+ */
+function named(pressing) {
+    const said = pressing.length
+        ? 'Pad connected \u2014 ' + pressing.map(index => input.NAMES[index] || index).join(' ')
+        : 'Pad connected';
+    if (app.page.pad.textContent !== said) app.page.pad.textContent = said;
 }
 
 /** Held, or let go again. */
