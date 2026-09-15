@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#05060a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Grinder</title>
+</head>
+<body>
+
+  <!--
+    The canvas is the game and takes the whole window. Everything else on this
+    page lies over it and is hidden while the game is being played, so what is
+    on screen then is the world and nothing else.
+  -->
+  <canvas id="field" tabindex="-1" aria-label="The playing field"></canvas>
+
+  <!-- The score, the best there has been, and what is left in the bomb rack. -->
+  <div id="hud" hidden>
+    <span class="tile"><b id="score">0</b><i>score</i></span>
+    <span class="tile"><b id="best">0</b><i>best</i></span>
+    <span class="tile"><b id="bombs">&#9670;&#9670;</b><i>EMP</i></span>
+  </div>
+
+  <div id="paused" hidden>
+    <p>Held. <span class="key">Start</span> or <span class="key">Esc</span> to fly on.</p>
+  </div>
+
+  <!-- A pad is the game's control; this says when one has been found. -->
+  <p id="pad" hidden>Pad connected</p>
+
+  <section id="welcome" class="screen">
+    <h1>Grinder</h1>
+    <p class="lead">A rock and a hard place, and you between them.</p>
+
+    <div class="row">
+      <button type="button" id="play">Play</button>
+      <button type="button" id="high">High scores</button>
+    </div>
+
+    <!--
+      The controls, pad first because that is what the game is for, with the
+      keys underneath for anyone reading this on a laptop.
+    -->
+    <dl class="controls">
+      <dt>Left stick</dt><dd>fly <span class="also">W A S D</span></dd>
+      <dt>Right stick</dt><dd>turn the rocket about its centre <span class="also">arrow keys</span></dd>
+      <dt>R2</dt><dd>laser <span class="also">space</span></dd>
+      <dt>R3</dt><dd>torpedoes <span class="also">shift</span></dd>
+      <dt>B</dt><dd>EMP bomb, and there are only two <span class="also">B</span></dd>
+      <dt>Start</dt><dd>hold the game <span class="also">Esc</span></dd>
+    </dl>
+
+    <dl class="worth">
+      <dt class="triangle">Triangles</dt><dd>5</dd>
+      <dt class="square">Squares</dt><dd>10</dd>
+      <dt class="circle">Circles</dt><dd>100, and four hits to break one</dd>
+    </dl>
+  </section>
+
+  <section id="scores" class="screen" hidden>
+    <h1>High scores</h1>
+    <div id="table"></div>
+    <div class="row">
+      <button type="button" id="back">Back</button>
+    </div>
+  </section>
+
+  <section id="over" class="screen" hidden>
+    <h1>Game over</h1>
+    <p class="final"><b id="final">0</b></p>
+    <p id="place" class="lead"></p>
+    <div class="row">
+      <button type="button" id="again">Again</button>
+      <button type="button" id="home">Welcome</button>
+    </div>
+  </section>
+
+  <script src="./world.js"></script>
+  <script src="./foes.js"></script>
+  <script src="./weapons.js"></script>
+  <script src="./input.js"></script>
+  <script src="./scores.js"></script>
+  <script src="./game.js"></script>
+  <script src="./render.js"></script>
+  <script src="./grinder.js"></script>
+</body>
+</html>
