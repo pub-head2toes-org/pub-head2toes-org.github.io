@@ -1,106 +1,56 @@
 'use strict';
 
 /**
- * The page: the screens, the loop, and the wiring between the pad and the game.
+ * The page: the cards, the loop, and the wiring between the pad and the game.
  *
- * Everything the player sees that is not the game itself is a plain HTML
- * section lying over the canvas - the welcome, the table of scores, the game
- * over. They are shown and hidden; nothing is built at run time, so what the
- * markup says is what there is.
+ * There is nothing on this page but a canvas. Every word the game says is drawn
+ * on it out of the matrix font - the welcome, the table, the game over, the
+ * score along the top - so there is no HTML to keep in step with the game and
+ * nothing that can be styled out of place.
  *
- * There is one loop and it never stops. It runs on the menus too, because the
- * pad is read in it: a menu that only listened for clicks would be a menu you
- * had to put the pad down to get out of.
+ * There is no menu either. Between games the cards come round on their own, a
+ * few seconds each, and Start is the only thing to press. The one screen that
+ * waits for the player is the three letters asked for by a score in the top
+ * five, and that is spelt out on the stick.
  */
 
 const app = {
-    screen: 'welcome',
+    screen: 'welcome',       // welcome, scores, over, initials, playing
+    rotation: screens.ATTRACT,
+    at: 0,
+    dwell: screens.DWELL,
     state: null,
     reader: input.create(),
     keys: new Set(),
+    table: [],
+    pad: false,              // whether a pad is in the player's hands
+    pressing: [],            // and what is down on it, for the welcome card
+    last: null,              // what the game just finished came to
+    entry: null,             // the three letters, while they are being spelt
     density: 1,
-    last: 0,
+    last_frame: 0,
+    clock: 0,                // ms since the page was opened, for anything blinking
     paused: false,
     ending: 0,
     best: 0,
-    page: {}
+    field: null
 };
 
-app.END = 700;               // ms the wreck is left on screen before the score goes up
+app.END = 700;               // ms the wreck is left on screen before the card comes up
 app.LONGEST = 0.05;          // the longest step the game is ever moved by, in seconds
-
-/** Every element the page talks to, found once. */
-function collect() {
-    for (const id of ['field', 'hud', 'score', 'best', 'bombs', 'paused', 'welcome', 'scores',
-        'over', 'table', 'final', 'place', 'play', 'high', 'home', 'again', 'back', 'pad']) {
-        app.page[id] = document.getElementById(id);
-    }
-}
 
 /** The canvas, and the world under it, made to fit the window. */
 function fit() {
     const width = Math.max(320, window.innerWidth);
     const height = Math.max(320, window.innerHeight);
-    app.density = render.fit(app.page.field, width, height, window.devicePixelRatio || 1);
+    app.density = render.fit(app.field, width, height, window.devicePixelRatio || 1);
     if (app.state) game.resize(app.state, width, height);
 }
 
-/** Which screen is up. The canvas is always there, behind whichever it is. */
-function show(screen) {
-    app.screen = screen;
-    for (const name of ['welcome', 'scores', 'over']) {
-        app.page[name].hidden = name !== screen;
-    }
-    app.page.hud.hidden = screen !== 'playing';
-    app.page.paused.hidden = true;
-    if (screen !== 'playing') app.paused = false;
-    focusFirst();
-}
-
-/** The buttons on the screen that is up, in the order a stick walks them. */
-function buttons() {
-    const screen = app.page[app.screen];
-    return screen && !screen.hidden ? Array.from(screen.querySelectorAll('button')) : [];
-}
-
-function focusFirst() {
-    const found = buttons();
-    if (found.length) found[0].focus();
-}
-
-/** The stick walks the buttons; A presses the one it is standing on. */
-function walk(way) {
-    const found = buttons();
-    if (!found.length) return;
-    const at = found.indexOf(document.activeElement);
-    const next = at < 0 ? 0 : (at + way + found.length) % found.length;
-    found[next].focus();
-}
-
-/** A new game. */
-function play() {
-    app.state = game.create(Math.max(320, window.innerWidth), Math.max(320, window.innerHeight));
-    app.ending = 0;
-    app.paused = false;
-    // Read once, here. The HUD shows it on every frame, and reading and parsing
-    // the table sixty times a second to draw a number that cannot change until
-    // the game is over would be sixty times too many.
-    app.best = scores.best(store());
-    say();
-    show('playing');
-    app.page.field.focus();
-}
-
-/** The score and the rack, written out only when they have changed. */
-function say() {
-    const state = app.state;
-    if (!state) return;
-    const score = String(state.score);
-    if (app.page.score.textContent !== score) app.page.score.textContent = score;
-    const bombs = '◆'.repeat(state.bombs) + '◇'.repeat(Math.max(0, weapons.EMP - state.bombs));
-    if (app.page.bombs.textContent !== bombs) app.page.bombs.textContent = bombs;
-    const best = String(Math.max(app.best, state.score));
-    if (app.page.best.textContent !== best) app.page.best.textContent = best;
+/** The size of the window, which is the size of everything. */
+function view() {
+    return app.state ? app.state.world.view
+        : { width: Math.max(320, window.innerWidth), height: Math.max(320, window.innerHeight) };
 }
 
 /** The store the scores live in, or a pocket one when the browser has none. */
@@ -120,45 +70,103 @@ function store() {
     return app.pocket;
 }
 
-/** The table of scores, as rows. */
-function table() {
-    const kept = scores.read(store());
-    app.page.table.innerHTML = '';
-    if (!kept.length) {
-        const empty = document.createElement('p');
-        empty.className = 'empty';
-        empty.textContent = 'No scores yet. The grinder is waiting.';
-        app.page.table.appendChild(empty);
-        return kept;
-    }
-    const list = document.createElement('ol');
-    for (const row of kept) {
-        const item = document.createElement('li');
-        const score = document.createElement('span');
-        score.className = 'points';
-        score.textContent = String(row.score);
-        const when = document.createElement('span');
-        when.className = 'when';
-        when.textContent = row.at ? String(row.at).slice(0, 10) : '';
-        item.appendChild(score);
-        item.appendChild(when);
-        list.appendChild(item);
-    }
-    app.page.table.appendChild(list);
-    return kept;
+/**
+ * Puts a card up, and sets the clock that will take it down again.
+ *
+ * The rotation is what comes round between games: the welcome and the table
+ * before the first one, and the game over card with them after it. `playing`
+ * and `initials` are not in any rotation - one is the game and the other is
+ * waiting on the player - so they simply sit there until something happens.
+ */
+function turn(rotation, at) {
+    app.rotation = rotation;
+    app.at = ((at || 0) % rotation.length + rotation.length) % rotation.length;
+    app.screen = rotation[app.at];
+    app.dwell = screens.DWELL;
+    if (app.screen === 'scores') app.table = scores.read(store());
 }
 
-/** The end: the score goes in the table and the game over screen says where. */
-function over() {
-    const score = app.state.score;
-    const kept = scores.add(store(), score, new Date().toISOString());
-    const place = scores.place(kept, score);
+/** The next card in the rotation. */
+function next() {
+    turn(app.rotation, app.at + 1);
+}
 
-    app.page.final.textContent = String(score);
-    app.page.place.textContent = place === 1 ? 'A new best.'
-        : place ? 'Number ' + place + ' of ' + kept.length + '.'
-        : 'Not one for the table.';
-    show('over');
+/** A new game. */
+function play() {
+    app.state = game.create(Math.max(320, window.innerWidth), Math.max(320, window.innerHeight));
+    app.screen = 'playing';
+    app.ending = 0;
+    app.paused = false;
+    app.entry = null;
+    // Read once, here: the HUD draws it on every frame and it cannot change
+    // until this game is over.
+    app.best = scores.best(store());
+}
+
+/**
+ * The end of a game.
+ *
+ * A score good enough for the top five is asked for three letters before it
+ * goes in the table; anything else goes in as it stands and the game over card
+ * comes straight up.
+ */
+function finish() {
+    const score = app.state.score;
+    const place = scores.would(scores.read(store()), score);
+
+    if (place && place <= screens.TOP) {
+        app.screen = 'initials';
+        app.entry = { letters: ['A', 'A', 'A'], at: 0, score: score, place: place };
+        return;
+    }
+    record(score, null);
+}
+
+/** The score goes in the table, and the game over card says where it came. */
+function record(score, who) {
+    const table = scores.add(store(), score, new Date().toISOString(), who);
+    app.table = table;
+    app.last = { score: score, place: scores.place(table, score), of: table.length };
+    app.entry = null;
+    turn(screens.AFTER, 0);
+}
+
+/**
+ * Spelling the three letters.
+ *
+ * Up and down turn the letter, left and right walk between them, A sets one
+ * and moves on - and A on the last of the three is done with it, the way a
+ * cabinet has always done it. Start is done with it wherever the mark is.
+ */
+function spell(intent) {
+    const entry = app.entry;
+    if (intent.up || intent.down) {
+        const at = screens.LETTERS.indexOf(entry.letters[entry.at]);
+        const step = intent.up ? -1 : 1;
+        const next_letter = (at + step + screens.LETTERS.length) % screens.LETTERS.length;
+        entry.letters[entry.at] = screens.LETTERS[next_letter];
+    }
+    if (intent.left) entry.at = Math.max(0, entry.at - 1);
+    if (intent.right) entry.at = Math.min(2, entry.at + 1);
+
+    if (intent.start || (intent.confirm && entry.at === 2)) {
+        record(entry.score, entry.letters.join(''));
+    } else if (intent.confirm) {
+        entry.at += 1;
+    }
+}
+
+/** A letter typed rather than spelt out on a stick. */
+function typed(key) {
+    if (!app.entry) return false;
+    if (key === 'backspace') {
+        app.entry.at = Math.max(0, app.entry.at - 1);
+        return true;
+    }
+    if (key.length !== 1 || screens.LETTERS.indexOf(key.toUpperCase()) < 0) return false;
+    app.entry.letters[app.entry.at] = key.toUpperCase();
+    if (app.entry.at < 2) app.entry.at += 1;
+    return true;
 }
 
 /**
@@ -172,56 +180,63 @@ function over() {
 function loop(now) {
     window.requestAnimationFrame(loop);
 
-    const seconds = Math.min(app.LONGEST, (now - app.last) / 1000 || 0);
-    app.last = now;
+    const seconds = Math.min(app.LONGEST, (now - app.last_frame) / 1000 || 0);
+    app.last_frame = now;
+    app.clock += seconds * 1000;
 
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const intent = input.read(app.reader, pads, app.keys);
-    if (app.page.pad.hidden === intent.pad) app.page.pad.hidden = !intent.pad;
-    if (intent.pad && app.screen !== 'playing') named(intent.pressing);
+    app.pad = intent.pad;
+    app.pressing = intent.pressing;
 
     if (app.screen === 'playing') {
-        if (intent.start || (intent.pad && intent.back)) hold(!app.paused);
+        // Start on the pad, Back on the pad, Escape on the keyboard: all three
+        // arrive here as one press and are answered in one place. Answering
+        // Escape in the key listener as well would hold the game and let it go
+        // again in the same breath.
+        if (intent.start || intent.back) hold(!app.paused);
         if (!app.paused && !app.state.over) game.step(app.state, seconds, intent);
         else if (app.state.over) game.fade(app.state, seconds);
-        say();
-        if (app.state.over && (app.ending += seconds * 1000) > app.END) over();
-    } else if (intent.pad) {
-        if (intent.up) walk(-1);
-        if (intent.down) walk(1);
-        if (intent.confirm && document.activeElement && document.activeElement.click) document.activeElement.click();
-        if (intent.back && app.screen !== 'welcome') show('welcome');
+        if (app.state.over && (app.ending += seconds * 1000) > app.END) finish();
+    } else if (app.screen === 'initials') {
+        spell(intent);
+    } else {
+        if (intent.start || intent.confirm) play();
+        else if ((app.dwell -= seconds * 1000) <= 0) next();
     }
 
-    if (app.state) render.frame(paint(), app.state, app.density);
+    draw();
 }
 
-/**
- * The pad line, on the menus: what is connected, and what is being pressed on
- * it as it is pressed.
- *
- * It is a readout, not decoration. A pad that does not report itself as a
- * standard one sends its buttons at numbers of its own, and then R3 is not 11
- * and the game sees nothing where the torpedoes should be. Holding the button
- * down here says what the browser is really sending, which is the difference
- * between a bug and a pad.
- */
-function named(pressing) {
-    const said = pressing.length
-        ? 'Pad connected \u2014 ' + pressing.map(index => input.NAMES[index] || index).join(' ')
-        : 'Pad connected';
-    if (app.page.pad.textContent !== said) app.page.pad.textContent = said;
+/** The field, and whatever is written over it. */
+function draw() {
+    const paint = brush();
+    const size = view();
+
+    if (app.state) render.frame(paint, app.state, app.density);
+    paint.setTransform(app.density, 0, 0, app.density, 0, 0);
+
+    if (app.screen === 'playing') {
+        screens.hud(paint, app.state, app.best, size);
+        if (app.paused) {
+            screens.wash(paint, size, 0.72);
+            screens.paint(paint, screens.paused(), size, app.clock);
+        }
+    } else {
+        screens.wash(paint, size, 0.86);
+        screens.paint(paint, screens.card(app.screen, app), size, app.clock);
+    }
+    paint.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 /** Held, or let go again. */
 function hold(paused) {
     app.paused = paused;
-    app.page.paused.hidden = !paused;
 }
 
-function paint() {
-    if (!app.brush) app.brush = app.page.field.getContext('2d');
-    return app.brush;
+function brush() {
+    if (!app.paint) app.paint = app.field.getContext('2d');
+    return app.paint;
 }
 
 /** The keys, held in a set: the same shape the pad's buttons arrive in. */
@@ -234,10 +249,8 @@ function watchKeys() {
         app.keys.add(key);
         // The game is played on these, and a page that scrolls under the player
         // while they fly is a page that has taken the controls away.
-        if (app.screen === 'playing' && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-            event.preventDefault();
-        }
-        if (key === 'escape' && !again && app.screen === 'playing') hold(!app.paused);
+        if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
+        if (app.screen === 'initials' && !again) typed(key);
     });
     window.addEventListener('keyup', function (event) { app.keys.delete(event.key.toLowerCase()); });
     window.addEventListener('blur', function () { app.keys.clear(); if (app.screen === 'playing') hold(true); });
@@ -247,26 +260,19 @@ function watchKeys() {
 }
 
 function start() {
-    collect();
+    app.field = document.getElementById('field');
     fit();
-    // A world to look at behind the welcome screen: the same dots the game is
-    // played over, with the rocket sitting in the middle of them.
+    // A world to look at behind the cards: the same dots the game is played
+    // over, with the rocket sitting in the middle of them, dimmed by the wash
+    // the card is written on.
     app.state = game.create(Math.max(320, window.innerWidth), Math.max(320, window.innerHeight));
-    show('welcome');
-
-    app.page.play.addEventListener('click', play);
-    app.page.again.addEventListener('click', play);
-    app.page.high.addEventListener('click', function () { table(); show('scores'); });
-    app.page.back.addEventListener('click', function () { show('welcome'); });
-    app.page.home.addEventListener('click', function () { show('welcome'); });
-    app.page.paused.addEventListener('click', function () { hold(false); });
+    turn(screens.ATTRACT, 0);
 
     window.addEventListener('resize', fit);
     window.addEventListener('orientationchange', fit);
-    window.addEventListener('gamepadconnected', function () { app.page.pad.hidden = false; });
     watchKeys();
 
-    window.requestAnimationFrame(function (now) { app.last = now; loop(now); });
+    window.requestAnimationFrame(function (now) { app.last_frame = now; loop(now); });
 }
 
 if (!document.createElement('canvas').getContext) {

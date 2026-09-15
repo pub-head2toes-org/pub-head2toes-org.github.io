@@ -8,8 +8,10 @@ nothing to install, nothing to join.
 
 ## Entry
 
-`index.html` — no parameters, no network, no account. The table of high scores
-is in `localStorage` and comes back with the page.
+`index.html` — no parameters, no network, no account. There is nothing on the
+page but the canvas: every word the game says is drawn on it out of the matrix
+font. The table of high scores is in `localStorage` and comes back with the
+page.
 
 `error.html` is reached only when the browser has no `canvas`: the field, the
 rocket and every shape that comes at it are drawn on one, so without it there
@@ -93,33 +95,51 @@ is nothing to show and nothing to fly.
     and the page is free to clamp a frame — a tab left in the background comes
     back with a gap of minutes in it, and moving everything by minutes in one
     step would put the rocket through a wall and every foe on top of it.
-13. **The torpedoes answer to R1 as well as R3.** R3 is the right stick
-    pressed in - the same stick the rocket is aimed with. Pushing a stick
-    straight down without leaning on it takes a firm thumb, and a thumb that
-    leans swings the aim in the moment it fires, so the same gun is on R1 too:
-    a button that can be pressed without letting go of the aim. R3 is what the
-    prompt asks for and R3 still fires; R1 is so that firing is not a wrestle
-    with the aiming.
+13. **The torpedoes are on L3.** The left stick pressed in: a stick leant on as
+    it is clicked flies the rocket a little way with the click, which is a
+    thumb's business, and better than clicking the stick the guns are aimed
+    with. They start at two a second rather than one and halve from there like
+    the laser.
 14. **The pad says what it is sending.** A pad the browser does not report as a
-    standard one sends its buttons at numbers of its own, and then R3 is not 11
+    standard one sends its buttons at numbers of its own, and then L3 is not 10
     and the game sees nothing where the torpedoes should be - which looks
-    exactly like a broken gun. The line on the menus names the buttons as they
-    are pressed, so that case can be told apart from a bug without a debugger.
+    exactly like a broken gun. The last line of the welcome names the buttons as
+    they are pressed, so that case can be told apart from a bug without a
+    debugger; with no pad in the drawer the same line lists the keys instead.
 15. **The pad and the keyboard end in one object.** `input.read` takes what
     `navigator.getGamepads()` handed over and the set of keys currently down,
     and gives back one intent. Firing is held, the bomb is pressed — down now
     and not down when we last looked — because two of the two bombs on one
     thumb press is not a game. Nothing downstream of that function knows which
     was used.
-16. **The menus are HTML, the game is canvas.** The welcome, the scores and the
-    game over are plain sections lying over the field; they are shown and
-    hidden and nothing is built at run time. The loop runs on them too, because
-    the pad is read in it — a menu that only listened for clicks would be a
-    menu you had to put the pad down to get out of. The stick walks the
-    buttons, A presses the one it is standing on, and the focus ring is what
-    says where it is.
-17. **Nothing off the network.** No libraries, no fonts, no sounds. `sw.js`
-    caches the eight scripts, the stylesheet, the page and the icons, so the
+16. **Everything is drawn, including the writing.** There is one element on the
+    page. The welcome, the table, the game over, the three letters and the
+    score along the top are all drawn on the canvas out of `font8x8` — eight
+    rows of eight dots a letter, each lit dot a little square with a gap round
+    it. No HTML to keep in step with the game, no stylesheet that can hide a
+    panel the game thinks is showing (which is exactly what did happen), and no
+    font to fetch. A run of lit dots in a row is drawn as one rectangle, not
+    one per dot: a screenful of writing is a few thousand dots and every one of
+    them would otherwise be its own call, sixty times a second.
+17. **A screen is a card, and a card is a list of lines.** `screens.js` works
+    out what a screen says — the text, the size of each line against the others,
+    the colour — and paints it second. So what any screen says can be read back
+    without a canvas anywhere near it, which is how they are tested, and the
+    layout is one measurement: the widest line against the window, the whole
+    card against its height, take the smaller. The same card fills a television
+    and fits on a phone with no second set of numbers for either.
+18. **Two columns are made of spaces.** In a matrix font a space is exactly a
+    column wide, so a two-column block is lines padded to one length — and they
+    must all be *the same* length, because a card is centred a line at a time
+    and lines of different lengths centre at different left edges. The mark
+    under the letter being spelt is the same trick: the caret line is as long
+    as the letters line, so centring the two puts the mark where it belongs.
+19. **There is no menu to walk.** The cards come round on their own, a few
+    seconds each, and Start is the only thing to press. That removes the focus
+    ring, the stick walking buttons, and the question of what is selected when
+    a card changes under it — a cabinet does not have a cursor.
+20. **Nothing off the network.** No libraries, no web fonts, no sounds. `sw.js`
+    caches the eleven scripts, the stylesheet, the page and the icons, so the
     game is played the same with the aeroplane mode on.
 
 ## Decisions the prompt left open
@@ -145,8 +165,15 @@ is nothing to show and nothing to fly.
   the game will draw; the clocks go on running and the wave comes two seconds
   later instead. It is a guard for a player who shoots nothing, not a rule the
   game is played by.
-* **No initials on a high score.** The game is played with a pad and a pad is a
-  poor thing to spell a name on; the score and the day it was got say enough.
+* **Three letters for the top five, and dashes for the rest.** A score good
+  enough for the first five is asked for initials before it goes in the table;
+  anything below that goes in as it was got, under three dashes. There is no
+  sense making somebody spell their name for ninth place.
+* **The game over card joins the rotation rather than replacing it.** The
+  welcome alternates with the table, and after a game the game over card comes
+  round with them - game over, welcome, table, and back. Dropping the table
+  from the rotation after a game would mean the only way to see where a score
+  landed was to have been watching before the first game was ever played.
 * **A keyboard plays it too** — W A S D to fly, the arrows to turn, space,
   shift and B. The prompt asks for a pad and the pad is the game; this is so
   the page can be opened on a laptop with nothing plugged in.
@@ -155,7 +182,7 @@ is nothing to show and nothing to fly.
 
 ```
 +-----------------------------------------------------------+
-| 1240  score      8400  best      <> <>  EMP                |   #hud, over the field
+| SCORE 1240                        BEST 8400   EMP 2        |   drawn, like everything else
 |                                                            |
 |                     .        .          .                  |
 |            /\                     [ ]                      |   foes, in world space
@@ -169,12 +196,39 @@ is nothing to show and nothing to fly.
    the canvas is the window; the world is a fifth larger than it
 ```
 
+And what comes round between games, six seconds a card, Start at any point:
+
+```
+   before a game            after one
+   +-----------+            +-----------+
+   |  WELCOME  |<--+     +->| GAME OVER |
+   +-----------+   |     |  +-----------+
+         |         |     |        |
+         v         |     |        v
+   +-----------+   |     |  +-----------+
+   |  SCORES   |---+     |  |  WELCOME  |
+   +-----------+         |  +-----------+
+                         |        |
+     START -> the game   |        v
+     the game -> over    |  +-----------+
+                         +--|  SCORES   |
+                            +-----------+
+
+   and in between, once, for a score in the first five:
+   +-------------------+
+   | TOP FIVE  N E B   |  the stick spells it, Start is done with it
+   +-------------------+
+```
+
 ## Files
 
 | file | what it is |
 | --- | --- |
-| `index.html` | the canvas, the HUD, and the three screens that lie over it |
-| `styles.css` | the screens, the HUD, and the colours the foes share with the canvas |
+| `index.html` | one canvas, and the scripts |
+| `styles.css` | that the page is black and the canvas is all of it - and `error.html`, which has no canvas to say it with |
+| `font.js` | the 8x8 dot matrix font, vendored from `example/font.js` |
+| `text.js` | writing with it: a glyph, a line, a line centred |
+| `screens.js` | the cards - welcome, table, game over, three letters, held - and the score along the top |
 | `world.js` | the world, the camera, the dots, and everything that is a distance |
 | `foes.js` | the three kinds: their table, how they arrive, how they move, what a hit does |
 | `weapons.js` | the rate of fire, the ray arithmetic both guns use, the torpedo |
@@ -182,7 +236,7 @@ is nothing to show and nothing to fly.
 | `scores.js` | the top ten, in whatever store is handed over |
 | `game.js` | the rocket, the waves, the shots, the score, and one frame of all of it |
 | `render.js` | the painting, and the only place the screen and the world meet |
-| `grinder.js` | the page: the screens, the loop, the wiring |
+| `grinder.js` | the page: the rotation, the loop, the spelling, the wiring |
 | `sw.js` | the cache, so it plays with the aeroplane mode on |
 | `error.html` | for a browser with no canvas |
 
@@ -190,13 +244,16 @@ is nothing to show and nothing to fly.
 
 `tests/grinder.test.js`, against `tests/helpers/grinderPage.js`.
 
-The eight files that touch no DOM are loaded into one shared scope — the same
-one the script tags give them — and tested as themselves: the world's
-arithmetic, the circle's mending rule, the wave shapes, the rate of fire, the
-tunnelling a torpedo must not do, the pad's dead zone and its press-not-hold
-bomb, the table of scores, and a game played frame by frame through `game.step`.
+Every file but `grinder.js` is loaded into one shared scope — the same one the
+script tags give them — and tested as itself: the world's arithmetic, the
+circle's mending rule, the wave shapes, the rate of fire, the tunnelling a
+torpedo must not do, the pad's dead zone and its press-not-hold bomb, the table
+of scores, a game played frame by frame through `game.step`, the font's bit
+order and its run-merging, and what every card says.
 
-`grinder.js` is tested through a stub DOM: the screens, the pad walking the
-buttons, the hold on Escape, the score reaching the table, a resize, and a
-browser with no canvas being sent to `error.html`. Nothing is drawn — the
-canvas takes the calls and throws them away.
+`grinder.js` is tested through a stub DOM: the cards turning over on their own,
+Start beginning a game from the welcome and from the game over, the three
+letters spelt on the stick and typed on a keyboard, a score too low to be asked
+for any, the hold on Escape, a resize, and a browser with no canvas being sent
+to `error.html`. Nothing is drawn — the canvas takes the calls and throws them
+away.

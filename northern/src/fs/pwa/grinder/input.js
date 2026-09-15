@@ -23,17 +23,16 @@ input.TRIGGER = 0.3;         // how far an analogue trigger is a press
 /**
  * The standard pad, by the numbers the browser gives its buttons.
  *
- * R3 is the right stick pressed in - the same stick the rocket is aimed with.
- * Pushing a stick straight down without leaning on it takes a firm thumb, and
- * a thumb that leans swings the aim as it fires, so the torpedoes answer to R1
- * as well: the same gun, on a button that can be pressed without letting go of
- * the aim. R2 is the laser, as asked.
+ * R2 is the laser and L3 - the left stick pressed in - is the torpedoes. The
+ * left stick is the flying one, and a stick leant on as it is clicked flies
+ * the rocket a little way with it; that is a thumb's business, and better than
+ * the alternative of clicking the stick the guns are aimed with.
  */
 input.PAD = {
     confirm: 0,              // A / cross
     emp: 1,                  // B / circle - the bomb
     laser: 7,                // R2
-    torpedo: [11, 5],        // R3, and R1 beside it
+    torpedo: 10,             // L3, the left stick pressed in
     back: 8,
     start: 9,
     up: 12, down: 13, left: 14, right: 15
@@ -52,7 +51,7 @@ input.KEYS = {
     laser: [' ', 'j'],
     torpedo: ['shift', 'k'],
     emp: ['b'],
-    confirm: ['enter'],
+    confirm: ['enter', ' '],       // and space, so a keyboard has a Start too
     back: ['escape']
 };
 
@@ -74,6 +73,8 @@ input.idle = function () {
         start: false,
         up: false,
         down: false,
+        left: false,
+        right: false,
         pad: false,
         pressing: []
     };
@@ -149,8 +150,13 @@ input.read = function (state, pads, keys) {
     intent.confirm = input.pressed(state, 'confirm', input.any(pad, input.PAD.confirm) || input.KEYS.confirm.some(key => held.has(key)));
     intent.back = input.pressed(state, 'back', input.any(pad, input.PAD.back) || input.KEYS.back.some(key => held.has(key)));
     intent.start = input.pressed(state, 'start', input.any(pad, input.PAD.start));
+    // The four ways, as presses rather than pushes: this is how a card is read
+    // and how three letters are spelt, and either stick or the pad's cross will
+    // do it. A stick held over counts once, not sixty times a second.
     intent.up = input.pressed(state, 'up', input.any(pad, input.PAD.up) || aim.y < -0.6 || move.y < -0.6);
     intent.down = input.pressed(state, 'down', input.any(pad, input.PAD.down) || aim.y > 0.6 || move.y > 0.6);
+    intent.left = input.pressed(state, 'left', input.any(pad, input.PAD.left) || aim.x < -0.6 || move.x < -0.6);
+    intent.right = input.pressed(state, 'right', input.any(pad, input.PAD.right) || aim.x > 0.6 || move.x > 0.6);
 
     state.intent = intent;
     return intent;

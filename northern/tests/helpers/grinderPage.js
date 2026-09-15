@@ -8,14 +8,16 @@ const PWA = path.join(import.meta.dirname, '..', '..', 'src', 'fs', 'pwa', 'grin
 const read = name => fs.readFileSync(path.join(PWA, name), 'utf8');
 
 /** The files the page loads, in the order the script tags load them. */
-export const FILES = ['world.js', 'foes.js', 'weapons.js', 'input.js', 'scores.js', 'game.js',
-    'render.js', 'grinder.js'];
+export const FILES = ['font.js', 'text.js', 'world.js', 'foes.js', 'weapons.js', 'input.js',
+    'scores.js', 'game.js', 'render.js', 'screens.js', 'grinder.js'];
 
-const SCREEN = { welcome: ['play', 'high'], scores: ['back'], over: ['again', 'home'] };
-const IDS = ['field', 'hud', 'score', 'best', 'bombs', 'paused', 'welcome', 'scores', 'over',
-    'table', 'final', 'place', 'play', 'high', 'home', 'again', 'back', 'pad'];
-
-/** A 2d context that draws nothing and refuses nothing, but remembers the calls. */
+/**
+ * A 2d context that draws nothing and refuses nothing.
+ *
+ * It remembers the calls, and `written` reads the text back off them: every
+ * word in this game is a run of `fillRect`s out of the matrix font, so what a
+ * card says can be read from what was drawn without a canvas anywhere near it.
+ */
 function paintStub() {
     const paint = {
         calls: [],
@@ -24,43 +26,22 @@ function paintStub() {
     };
     for (const name of ['setTransform', 'clearRect', 'fillRect', 'strokeRect', 'beginPath', 'arc',
         'fill', 'stroke', 'moveTo', 'lineTo', 'closePath', 'save', 'restore', 'translate', 'rotate', 'rect']) {
-        paint[name] = (...args) => paint.calls.push({ name, args });
+        paint[name] = (...args) => paint.calls.push({ name, args, fillStyle: paint.fillStyle });
     }
     return paint;
 }
 
-/** A DOM node, as far as grinder.js needs one. */
+/** A DOM node, as far as the page needs one - which is a canvas, and no more. */
 function node(tag, page) {
     const element = {
         tagName: tag.toUpperCase(),
         id: '',
-        children: [],
         style: {},
         listeners: {},
-        hidden: false,
-        textContent: '',
-        className: '',
         width: 0,
         height: 0,
-        appendChild(child) { this.children.push(child); return child; },
-        set innerHTML(value) { if (!value) this.children = []; },
-        get innerHTML() { return ''; },
         addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
-        dispatch(type, event = {}) {
-            (this.listeners[type] || []).forEach(fn => fn({ preventDefault() {}, target: element, ...event }));
-        },
-        click() { this.dispatch('click', {}); },
-        focus() { page.activeElement = element; },
-        /** Only ever asked for buttons, and only ever of a screen. */
-        querySelectorAll() {
-            const found = [];
-            const walk = one => one.children.forEach(child => {
-                if (child.tagName === 'BUTTON') found.push(child);
-                walk(child);
-            });
-            walk(element);
-            return found;
-        },
+        focus() {},
         getContext: tag === 'canvas' && page.canvas ? () => (element.paint = element.paint || paintStub()) : undefined
     };
     return element;
@@ -68,25 +49,15 @@ function node(tag, page) {
 
 /**
  * Loads the page against a stub DOM and gives back the handles a test drives
- * it with: the frame, the pad, the keyboard and the elements.
+ * it with: the frame, the pad, the keyboard, and what was drawn.
  *
- * Nothing is drawn - the canvas takes the calls and throws them away - and
- * every answer is read off the app's own state or off the elements, which is
- * what a player sees.
+ * Nothing is painted. What a test reads is the app's own state and the cards
+ * `screens.js` works out, which is what the player is looking at.
  */
 export function loadGrinder({ width = 1000, height = 600, scores = null, canvas = true } = {}) {
-    const page = { activeElement: null, canvas: canvas };
-    const elements = {};
-    for (const id of IDS) {
-        elements[id] = node(id === 'field' ? 'canvas' : 'div', page);
-        elements[id].id = id;
-    }
-    for (const [screen, ids] of Object.entries(SCREEN)) {
-        for (const id of ids) {
-            elements[id].tagName = 'BUTTON';
-            elements[screen].appendChild(elements[id]);
-        }
-    }
+    const page = { canvas: canvas };
+    const field = node('canvas', page);
+    field.id = 'field';
 
     const store = new Map();
     if (scores) store.set('grinder.scores', JSON.stringify(scores));
@@ -99,8 +70,7 @@ export function loadGrinder({ width = 1000, height = 600, scores = null, canvas 
         readyState: 'complete',
         hidden: false,
         listeners: {},
-        get activeElement() { return page.activeElement; },
-        getElementById: id => elements[id] || null,
+        getElementById: id => (id === 'field' ? field : null),
         createElement: tag => node(tag, page),
         addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
         dispatch(type, event = {}) {
@@ -157,19 +127,31 @@ export function loadGrinder({ width = 1000, height = 600, scores = null, canvas 
         app,
         window: window_,
         document: document_,
-        element: id => elements[id],
-        paint: () => elements.field.paint,
+        field,
+        paint: () => field.paint,
         frame,
         /** Runs for this long, in frames of this many milliseconds. */
         run(ms, step = 16) {
             for (let passed = 0; passed < ms; passed += step) frame(step);
             return app;
         },
+        /** The card that is up, as lines of text. */
+        card() {
+            const screens = vm.runInContext('screens', context);
+            return screens.card(app.screen, app).lines.map(line => line.text);
+        },
         /** What the pad is doing, until it is said otherwise. */
         pad(axes = [0, 0, 0, 0], buttons = {}) {
             const pressed = [];
             for (let index = 0; index < 17; index++) pressed.push({ pressed: !!buttons[index], value: buttons[index] ? 1 : 0 });
             pads = [{ connected: true, axes, buttons: pressed }];
+        },
+        /** A button pressed and let go again, which is what an edge needs. */
+        press(button, axes) {
+            this.pad(axes || [0, 0, 0, 0], { [button]: true });
+            frame();
+            this.pad(axes || [0, 0, 0, 0], {});
+            frame();
         },
         unplug() { pads = []; },
         key: {

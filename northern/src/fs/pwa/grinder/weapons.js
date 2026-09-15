@@ -4,9 +4,10 @@
  * The guns.
  *
  * Both fire out of the point of the little red triangle at the rocket's nose,
- * along whatever the rocket is pointing at, and both start at a shot a second
- * and work their way down to a shot every twenty milliseconds as the score
- * climbs. What they do once they have left is the difference.
+ * along whatever the rocket is pointing at, and both work their way down to a
+ * shot every twenty milliseconds as the score climbs - the laser from a shot a
+ * second, the torpedoes from two. What they do once they have left is the
+ * difference.
  *
  * The laser is a line, not a thing in flight. It is drawn from the nose to the
  * first foe in its path - or off the edge of the world when there is none -
@@ -25,7 +26,7 @@
 const weapons = {};
 
 weapons.LASER = { every: 1000, colour: '#ff2d2d', width: 2.5 };
-weapons.TORPEDO = { every: 1000, colour: '#ff8c1a', speed: 720, length: 16, width: 5 };
+weapons.TORPEDO = { every: 500, colour: '#ff8c1a', speed: 720, length: 16, width: 5 };
 weapons.FLOOR = 20;          // ms - as fast as either gun will ever fire
 weapons.HALVING = 1000;      // points that halve the wait between shots
 weapons.EMP = 2;             // bombs in the rack at the start
