@@ -95,13 +95,13 @@ is nothing to show and nothing to fly.
     and the page is free to clamp a frame — a tab left in the background comes
     back with a gap of minutes in it, and moving everything by minutes in one
     step would put the rocket through a wall and every foe on top of it.
-13. **The torpedoes are on L3.** The left stick pressed in: a stick leant on as
-    it is clicked flies the rocket a little way with the click, which is a
-    thumb's business, and better than clicking the stick the guns are aimed
-    with. They start at two a second rather than one and halve from there like
-    the laser.
+13. **Both guns are on the triggers: R2 the laser, L2 the torpedoes.** Nothing
+    asks a thumb to click a stick it is flying or aiming with, and a trigger is
+    analogue, so either gun fires once its trigger is far enough in rather than
+    only when it bottoms out. The torpedoes start at two a second rather than
+    one and halve from there like the laser.
 14. **The pad says what it is sending.** A pad the browser does not report as a
-    standard one sends its buttons at numbers of its own, and then L3 is not 10
+    standard one sends its buttons at numbers of its own, and then L2 is not 6
     and the game sees nothing where the torpedoes should be - which looks
     exactly like a broken gun. The last line of the welcome names the buttons as
     they are pressed, so that case can be told apart from a bug without a
