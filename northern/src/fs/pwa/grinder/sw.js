@@ -1,11 +1,13 @@
-const CACHE_NAME = 'grinder-v1';
+const CACHE_NAME = 'grinder-v2';
 const urlsToCache = [
   './index.html',
   './error.html',
   './font.js',
   './text.js',
   './world.js',
+  './dust.js',
   './foes.js',
+  './comets.js',
   './weapons.js',
   './input.js',
   './scores.js',

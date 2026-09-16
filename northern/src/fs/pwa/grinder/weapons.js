@@ -28,13 +28,15 @@ const weapons = {};
 weapons.LASER = { every: 1000, colour: '#ff2d2d', width: 2.5 };
 weapons.TORPEDO = { every: 500, colour: '#ff8c1a', speed: 720, length: 16, width: 5 };
 weapons.FLOOR = 20;          // ms - as fast as either gun will ever fire
-weapons.HALVING = 1000;      // points that halve the wait between shots
+weapons.HALVING = 3000;      // points that halve the wait between shots
 weapons.EMP = 2;             // bombs in the rack at the start
 weapons.FLASH = 600;         // ms an EMP's ring takes to cross the screen
 
 /**
  * The wait between shots, for a score: a second to begin with, halved every
- * thousand points, and never shorter than the floor.
+ * three thousand points, and never shorter than the floor. It used to halve
+ * every thousand, which had both guns at the twenty-millisecond floor before
+ * the second level and nothing left for the rest of the game to give.
  */
 weapons.every = function (base, score) {
     return Math.max(weapons.FLOOR, base * Math.pow(0.5, Math.max(0, score) / weapons.HALVING));
@@ -63,8 +65,14 @@ weapons.reach = function (from, dx, dy, length, centre, radius) {
 };
 
 /**
- * The first foe a beam from here meets, with the point it met it at. Nothing
- * in the way gives back null and the beam is drawn its full length.
+ * The first foe a beam from here meets, with the point it met it at and which
+ * part of it was met. Nothing in the way gives back null and the beam is drawn
+ * its full length.
+ *
+ * A foe is asked for every place it can be hit rather than for one centre and
+ * one radius, because a snake is a head and ten triangles and any of the eleven
+ * could be the nearest thing in the beam's path. For everything else that list
+ * is one circle and this is the arithmetic it always was.
  */
 weapons.strike = function (from, angle, length, targets) {
     const dx = Math.cos(angle);
@@ -73,12 +81,18 @@ weapons.strike = function (from, angle, length, targets) {
 
     for (const target of targets) {
         if (target.dead) continue;
-        const at = weapons.reach(from, dx, dy, length, target, foes.radius(target));
-        if (at < 0) continue;
-        if (!best || at < best.at) best = { target: target, at: at };
+        for (const spot of foes.spots(target)) {
+            if (spot.radius <= 0) continue;
+            const at = weapons.reach(from, dx, dy, length, spot, spot.radius);
+            if (at < 0) continue;
+            if (!best || at < best.at) best = { target: target, at: at, part: spot.part };
+        }
     }
     if (!best) return null;
-    return { target: best.target, at: best.at, x: from.x + dx * best.at, y: from.y + dy * best.at };
+    return {
+        target: best.target, at: best.at, part: best.part,
+        x: from.x + dx * best.at, y: from.y + dy * best.at
+    };
 };
 
 /** A torpedo, away. It remembers where it was as well as where it is. */
@@ -103,13 +117,14 @@ weapons.fly = function (shot, seconds) {
 
 /**
  * The first foe a torpedo went through this frame, over the line from where it
- * was to where it is, so nothing is passed through unnoticed.
+ * was to where it is, so nothing is passed through unnoticed. The hit comes
+ * back whole - which foe and which part of it - because a torpedo through a
+ * snake's tail is a different thing from one through its head.
  */
 weapons.struck = function (shot, targets) {
     const dx = shot.x - shot.was.x;
     const dy = shot.y - shot.was.y;
     const length = Math.hypot(dx, dy);
     if (length === 0) return null;
-    const hit = weapons.strike(shot.was, Math.atan2(dy, dx), length, targets);
-    return hit ? hit.target : null;
+    return weapons.strike(shot.was, Math.atan2(dy, dx), length, targets);
 };

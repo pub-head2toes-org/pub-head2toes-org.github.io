@@ -3,8 +3,9 @@
 A single-page PWA under `/pwa/grinder/`: one canvas taking the whole window, a
 rocket in the middle of it, and shapes that come at it from everywhere. The
 pad flies and aims; the score buys a faster gun and faster foes, and the two
-race each other until one of the shapes gets there. Nothing off the network,
-nothing to install, nothing to join.
+race each other until one of the shapes gets there. Every thousand points is a
+level, and between one level and the next there is a comet shower to fly
+through. Nothing off the network, nothing to install, nothing to join.
 
 ## Entry
 
@@ -139,8 +140,49 @@ is nothing to show and nothing to fly.
     ring, the stick walking buttons, and the question of what is selected when
     a card changes under it — a cabinet does not have a cursor.
 20. **Nothing off the network.** No libraries, no web fonts, no sounds. `sw.js`
-    caches the eleven scripts, the stylesheet, the page and the icons, so the
+    caches the thirteen scripts, the stylesheet, the page and the icons, so the
     game is played the same with the aeroplane mode on.
+21. **A foe is asked where it can be hit, not where it is.** `foes.spots` gives
+    back a list of circles with a name each, and both guns and the collision
+    walk that list. For a triangle it is one circle and the arithmetic is what
+    it always was; for a snake it is a head and ten tail triangles, and the name
+    is how `foes.hit` tells a hit that hurts from one that only lights up. No
+    gun knows what a snake is.
+22. **The rocket has weight, and the left stick asks for a speed.** The stick
+    names a velocity and the rocket goes after it at `thrust`, and comes off it
+    at `coast` when the stick is let go. It is still not steering and there is
+    still no turning in it - what it buys is that a dodge costs something to
+    begin and something to end. A wall takes the speed out of it in that
+    direction rather than leaving it pressed against the edge.
+23. **A level is a threshold, and the shower is what the threshold opens.** A
+    thousand points does not turn the level over; it starts a comet shower, and
+    the shower turning over is what turns the level over. So there is one place
+    that knows a level has changed (`game.stage`) and one table that says what a
+    level brings (`game.OPENS`), and the second level's snake starts arriving
+    because that table says so and not because anything counted points.
+24. **A comet is weather, not a foe, and lives in its own list.** "Cannot be
+    shot down with weapons of any kind" is kept by keeping comets out of
+    `state.foes` rather than by a check in each gun: there is nowhere for a
+    weapon to look them up. They are the only things in the game that leave the
+    world instead of bouncing off it, launched and swept up at the same distance
+    out of the middle so a shower is as wide whichever way it runs.
+25. **The snake's tail is not steered, it is laid down.** The head drops a crumb
+    every four pixels and each triangle sits a fixed distance back along that
+    trail, so the whole animal flies the exact path the head flew and the tail
+    costs one interpolation each rather than ten steering decisions. The first
+    crumb is always the head's own place, or the whole tail sits further back
+    the faster the snake is going.
+26. **What a hit took is what comes to pieces.** Every shape here is a stroke,
+    so there is no inside to blow out - the outline becomes pixel dust in the
+    shape's own colour, thrown off the line it was drawn on. `game.wound` reads
+    the parts before the hit and after it, so a killing blow bursts the whole
+    shape and a head hit on a snake bursts the two triangles it just took off
+    the tail. A hit that took nothing leaves nothing.
+27. **A mine's blast is the game's, not the mine's.** `foes.js` counts the fuse,
+    because a fuse is the mine's own business; the blast is in `game.js` because
+    it is about everything else on the field. Nothing it clears is scored - the
+    mine did it, not the player - and mines caught in it go without going off,
+    which is what keeps one blast from becoming a chain of them.
 
 ## Decisions the prompt left open
 
@@ -177,23 +219,70 @@ is nothing to show and nothing to fly.
 * **A keyboard plays it too** — W A S D to fly, the arrows to turn, space,
   shift and B. The prompt asks for a pad and the pad is the game; this is so
   the page can be opened on a laptop with nothing plugged in.
+* **The guns climb three times more slowly than they did.** Doubling the foes
+  and adding four kinds put a great deal more on the screen, but the wait
+  between shots halving every thousand points had both guns at the
+  twenty-millisecond floor before the second level and nothing left for the rest
+  of the game to give. Halving every three thousand leaves the climb going as
+  far as the levels do.
+* **Snakes are worth 250 and mines 50**, neither of which the prompt says. A
+  snake takes five clean hits on a head that will not hold still, so it is worth
+  more than a circle's four; a mine is one shot but it is a shot taken with
+  something chasing, so it is worth more than a square. An egg is the 500 the
+  prompt gives, and shooting one is the -50 it gives.
+* **The hit that takes the last two triangles is the one the head does not
+  survive.** "Reduce the size of the snake by 2 triangles before no tail left
+  and the head explodes" is read as five hits rather than six: the tail empties
+  and the head goes with it, rather than standing bare waiting for one more.
+* **An egg is not an obstacle.** Flying into one catches it; it is the only
+  thing on the field that does not end the game, and the only thing an EMP does
+  not clear. A bomb that docked the player fifty for an egg they could not have
+  known was under it would be a trap rather than a rule.
+* **The score never goes below nothing.** Shooting an egg costs fifty, and both
+  the rate of fire and the speed of the foes are read off the score - a negative
+  score would read as a fresh game with a fresh sky.
+* **Nothing arrives during a shower, and no clock runs towards arriving.** A
+  shower is a held breath and it would be no rest at all if the wave clocks came
+  out of it all expired at once. What is already on the field goes on flying,
+  and goes on being lethal.
+* **Comets are lethal.** The prompt does not say so, but a thing that cannot be
+  shot and cannot be scored has to be worth dodging or it is scenery. Ten
+  seconds of it, fifteen the next time, and five more every time after that.
+* **A mine's blast pays nothing.** It clears five rockets' lengths of field,
+  which would otherwise be the cheapest hundred points in the game.
+* **Ninety shapes at once became sixty.** Every foe is twice the size it was, so
+  the same count is twice the wall. The cap is read before a wave is let out
+  rather than during one, so a fleet of ten can carry the field over it by as
+  much as its own size.
 
 ## Layout
 
 ```
 +-----------------------------------------------------------+
 | SCORE 1240                        BEST 8400   EMP 2        |   drawn, like everything else
-|                                                            |
+| LEVEL 2                                                    |
 |                     .        .          .                  |
 |            /\                     [ ]                      |   foes, in world space
-|                 <|            .                            |
+|                 <|            .          <<<<<<<<<<        |   a snake: head, then its tail
 |      .            \                                        |
 |                    \___                                    |   the laser, nose to hit
 |                      <| >                                  |   the rocket
-|                                          O                 |
-|          .                   .                             |
+|                                          O        (0)      |   a circle, and a mine
+|          .                   .    ' . `                    |   and dust, where one used to be
 +-----------------------------------------------------------+
    the canvas is the window; the world is a fifth larger than it
+
+and between one level and the next, for ten seconds and then fifteen:
+
++-----------------------------------------------------------+
+| SCORE 2010        COMET SHOWER 7      BEST 8400   EMP 1    |
+| LEVEL 2                                                    |
+|      oOo-.                                                 |
+|                    oOo-.                                   |   all one way, and none of them
+|            oOo-.                                           |   can be shot at
+|                             oOo-.                          |
+|                      <| >                                  |
++-----------------------------------------------------------+
 ```
 
 And what comes round between games, six seconds a card, Start at any point:
@@ -230,11 +319,13 @@ And what comes round between games, six seconds a card, Start at any point:
 | `text.js` | writing with it: a glyph, a line, a line centred |
 | `screens.js` | the cards - welcome, table, game over, three letters, held - and the score along the top |
 | `world.js` | the world, the camera, the dots, and everything that is a distance |
-| `foes.js` | the three kinds: their table, how they arrive, how they move, what a hit does |
+| `foes.js` | the six kinds: their table, how they arrive, how they move, where they can be hit, what a hit does |
+| `dust.js` | what is left of a shape: a ring of grains off its outline, thrown and fading |
+| `comets.js` | the comet shower - how long one lasts, and the weather in it |
 | `weapons.js` | the rate of fire, the ray arithmetic both guns use, the torpedo |
 | `input.js` | the pad and the keyboard, read into one intent |
 | `scores.js` | the top ten, in whatever store is handed over |
-| `game.js` | the rocket, the waves, the shots, the score, and one frame of all of it |
+| `game.js` | the rocket, the levels, the waves, the shots, the score, and one frame of all of it |
 | `render.js` | the painting, and the only place the screen and the world meet |
 | `grinder.js` | the page: the rotation, the loop, the spelling, the wiring |
 | `sw.js` | the cache, so it plays with the aeroplane mode on |
@@ -250,6 +341,16 @@ circle's mending rule, the wave shapes, the rate of fire, the tunnelling a
 torpedo must not do, the pad's dead zone and its press-not-hold bomb, the table
 of scores, a game played frame by frame through `game.step`, the font's bit
 order and its run-merging, and what every card says.
+
+The additions of the second update are tested the same way: the snake's reveal,
+the spacing of its tail along the path its head flew, a tail hit that lights up
+and does nothing against a head hit that sheds two triangles, the egg's five
+seconds and what catching one is worth against shooting one, a mine turning onto
+the rocket and the blast that pays nothing, the shower's ten-then-fifteen
+seconds and the level it opens, a laser passing clean through a comet, the
+rocket's wind-up and its glide, and the dust a shape leaves. There is a minute
+of a game with one of every kind on the field, checking that nothing in it goes
+non-finite and that the dust settles.
 
 `grinder.js` is tested through a stub DOM: the cards turning over on their own,
 Start beginning a game from the welcome and from the game over, the three

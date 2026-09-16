@@ -15,12 +15,17 @@
  * Everything is drawn as lines rather than filled shapes, lit by a shadow of
  * its own colour. It is a cheap trick and it is the whole look of the thing:
  * a vector screen, where a shape is bright at its edge and dark in the middle.
+ * The three exceptions all mean something by it: the red triangle in the
+ * rocket's nose is filled so the heading reads at a glance, a struck triangle of
+ * a snake's tail is filled for a moment to say the shot landed and did nothing,
+ * and dust is filled because a grain of dust has no outline.
  */
 const render = {};
 
 render.GLOW = 10;
 render.ROCKET = '#ffffff';
 render.TIP = '#ff2d2d';
+render.LIT = 0.55;           // how bright the inside of a struck tail triangle goes
 
 /**
  * Matches the canvas to the screen, at the density of the screen.
@@ -52,9 +57,11 @@ render.frame = function (paint, state, density) {
 
     render.dots(paint, state.world);
     render.edge(paint, state.world);
+    for (const grain of state.grains) render.grain(paint, grain);
     for (const shot of state.shots) render.shot(paint, shot);
     if (state.beam) render.beam(paint, state.beam);
     for (const foe of state.foes) render.foe(paint, foe);
+    for (const comet of state.comets) render.comet(paint, comet);
     if (!state.over) render.rocket(paint, state.rocket);
     for (const flash of state.flashes) render.flash(paint, flash);
 
@@ -105,8 +112,12 @@ render.foe = function (paint, foe) {
     const shape = foes.KIND[foe.kind];
     const radius = foes.radius(foe);
     if (radius <= 0) return;
-    render.glow(paint, shape.colour, 2);
 
+    if (foe.kind === foes.SNAKE) return render.snake(paint, foe, shape);
+    if (foe.kind === foes.EGG) return render.egg(paint, foe, shape);
+    if (foe.kind === foes.MINE) return render.mine(paint, foe, shape);
+
+    render.glow(paint, shape.colour, 2);
     if (foe.kind === foes.CIRCLE) {
         paint.beginPath();
         paint.arc(foe.x, foe.y, radius, 0, Math.PI * 2);
@@ -119,11 +130,7 @@ render.foe = function (paint, foe) {
     if (foe.kind === foes.TRIANGLE) {
         // The point is the heading: a triangle goes where it is looking.
         paint.rotate(foe.angle);
-        paint.beginPath();
-        paint.moveTo(radius, 0);
-        paint.lineTo(-radius * 0.8, radius * 0.75);
-        paint.lineTo(-radius * 0.8, -radius * 0.75);
-        paint.closePath();
+        render.arrow(paint, radius);
     } else {
         // A square travels on a diagonal, so the corner leads and the sides
         // are turned a further eighth of a turn out of the way.
@@ -133,6 +140,125 @@ render.foe = function (paint, foe) {
     }
     paint.stroke();
     paint.restore();
+};
+
+/** The triangle both a foe and a snake's tail are made of, pointing along zero. */
+render.arrow = function (paint, radius) {
+    paint.beginPath();
+    paint.moveTo(radius, 0);
+    paint.lineTo(-radius * 0.8, radius * 0.75);
+    paint.lineTo(-radius * 0.8, -radius * 0.75);
+    paint.closePath();
+};
+
+/**
+ * A snake: the head, and behind it the tail it has shown so far.
+ *
+ * The tail is drawn from the far end forwards so the nearer triangle laps over
+ * the one behind it and the overlap reads as one body rather than as a row of
+ * arrowheads. A triangle that has just been shot is filled as well as stroked -
+ * that is the whole answer a tail gives to a hit, and without it the player has
+ * no way of telling a shot that did nothing from a shot that missed.
+ */
+render.snake = function (paint, snake, shape) {
+    const parts = foes.spots(snake);
+
+    for (let at = parts.length - 1; at >= 1; at--) {
+        const part = snake.parts[parts[at].part];
+        render.glow(paint, shape.colour, 2);
+        paint.save();
+        paint.translate(part.x, part.y);
+        paint.rotate(part.angle);
+        render.arrow(paint, parts[at].radius);
+        if (part.lit > 0) {
+            paint.globalAlpha = render.LIT * (part.lit / foes.MARK);
+            paint.fillStyle = shape.colour;
+            paint.fill();
+            paint.globalAlpha = 1;
+        }
+        paint.stroke();
+        paint.restore();
+    }
+
+    render.glow(paint, shape.colour, 2.4);
+    paint.save();
+    paint.translate(snake.x, snake.y);
+    paint.rotate(snake.angle);
+    render.arrow(paint, foes.radius(snake));
+    paint.stroke();
+    paint.restore();
+};
+
+/** An egg: a green oval, lying along the way it is going. */
+render.egg = function (paint, egg, shape) {
+    const radius = foes.radius(egg);
+    render.glow(paint, shape.colour, 2);
+    render.oval(paint, egg.x, egg.y, radius, radius * 0.66, egg.angle);
+    paint.stroke();
+};
+
+/**
+ * A mine: a red oval that will not hold still.
+ *
+ * It shifts tall, round, wide and back once every `MINE_SHIFT`, which is the
+ * one thing on the field that is animated for its own sake - a mine that looked
+ * like a foe would be shot at like a foe, and this one is to be run from. The
+ * oval stands square to the world rather than to its heading, so tall is tall
+ * whichever way it happens to be chasing.
+ */
+render.mine = function (paint, mine, shape) {
+    const radius = foes.radius(mine);
+    const shift = Math.cos(mine.shift / foes.MINE_SHIFT * Math.PI * 2) * 0.42;
+    render.glow(paint, shape.colour, 2.2);
+    render.oval(paint, mine.x, mine.y, radius * (1 - shift), radius * (1 + shift), 0);
+    paint.stroke();
+};
+
+/**
+ * An oval, on browsers with `ellipse` and on the ones without.
+ *
+ * `ellipse` has been everywhere for years, but a canvas is the whole of this
+ * game and a missing method would be a missing foe, so the fall-back is a
+ * circle scaled the two ways - which is the same shape by another road.
+ */
+render.oval = function (paint, x, y, wide, tall, angle) {
+    paint.beginPath();
+    if (paint.ellipse) {
+        paint.ellipse(x, y, wide, tall, angle || 0, 0, Math.PI * 2);
+        return;
+    }
+    paint.save();
+    paint.translate(x, y);
+    paint.rotate(angle || 0);
+    paint.scale(wide / tall, 1);
+    paint.arc(0, 0, tall, 0, Math.PI * 2);
+    paint.restore();
+};
+
+/**
+ * A comet: five white circles, the largest leading, each sitting part of the
+ * way along the one in front so the five read as a streak. The tail is drawn
+ * first and the head last, and each is a little fainter towards the back.
+ */
+render.comet = function (paint, comet) {
+    const spots = comets.spots(comet);
+    for (let at = spots.length - 1; at >= 0; at--) {
+        render.glow(paint, comets.COLOUR, 2);
+        paint.globalAlpha = 1 - at / (spots.length + 1) * 0.65;
+        paint.beginPath();
+        paint.arc(spots[at].x, spots[at].y, spots[at].radius, 0, Math.PI * 2);
+        paint.stroke();
+    }
+    paint.globalAlpha = 1;
+};
+
+/** One grain of what a shape came to: a little square, fading as it slows. */
+render.grain = function (paint, grain) {
+    paint.shadowBlur = 0;
+    paint.globalAlpha = Math.max(0, Math.min(1, grain.life / grain.full));
+    paint.fillStyle = grain.colour;
+    paint.fillRect(grain.x - grain.size / 2, grain.y - grain.size / 2, grain.size, grain.size);
+    paint.globalAlpha = 1;
 };
 
 /**
@@ -170,13 +296,22 @@ render.rocket = function (paint, rocket) {
     paint.restore();
 };
 
-/** The pulse of an EMP, or the rocket going up - a ring on its way out. */
+/**
+ * A ring on its way out: the pulse of an EMP, a mine going off, or the rocket
+ * with it.
+ *
+ * The ring carries the reach it is to grow to rather than taking one from here,
+ * because a mine's blast has a radius the player is being told about - five
+ * rockets' lengths, and the ring is the telling - while an EMP's is simply
+ * bigger than any screen.
+ */
 render.flash = function (paint, flash) {
     const gone = 1 - flash.life / flash.full;
+    const reach = flash.reach || 940;
     render.glow(paint, '#9fe8ff', Math.max(1, 6 * (1 - gone)));
     paint.globalAlpha = Math.max(0, 1 - gone);
     paint.beginPath();
-    paint.arc(flash.x, flash.y, 40 + gone * 900, 0, Math.PI * 2);
+    paint.arc(flash.x, flash.y, Math.min(reach, 40 + gone * reach), 0, Math.PI * 2);
     paint.stroke();
     paint.globalAlpha = 1;
 };

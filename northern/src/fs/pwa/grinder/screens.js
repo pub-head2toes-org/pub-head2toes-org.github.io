@@ -90,9 +90,15 @@ screens.welcome = function (app) {
     const worth = screens.columns([
         ['TRIANGLE', '  5'],
         ['SQUARE', ' 10'],
-        ['CIRCLE', '100']
+        ['MINE', ' 50'],
+        ['CIRCLE', '100'],
+        ['SNAKE HEAD', '250'],
+        ['EGG CAUGHT', '500']
     ]);
-    const colours = [foes.KIND.triangle.colour, foes.KIND.square.colour, foes.KIND.circle.colour];
+    const colours = [
+        foes.KIND.triangle.colour, foes.KIND.square.colour, foes.KIND.mine.colour,
+        foes.KIND.circle.colour, foes.KIND.snake.colour, foes.KIND.egg.colour
+    ];
 
     return {
         lines: [
@@ -105,7 +111,11 @@ screens.welcome = function (app) {
             worth.map((line, index) => ({
                 text: line, size: 1, colour: colours[index], space: index === 0 ? 1 : 0
             })),
-            [{ text: screens.hands(app), size: 1, colour: screens.DIM, space: 1 }]
+            [
+                { text: 'A LEVEL EVERY ' + game.LEVEL + ' POINTS', size: 1, colour: screens.DIM, space: 1 },
+                { text: 'AND A COMET SHOWER BETWEEN', size: 1, colour: screens.DIM },
+                { text: screens.hands(app), size: 1, colour: screens.DIM, space: 1 }
+            ]
         )
     };
 };
@@ -241,8 +251,12 @@ screens.wash = function (paint, view, alpha) {
 };
 
 /**
- * The score, the best there has been and what is left in the rack, along the
- * top of the field while the game is being played.
+ * The score, the level, the best there has been and what is left in the rack,
+ * along the top of the field while the game is being played.
+ *
+ * A comet shower says so, in the middle and counting down, because it is the
+ * one stretch of the game where shooting nothing is the right thing to do and a
+ * player who was not told would read an empty sky as a bug.
  */
 screens.hud = function (paint, state, best, view) {
     const unit = Math.max(1, Math.min(3, Math.round(view.width / 420)));
@@ -252,4 +266,15 @@ screens.hud = function (paint, state, best, view) {
     text.draw(paint, 'SCORE ' + state.score, edge, edge, unit, screens.INK);
     const right = 'BEST ' + Math.max(best, state.score) + '  EMP ' + state.bombs;
     text.draw(paint, right, view.width - edge - text.width(right, unit), edge, unit, screens.DIM);
+
+    const under = edge + text.LINE * text.CELL * unit;
+    text.draw(paint, 'LEVEL ' + state.level, edge, under, unit, screens.LIVE);
+    if (state.shower) {
+        text.centre(paint, screens.shower(state.shower), view.width / 2, edge, unit, screens.WARN);
+    }
+};
+
+/** What a shower says while it runs: what it is, and how much of it is left. */
+screens.shower = function (shower) {
+    return 'COMET SHOWER ' + Math.max(0, Math.ceil(shower.left / 1000));
 };

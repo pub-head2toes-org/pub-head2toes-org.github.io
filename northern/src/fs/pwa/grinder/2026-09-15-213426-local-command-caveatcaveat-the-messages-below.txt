@@ -1,0 +1,114 @@
+ ▐▛███▛█   Claude Code v2.1.266
+▝▜██████▀  Opus 5 · Claude Pro
+  ▝▝ ▝▝    ~/git/pub-head2toes-org.github.io/northern/src/fs/pwa/grinder
+
+▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+❯ /effort                                                                       
+  ⎿  Cancelled
+
+❯ Read src/fs/pwa/grinder/UPDATE_2/md for isntructions.                         
+
+● I'll read the instructions file.
+
+  Searched for 1 pattern, read 7 files, ran 11 shell commands (ctrl+o to expand)
+
+● Now let me write the new files. First, the pixel dust:
+
+  Read 2 files (ctrl+o to expand)
+
+● Now the rewritten foes.js:
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Now game.js:
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Now render.js — the drawing for snakes, eggs, mines, comets and dust:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now wire up the new files and update the test loader:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now update the test file's shared-scope loader and run to see what breaks:
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+● Now let me update the existing tests for the changed numbers:
+
+  Searched for 1 pattern, ran 6 shell commands (ctrl+o to expand)
+
+● Now let me add the new test suites:
+
+  Read 2 files, ran 7 shell commands (ctrl+o to expand)
+
+● Now the painting and card tests for the new shapes:
+
+  Searched for 3 patterns, ran 21 shell commands (ctrl+o to expand)
+
+● All 139 grinder tests pass (the 98 failures in the full suite are pre-existing
+  bandage.test.js breakage, unrelated — same owner.getAudioContext is not a 
+  function error as before my changes).
+
+  What changed
+
+  Existing behaviour
+  - Enemies doubled: foes.KIND[*].share — triangle 0.5→1, square 0.6→1.2, circle
+    1→2. Fleet scatter went 26→52 to match, and foes.CROWD 90→60 since the same
+    count is now twice the wall.
+  - Rocket has weight: game.fly is velocity-based — the stick asks for a speed,
+    the rocket goes after it at thrust (1400 px/s²) and comes off it at coast
+    (1050) when let go. A wall zeroes the velocity in that axis.
+  - Guns climb slower: weapons.HALVING 1000→3000. At the old rate both guns hit
+    the 20 ms floor before level 2.
+  - Pixel dust (new dust.js): a dead shape's outline becomes a ring of grains in
+    its own colour, thrown outward and fading. game.wound diffs the parts
+    before/after a hit, so a killing blow bursts the whole shape and a snake
+    head hit bursts just the two triangles it shed.
+
+  Levels (game.stage, game.OPENS)
+  - 1000 points starts a comet shower; the shower ending is what turns the level
+    over.
+  - Level 2 — Snake: head plus 10 overlapping triangles laid along the head's
+    own flight path (the head drops crumbs, the tail interpolates along them).
+    Reveal = head alone, then it sets off and sprouts one triangle at a time.
+    Sinusoidal weave with randomly spaced full loops. Tail hits light the
+    triangle from the inside and do nothing; head hits shed 2, and the hit that
+    empties the tail kills the head, leaving an Egg — green oval flying the
+    head's exact weave, 5 s life, +500 caught, −50 shot.
+  - Level 3 — Seeking mine: dropped by every destroyed circle. Red oval
+    shape-shifting tall→round→wide, 2× circle speed, turns onto the rocket every
+    frame, 5 s fuse, blast of 5 rocket-sizes that clears everything inside it
+    (unscored) and kills the rocket.
+
+  Comet shower (new comets.js): 5 white tapering overlapping circles, 2–3×
+  rocket speed, all parallel on one random heading, entering and leaving the
+  world. Kept out of state.foes so no weapon can reach them. 10 s, +5 s each
+  time.
+
+  Also: weapons.strike now walks foes.spots(foe) (a list of named circles)
+  instead of one centre/radius — that's what lets a snake be eleven hit targets
+  without either gun knowing what a snake is. HUD gained LEVEL n and a shower
+  countdown; the welcome card lists the new shapes' values.
+
+  Judgment calls I made (all recorded in PLAN.md)
+
+  - Snake 250, mine 50 (unspecified); 5 head hits, not 6, reading "before no
+    tail left and the head explodes" literally.
+  - Comets are lethal — otherwise they're scenery.
+  - An egg isn't an obstacle: flying into it catches it, and the EMP leaves it
+    alone rather than docking 50 for something the player couldn't see under the
+    blast.
+  - Score clamped at 0; a mine's blast pays nothing; no waves or wave clocks run
+    during a shower; the last comets fly out rather than vanishing when the
+    shower ends.
+
+  Uncommitted — comets.js, dust.js and UPDATE_2.md are new and untracked if you
+  want them in the next commit.
+
+✻ Crunched for 30m 8s · done 9:11 PM
+
+※ recap: Goal was implementing Grinder UPDATE_2: bigger enemies, rocket momentum, dust explosions, levels with snakes, eggs, mines, and comet showers. All done, 139 tests passing. Next action is yours: commit the changes, including the untracked comets.js, dust.js, and UPDATE_2.md. (disable recaps in /config)

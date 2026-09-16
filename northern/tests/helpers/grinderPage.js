@@ -8,8 +8,8 @@ const PWA = path.join(import.meta.dirname, '..', '..', 'src', 'fs', 'pwa', 'grin
 const read = name => fs.readFileSync(path.join(PWA, name), 'utf8');
 
 /** The files the page loads, in the order the script tags load them. */
-export const FILES = ['font.js', 'text.js', 'world.js', 'foes.js', 'weapons.js', 'input.js',
-    'scores.js', 'game.js', 'render.js', 'screens.js', 'grinder.js'];
+export const FILES = ['font.js', 'text.js', 'world.js', 'dust.js', 'foes.js', 'comets.js',
+    'weapons.js', 'input.js', 'scores.js', 'game.js', 'render.js', 'screens.js', 'grinder.js'];
 
 /**
  * A 2d context that draws nothing and refuses nothing.
@@ -25,7 +25,8 @@ function paintStub() {
         shadowColor: '', shadowBlur: 0, globalAlpha: 1
     };
     for (const name of ['setTransform', 'clearRect', 'fillRect', 'strokeRect', 'beginPath', 'arc',
-        'fill', 'stroke', 'moveTo', 'lineTo', 'closePath', 'save', 'restore', 'translate', 'rotate', 'rect']) {
+        'ellipse', 'fill', 'stroke', 'moveTo', 'lineTo', 'closePath', 'save', 'restore', 'translate',
+        'rotate', 'scale', 'rect']) {
         paint[name] = (...args) => paint.calls.push({ name, args, fillStyle: paint.fillStyle });
     }
     return paint;
