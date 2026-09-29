@@ -167,8 +167,10 @@ export default class Render {
         res.write(`data: {"status":"OK"}\n\n`);
     }
 
-    renderJSON (data, res){
-         res.writeHead(200, {'Content-Type': 'application/json'});
+    // The status is optional so that every existing caller, which means every
+    // caller that only ever had a 200 to report, stays unchanged.
+    renderJSON (data, res, status = 200){
+         res.writeHead(status, {'Content-Type': 'application/json'});
          res.end(JSON.stringify(data));
     }
 

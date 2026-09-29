@@ -1,0 +1,442 @@
+/* Sezam PWA - a reading theme for a text archive. */
+
+:root {
+  /* Amber on warm paper: a nod to the terminals this text was written on,
+     without making it harder to read than the originals were. */
+  --amber: #a85c14;
+  --amber-soft: #f0e2cf;
+  --bg: #faf8f4;
+  --panel: #ffffff;
+  --border: #e3ddd2;
+  --text: #241f1a;
+  --muted: #6f665c;
+  --quote: #8a7f72;
+  --mark: #ffe08a;
+  --shadow: 0 1px 2px rgba(36, 31, 26, 0.06);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --amber: #e8a34a;
+    --amber-soft: #3a2f20;
+    --bg: #171512;
+    --panel: #1f1c18;
+    --border: #322c25;
+    --text: #e9e3da;
+    --muted: #9c9186;
+    --quote: #8b8073;
+    --mark: #7a5a12;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+a { color: var(--amber); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--amber-soft);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: 8px; top: 8px; z-index: 10;
+  background: var(--panel); padding: 8px 12px; border: 1px solid var(--amber);
+}
+
+/* ---------- chrome ---------- */
+
+.chrome {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top);
+}
+
+.chrome-row {
+  max-width: 980px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.wordmark:hover { text-decoration: none; color: var(--amber); }
+
+.wordmark-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+}
+
+.search {
+  flex: 1 1 200px;
+  display: flex;
+  gap: 0;
+  min-width: 0;
+}
+
+.search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  padding: 7px 10px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px 0 0 6px;
+}
+.search input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+
+.search button {
+  font: inherit;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  background: var(--amber-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chrome-nav { display: flex; gap: 14px; flex: 0 0 auto; }
+.chrome-nav a { color: var(--muted); font-size: 0.92rem; }
+.chrome-nav a:hover { color: var(--amber); }
+
+.crumbs {
+  max-width: 980px;
+  margin: 0 auto;
+  padding-bottom: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.crumbs:empty { display: none; }
+.crumbs .sep { color: var(--border); }
+.crumbs [aria-current] { color: var(--text); }
+
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+main:focus { outline: none; }
+
+.chrome-foot {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* ---------- shared bits ---------- */
+
+h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+h2 { font-size: 0.82rem; margin: 0 0 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+.page-head { margin-bottom: 20px; }
+.sub { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.count { color: var(--muted); font-size: 0.85rem; margin: 0 0 12px; }
+.loading, .empty { color: var(--muted); padding: 24px 0; }
+
+.lede { margin-bottom: 28px; }
+.lede p { color: var(--muted); margin: 4px 0 0; }
+
+.pill {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--amber-soft);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.meta { color: var(--muted); font-size: 0.82rem; }
+
+.notice {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: 8px;
+  padding: 20px;
+}
+.notice h1 { font-size: 1.2rem; }
+.notice p { margin: 8px 0 0; }
+
+.tabs { display: flex; gap: 4px; margin-top: 12px; }
+.tabs a {
+  font-size: 0.85rem;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--panel);
+}
+.tabs a.on { color: var(--text); border-color: var(--amber); background: var(--amber-soft); }
+.tabs a:hover { text-decoration: none; border-color: var(--amber); }
+
+.more { margin-top: 20px; }
+.more-btn {
+  font: inherit;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--amber);
+  cursor: pointer;
+}
+.more-btn:hover { border-color: var(--amber); }
+.more-btn[disabled] { color: var(--muted); cursor: default; }
+
+/* ---------- conferences ---------- */
+
+.families {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.family {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.volumes { list-style: none; margin: 0; padding: 0; }
+.volumes li + li { border-top: 1px solid var(--border); }
+.volumes a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 7px 0;
+  color: var(--text);
+}
+.volumes a:hover { text-decoration: none; }
+.volumes a:hover .volume { color: var(--amber); }
+.volume { font-family: var(--mono); font-size: 0.9rem; }
+.volumes .dates { grid-column: 1 / -1; font-size: 0.75rem; }
+
+/* ---------- lists of rows ---------- */
+
+.topics, .threads, .results, .people, .handles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.topics li + li, .threads li + li, .results li + li, .people li + li, .handles li + li {
+  border-top: 1px solid var(--border);
+}
+
+.topics a, .threads a, .results a, .people a {
+  display: block;
+  padding: 11px 16px;
+  color: var(--text);
+}
+.topics a:hover, .threads a:hover, .results a:hover, .people a:hover {
+  background: var(--amber-soft);
+  text-decoration: none;
+}
+
+.topic-name, .person-name { display: block; }
+.topics .meta, .people .meta { margin-right: 12px; }
+
+.thread-line {
+  display: block;
+  margin-bottom: 3px;
+}
+.thread-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.who-flat { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+
+.handles li { padding: 10px 16px; display: flex; justify-content: space-between; }
+
+/* ---------- search ---------- */
+
+.search-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+.search-panel .row { margin-bottom: 12px; }
+.search-panel .row:last-child { margin-bottom: 0; }
+.search-panel .row.three, .search-panel .row.four {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.search-panel label {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.search-panel input {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.search-panel input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+.search-panel .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.search-panel button {
+  font: inherit;
+  padding: 8px 20px;
+  border: 1px solid var(--amber);
+  border-radius: 6px;
+  background: var(--amber);
+  color: var(--panel);
+  cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  .search-panel button { color: #171512; }
+}
+.hint { color: var(--muted); font-size: 0.8rem; }
+
+.result-text { display: block; margin-bottom: 4px; }
+.result-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ---------- messages ---------- */
+
+.messages { list-style: none; margin: 0; padding: 0; }
+
+.message {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow);
+}
+
+/* Depth, capped at eight: the deepest chain in the archive is 81, and a
+   literal indent would leave the screen long before that. */
+.thread-view .d1 { margin-left: 14px; }
+.thread-view .d2 { margin-left: 28px; }
+.thread-view .d3 { margin-left: 42px; }
+.thread-view .d4 { margin-left: 56px; }
+.thread-view .d5 { margin-left: 70px; }
+.thread-view .d6 { margin-left: 84px; }
+.thread-view .d7 { margin-left: 98px; }
+.thread-view .d8 { margin-left: 112px; }
+.thread-view [class*=" d"]:not(.d0) { border-left: 2px solid var(--amber-soft); }
+
+.message.landed {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px var(--amber-soft);
+}
+
+.message-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.who { font-family: var(--mono); font-weight: 600; color: var(--amber); }
+.seq { font-family: var(--mono); opacity: 0.6; }
+.parent, .in-thread { font-size: 0.8rem; }
+
+/* Every line here was hard wrapped for an 80 column terminal, so it is kept
+   as it was written rather than reflowed - rewrapping would break the ASCII
+   tables and signatures the archive is full of. */
+.body {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.q { color: var(--quote); }
+.q1 { color: var(--quote); }
+.q2 { color: var(--quote); opacity: 0.85; }
+.q3 { color: var(--quote); opacity: 0.72; }
+.q4 { color: var(--quote); opacity: 0.6; }
+
+.body a { text-decoration: underline; }
+
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 640px) {
+  .chrome-row { gap: 10px; min-height: 52px; }
+  .wordmark { font-size: 0.95rem; }
+  .search { order: 3; flex-basis: 100%; padding-bottom: 10px; }
+  main { padding: 16px 12px 48px; }
+  .families { grid-template-columns: 1fr; }
+  .body { font-size: 0.8rem; }
+
+  /* Indentation costs width a phone does not have; the left rule still shows
+     that a message is a reply. */
+  .thread-view .d1, .thread-view .d2, .thread-view .d3, .thread-view .d4,
+  .thread-view .d5, .thread-view .d6, .thread-view .d7, .thread-view .d8 {
+    margin-left: 10px;
+  }
+}

@@ -90,6 +90,15 @@ export default class SqliteDB {
         }
       }
 
+      // Reads a row without the author/public filter that get() applies.
+      //
+      // Deliberately one method for one job: here the reader is the server
+      // process itself, resolving its own configuration, not a browser asking
+      // for someone's key. Every other read stays behind the filter.
+      getConfig (path){
+        return this.getRow("SELECT path, type, value, counter, author, public FROM abcd WHERE path = ?", [path]);
+      }
+
       getRow (sql, params){
         return new Promise((resolve, reject) => this.db.get(sql, params, (err, row) => err ? reject(err) : resolve(row)));
       }

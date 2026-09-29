@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1a17">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="description" content="The Sezam BBS archive, 1989-1999: 572 645 messages in 1 405 topics across 104 conferences.">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Sezam</title>
+</head>
+<body>
+
+<a class="skip" href="#view">Skip to content</a>
+
+<header class="chrome">
+  <div class="chrome-row">
+    <a class="wordmark" href="#/" aria-label="Sezam, home">
+      <span class="wordmark-dot" aria-hidden="true"></span>SEZAM
+    </a>
+
+    <form class="search" id="search_form" role="search">
+      <input type="search" id="search_input" name="q" placeholder="Search the archive"
+             autocomplete="off" aria-label="Search messages">
+      <button type="submit" aria-label="Search">&rarr;</button>
+    </form>
+
+    <nav class="chrome-nav">
+      <a href="#/" id="nav_conferences">Conferences</a>
+      <a href="#/people" id="nav_people">People</a>
+    </nav>
+  </div>
+
+  <!-- Where you are. Filled by the router; every crumb but the last is a link. -->
+  <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+</header>
+
+<main id="view" tabindex="-1">
+  <p class="loading">Opening the archive&hellip;</p>
+</main>
+
+<footer class="chrome-foot">
+  <span id="foot_meta"></span>
+</footer>
+
+<script src="./api.js"></script>
+<script src="./format.js"></script>
+<script src="./router.js"></script>
+<script src="./views.js"></script>
+<script src="./sezam.js"></script>
+</body>
+</html>

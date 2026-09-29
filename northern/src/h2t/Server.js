@@ -11,6 +11,8 @@ import Cookie from './Cookie.js';
 const cookie = new Cookie();
 import fs from 'node:fs';
 import SqliteDB from './SqliteDB.js';
+import SezamApi from './SezamApi.js';
+import SezamDB from './SezamDB.js';
 const sub = {};
 
 export default class Server{
@@ -21,6 +23,9 @@ export default class Server{
     init(port, dbFilePath, getCookie, sslPort = 9443){
         console.log('init::'+port);
         const db = new SqliteDB (dbFilePath);
+        // The archive is opened on the first /api/sezam/ request, not here, so a
+        // node that has no archive configured still starts normally.
+        const sezam = new SezamApi(db, { render, openDb: resolved => SezamDB.open(resolved) });
 
         const privateKey = fs.readFileSync('server.key').toString();
         const certificate = fs.readFileSync('server.crt').toString();
@@ -122,7 +127,9 @@ export default class Server{
                     });
                     req.on('end', function(){ handlePostPut(input, body, db,  req, res) });
                  } else {
-                    if (path && path.startsWith("/sub/")) {
+                    if (path && SezamApi.owns(path)) {
+                        sezam.handle(path, q, req, res);
+                    } else if (path && path.startsWith("/sub/")) {
                         render.renderSub(sub, path, req, res);
                     } else if(path && path.startsWith("/fs/get")){
                         render.renderFromFS (path, res);
@@ -150,6 +157,7 @@ export default class Server{
         ssl.listen(sslPort);
 
         this.db = db;
+        this.sezam = sezam;
         this.httpServer = server;
         this.sslServer = ssl;
     }
