@@ -1,0 +1,23 @@
+<head>
+        <script type="application/javascript" src="api.js"></script>
+    </head>
+    
+    <script type="text/javascript">
+        window.addEventListener('message', (event) => {
+            if (event.data.op === 'get'){
+                let ret = doGetSync (event.data.url, sendMsg);
+            }
+            if (event.data.op === 'post'){
+                let ret = doPost(event.data.url, event.data.payload);
+                sendMsg (ret);
+            }
+            if (event.data.op === 'put'){
+                let ret = doPut(event.data.url, event.data.payload);
+                sendMsg (ret);
+            }
+        });
+    
+        function sendMsg (data){
+            window.parent.postMessage(data, '*' /* REPLACE BY TOP LEVEL DOMAIN! */);
+        }
+    </script>

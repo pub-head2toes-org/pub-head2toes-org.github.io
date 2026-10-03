@@ -175,20 +175,35 @@ describe('Render.renderFromFS / renderStatic', () => {
         assert.throws(() => render.renderFromFS('/fs/get/does-not-exist.html', res), /ENOENT/);
     });
 
-    it('rejects path traversal outside src/fs', { todo: 'no path sanitising - arbitrary file read (REFACTORING.md #1)' }, () => {
+    it('rejects path traversal outside src/fs, with a 404 and no path in the error (REFACTORING.md #1)', () => {
+        for (const path of ['/fs/get/../../package.json', '/fs/get/../../../abcd.db', '/fs/get/reg/../../h2t/Render.js',
+            '/fs/get/../fs/../../server.key', '/fs/get/../fsx/x']) {
+            const res = new MockRes();
+            assert.throws(() => render.renderFromFS(path, res), err => err.status === 404 && err.message === 'no such file', path);
+            assert.strictEqual(res.chunks.length, 0, path + ' sent nothing');
+        }
+    });
+
+    it('still serves a path that only wanders inside src/fs', async () => {
         const res = new MockRes();
-        assert.throws(() => render.renderFromFS('/fs/get/../../package.json', res));
+        render.renderFromFS('/fs/get/reg/../home.html', res);
+        await res.done;
+        assert.deepStrictEqual(res.buffer, fs.readFileSync(path.join(REPO_ROOT, 'src/fs/home.html')));
+    });
+
+    it('keeps /static/ and /mp4/get/ in their own folders as well', () => {
+        assert.throws(() => render.renderStatic('/static/../../package.json', new MockRes()), err => err.status === 404);
+        assert.throws(() => render.renderMP4('/mp4/get/../northern/package.json', { headers: {} }, new MockRes()), err => err.status === 404);
     });
 });
 
 // Feature B8: byte-range streaming for video
 describe('Render.renderMP4', () => {
-    // renderMP4 resolves against the *parent* of the repo (see REFACTORING.md #1),
-    // so the fixture is addressed relative to that root.
-    const mp4Root = path.join(REPO_ROOT, '..');
-    const fixture = path.relative(mp4Root, path.join(REPO_ROOT, 'tests/fixtures'));
-    const mp4Path = `/mp4/get/../${fixture}/sample.mp4`;
-    const srtPath = `/mp4/get/../${fixture}/sample.srt`;
+    // /mp4/get/ serves from an mp4 folder beside the repository; here it is
+    // pointed at the fixtures instead.
+    const render = new Render({ mp4Root: path.join(REPO_ROOT, 'tests/fixtures') });
+    const mp4Path = '/mp4/get/sample.mp4';
+    const srtPath = '/mp4/get/sample.srt';
     const mp4Size = fs.statSync(path.join(REPO_ROOT, 'tests/fixtures/sample.mp4')).size;
 
     it('serves the whole file as 206 when no Range header is sent', async () => {

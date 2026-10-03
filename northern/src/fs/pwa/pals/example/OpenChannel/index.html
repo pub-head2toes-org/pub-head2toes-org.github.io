@@ -1,0 +1,141 @@
+
+<html>
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+<head>
+    <link rel="stylesheet" type="text/css" href="s.css">
+    <script type="application/javascript" src="api.js"></script>
+</head>
+  <body data-theme="hero">
+
+        <main>
+        <h2>Start New Open Channel</h2>
+
+        <label for="openChannel">/OpenChannel/</label>
+        <input class="Input" id="openChannel" name="openChannel" value="" placeholder="OpenChannelUID"/>
+        <button class="Button" onclick="javascript:goSendIt();">Start it</button>
+        <div>
+                <iframe id="h2t-basic" src="https://head2toes.asuscomm.com:8443/api/basic.html" frameborder="0" width="0" height="0"></iframe>
+                <!-- <iframe id="h2t-basic" src="https://localhost:9443/fs/get/OpenChannel/basic.html" frameborder="0" width="0" height="0" ></iframe> -->
+        </div>
+        <div id="system-msg"></div>
+        </main>
+
+        <footer>
+                <div id="signin" style="display:none;">
+                        <a href="javascript:openWin();">Sign in</a>
+                </div>
+        </footer>
+  </body>
+</html>
+<script>
+        let step = 'INIT';
+        showSignin();
+    window.addEventListener('message', (event) => {
+        if (event){
+                if (step === 'INIT'){
+                        if (event.data.unavailable){
+                                step = "CREATE";
+                                subscribe('create');
+                                return;
+                        }
+                        if (event.data.uid){
+                                localStorage.openchanneluid = event.data.uid;
+                                step = "CREATE";
+                                subscribe('update');
+                                return;
+                        }
+                }
+                document.getElementById('system-msg').innerHTML = JSON.stringify(event.data);
+        }
+    });
+        const ifrm = document.getElementById("h2t-basic");
+        function goSendIt (){
+                if(!localStorage.pub){
+                        document.getElementById('system-msg').innerHTML = 'Not signed in. Need to sign in first to start channel';
+                        return;
+                }
+                const uid = document.getElementById('openChannel').value;
+                const url = "/OpenChannel/" + uid + ".json";
+                sendMsg(ifrm, {"op":"get", "url":url});
+                return true;
+        }
+        function doOp (subscription, method){
+                const uid = document.getElementById('openChannel').value;
+                const url = "/OpenChannel/" + uid + ".json";
+                let channel = {};
+                channel.uid = uid;
+                if(localStorage.pub){
+                        channel.pub = localStorage.pub;
+                }
+                channel.subscription = subscription;
+                let data = {};
+                data.op = method;
+                data.url = url;
+                data.payload = channel;
+                sendMsg (ifrm, data);
+        }
+
+        function sendMsg (ifrm, data){
+        ifrm.contentWindow.postMessage (data, "*");
+}
+
+const publicVapidKey = 'BLVNuVCmeppzfDTrx-TCXalB4sZmS_9X_qV_6FM2QOVqEIHC7esNBf24n8cR9gfz8Yg_FR7BNl8qlFJmXAMZES4';
+
+function subscribe (method){
+        if ('serviceWorker' in navigator) {
+        console.log('Registering service worker');
+        run(method).catch(error => console.log(JSON.stringify(error)));
+        } 
+}
+
+async function run(method) {
+  console.log('Registering service worker');
+  const registration = await navigator.serviceWorker.
+//     register('worker.js', {scope: '/fs/get/OpenChannel/'});
+        register('worker.js');
+  console.log('Registered service worker');
+
+  console.log('Registering push');
+  const subscription = await registration.pushManager.
+    subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+    });
+  console.log('Registered push');
+
+  console.log('Sending push');
+  let payload = JSON.parse(JSON.stringify(subscription));
+  if (method === 'create'){
+        doOp(payload, "post");
+  } else {
+        doOp(payload, "put");
+  }
+//     subscription.then(sub => {doCreate(sub)});
+  console.log('Sent push');
+}
+
+// Boilerplate borrowed from https://www.npmjs.com/package/web-push#using-vapid-key-for-applicationserverkey
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function openWin() {
+  signinWindow = window.open("/fs/get/Signin.html", "Sign In", "width=600,height=400");   // Opens a new window
+}
+function showSignin() {
+        if(!localStorage.pub || localStorage.pub === "notloggedin"){
+                document.getElementById('signin').style = "display : block;";
+        }
+}
+</script>

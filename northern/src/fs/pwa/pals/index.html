@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f6f4f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="description" content="Pals: messaging among close friends.">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Pals</title>
+</head>
+<body>
+
+<main>
+
+  <!-- Who is signed in to Northern. -->
+  <header class="who">
+    <h1>Pals</h1>
+    <p>Signed in as <span id="user"></span>
+      <a class="link" href="./welcome.html" id="setup_again">set up this device again</a></p>
+  </header>
+
+  <!-- Messages are sealed and opened with the ID Card's key, kept on this device once it is loaded here. -->
+  <p class="notice" id="need_card" hidden>Load your ID Card on this device to send and read messages:
+    <a id="need_card_link" href="/fs/get/reg/Reg.html">load it</a>.</p>
+
+  <section class="panels">
+
+    <section class="panel" id="panel_pals">
+      <h2>Pals</h2>
+      <div class="box" id="pals" role="listbox" aria-label="Pals"></div>
+      <div class="buttons">
+        <button type="button" id="pal_add" aria-label="Add a pal">+</button>
+        <button type="button" id="pal_remove" aria-label="Remove the selected pal">&minus;</button>
+        <button type="button" id="pal_verify" aria-label="Compare keys with the selected pal">Key</button>
+      </div>
+    </section>
+
+    <section class="panel" id="panel_log">
+      <h2>Log <span class="context" id="log_context"></span>
+        <button type="button" class="link" id="log_all" hidden>show all</button></h2>
+      <div class="box" id="log" role="listbox" aria-label="Messages"></div>
+      <div class="buttons">
+        <button type="button" id="message_add" aria-label="Write a message">+</button>
+      </div>
+    </section>
+
+    <div class="stack">
+      <section class="panel" id="panel_groups">
+        <h2>Groups</h2>
+        <div class="box" id="groups" role="listbox" aria-label="Groups"></div>
+        <div class="buttons">
+          <button type="button" id="group_add" aria-label="Add a group">+</button>
+          <button type="button" id="group_remove" aria-label="Remove the selected group">&minus;</button>
+        </div>
+      </section>
+
+      <section class="panel" id="panel_members">
+        <h2>Group members</h2>
+        <div class="box" id="members" role="listbox" aria-label="Group members"></div>
+        <div class="buttons">
+          <button type="button" id="member_add" aria-label="Add a member to the group">+</button>
+          <button type="button" id="member_remove" aria-label="Remove the selected member">&minus;</button>
+        </div>
+      </section>
+    </div>
+
+  </section>
+
+  <section class="panel" id="panel_incoming">
+    <h2>Incoming messages</h2>
+    <div class="box" id="incoming" role="listbox" aria-label="Incoming messages"></div>
+  </section>
+
+  <p class="status" id="status" role="status"></p>
+
+</main>
+
+<!-- The whole message, when its row in the log is clicked. -->
+<dialog id="dlg_message" aria-labelledby="message_from">
+  <form method="dialog">
+    <p class="meta"><span id="message_from"></span><span class="where" id="message_where"></span><time id="message_time"></time></p>
+    <textarea id="message_body" readonly rows="12"></textarea>
+    <p class="error" id="message_status"></p>
+    <div class="buttons">
+      <button type="button" id="message_retry" hidden>Send again</button>
+      <button type="submit">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg_compose" aria-labelledby="compose_title">
+  <form method="dialog">
+    <h2 id="compose_title">New message</h2>
+    <label for="compose_to">To</label>
+    <select id="compose_to"></select>
+    <label for="compose_body">Message</label>
+    <textarea id="compose_body" rows="10"></textarea>
+    <p class="error" id="compose_error"></p>
+    <div class="buttons">
+      <button type="button" data-close>Cancel</button>
+      <button type="submit" class="primary">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg_pal" aria-labelledby="pal_title">
+  <form method="dialog">
+    <h2 id="pal_title">Add a pal</h2>
+    <label for="pal_pick">Everybody who has set Pals up</label>
+    <select id="pal_pick" size="8"></select>
+    <p class="error" id="pal_error"></p>
+    <div class="buttons">
+      <button type="button" data-close>Cancel</button>
+      <button type="submit" class="primary">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Compare fingerprints with a pal, in person or on a call. -->
+<dialog id="dlg_verify" aria-labelledby="verify_title">
+  <form method="dialog">
+    <h2 id="verify_title">Compare keys</h2>
+    <p>Read these numbers to <span id="verify_pal"></span>, in person or on a call. They see the same
+      number under <em>Your key</em> when they open this on their device, with you selected.
+      If both pairs match, nobody - Northern included - stands between you.</p>
+    <label for="verify_theirs">Their key</label>
+    <output class="fingerprint" id="verify_theirs"></output>
+    <label for="verify_mine">Your key</label>
+    <output class="fingerprint" id="verify_mine"></output>
+    <p class="error" id="verify_error"></p>
+    <div class="buttons">
+      <button type="button" data-close>Cancel</button>
+      <button type="button" id="verify_reset">Not verified</button>
+      <button type="submit" class="primary">They match</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg_group" aria-labelledby="group_title">
+  <form method="dialog">
+    <h2 id="group_title">Add a group</h2>
+    <label for="group_name">Group name</label>
+    <input type="text" id="group_name" autocomplete="off" maxlength="40">
+    <p class="error" id="group_error"></p>
+    <div class="buttons">
+      <button type="button" data-close>Cancel</button>
+      <button type="submit" class="primary">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg_member" aria-labelledby="member_title">
+  <form method="dialog">
+    <h2 id="member_title">Add a member</h2>
+    <label for="member_pal">Pal</label>
+    <select id="member_pal"></select>
+    <p class="error" id="member_error"></p>
+    <div class="buttons">
+      <button type="button" data-close>Cancel</button>
+      <button type="submit" class="primary">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The Northern identity: who is signed in, and whether the cookie is live. -->
+<script src="../../reg/sjcl.js"></script>
+<script src="../../reg/cookies.js"></script>
+<script src="../../reg/oo.js"></script>
+<script src="../../reg/idcard.js"></script>
+<script src="../../reg/keystore.js"></script>
+<script src="../../reg/session.js"></script>
+
+<script src="./model.js"></script>
+<script src="./store.js"></script>
+<script src="./seal.js"></script>
+<script src="./views.js"></script>
+<script src="./pals.js"></script>
+</body>
+</html>

@@ -53,6 +53,17 @@ describe('the private key is never written to local storage', () => {
         assert.ok(!/store\(\)\[LEGACY_PRIV\]\s*=/.test(session.text), 'and is never written back to storage');
     });
 
+    it('keeps the key only as reg/keystore.js does: not extractable, and unable to sign', () => {
+        // A private key (a JWK with `d`) is imported in one place, for ECDH
+        // only, with extractable false - so no script can read it back out,
+        // and it cannot mint a cookie (FEATURES J6).
+        const importers = sources.filter(s => /importKey\(\s*'jwk'/.test(s.text)).map(s => s.file);
+        assert.deepStrictEqual(importers.filter(f => !f.includes(path.join('pwa', 'pals', 'example'))), [path.join('reg', 'keystore.js')]);
+        const keystore = sources.find(s => s.file === path.join('reg', 'keystore.js')).text;
+        assert.match(keystore, /importKey\('jwk', api\.jwk\(pub, priv\), \{ name: 'ECDH', namedCurve: 'P-256' \}, false, \['deriveBits'\]\)/);
+        assert.ok(!/exportKey|wrapKey/.test(keystore), 'and never exports or wraps it');
+    });
+
     it('every page that needs to sign does so through the session', () => {
         // Rebuilding an sjcl secret key by hand is what session.unlock replaces.
         // sjcl.js itself is the library that defines the class, not a caller.

@@ -1,0 +1,385 @@
+:root {
+  --theme: #2f6f4f;
+  --theme-dark: #24573d;
+  --bg: #f4f6f3;
+  --panel: #ffffff;
+  --border: #d5dcd3;
+  --text: #1d2a22;
+  --muted: #5f6e64;
+  --selected: #e2efe7;
+  --error: #a8322a;
+  --pill-bg: 60% 86%;
+  --pill-text: 45% 22%;
+  /* How tall a list is. The right hand column stacks two in the same height. */
+  --box: 22rem;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --theme: #7fc29b;
+    --theme-dark: #a3d6b8;
+    --bg: #141a16;
+    --panel: #1c241f;
+    --border: #2f3b33;
+    --text: #e4ebe6;
+    --muted: #9aa89f;
+    --selected: #2a3a31;
+    --error: #ff9d94;
+    --pill-bg: 35% 28%;
+    --pill-text: 60% 88%;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+h1, h2 { margin: 0; }
+
+h1 {
+  color: var(--theme);
+  font-size: 1.75rem;
+  letter-spacing: 0.5px;
+}
+
+h2 {
+  font-size: 1rem;
+  min-height: 1.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input[type="text"], select, textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+textarea { resize: vertical; }
+
+:focus-visible {
+  outline: 2px solid var(--theme);
+  outline-offset: 1px;
+}
+
+/* ---- who ---- */
+
+.who {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.who p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--muted);
+}
+
+a.link {
+  color: var(--theme);
+  font-size: 0.85rem;
+}
+
+/* ---- panels ---- */
+
+.panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* The list in each panel: it looks like a text area and scrolls like one. */
+.box {
+  height: var(--box);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+/* Two panels, two titles, two rows of buttons - and still the height of one. */
+.stack .box { height: calc((var(--box) - 5.7rem) / 2); }
+
+#panel_incoming .box { height: 7rem; }
+
+.row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row:hover { background: var(--selected); }
+
+.row[aria-selected="true"] {
+  background: var(--selected);
+  box-shadow: inset 3px 0 0 var(--theme);
+}
+
+/* A message is two rows: how it starts, then who sent it. */
+.line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.meta time { margin-left: auto; flex: none; }
+
+.where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A pal whose key was compared in person. */
+.verified { color: var(--theme); font-weight: bold; }
+
+.fingerprint {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  word-spacing: 0.3em;
+}
+
+.notice {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  color: var(--error);
+}
+
+/* How a message stands: on its way, not delivered, or still missing parts. */
+.state { flex: none; font-style: italic; }
+.state.failed { color: var(--error); font-style: normal; }
+
+#log .row + .row { border-top: 1px solid var(--border); border-radius: 0; }
+
+.pill {
+  display: inline-block;
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: hsl(var(--hue, 150) var(--pill-bg));
+  color: hsl(var(--hue, 150) var(--pill-text));
+}
+
+.who .pill { font-size: 0.95rem; padding: 2px 12px; }
+
+.empty {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.context {
+  font-weight: normal;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- buttons ---- */
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.buttons > button { min-width: 2.75rem; }
+
+button:hover:not(:disabled) { border-color: var(--theme); }
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--theme);
+  border-color: var(--theme);
+  color: var(--panel);
+}
+
+button.primary:hover { background: var(--theme-dark); }
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--theme);
+  font-size: 0.85rem;
+  font-weight: normal;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.status {
+  margin: 0;
+  min-height: 1.4em;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ---- overlays ---- */
+
+dialog {
+  width: min(34rem, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+dialog form {
+  display: grid;
+  gap: 8px;
+}
+
+dialog label { margin: 4px 0 -4px; }
+
+dialog .buttons {
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+dialog .meta { margin: 0; }
+
+.error {
+  margin: 0;
+  min-height: 1.3em;
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+select[size] { padding: 4px; }
+
+/* ---- welcome.html: one panel, in the middle ---- */
+
+.welcome {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 16px;
+}
+
+.welcome .panel {
+  width: min(26rem, 100%);
+  padding: 32px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  justify-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.welcome h1 { margin: 0; }
+.welcome p { margin: 0; }
+.welcome .status, .welcome .error { min-height: 2.6em; }
+
+#go {
+  min-width: 8rem;
+  padding: 10px 24px;
+  font-size: 1.1rem;
+}
+
+/* ---- a phone: the panels no longer fit side by side ---- */
+
+@media (max-width: 760px) {
+  .panels { grid-template-columns: minmax(0, 1fr); }
+  .box, .stack .box { height: 12rem; }
+  #log { height: 18rem; }
+}

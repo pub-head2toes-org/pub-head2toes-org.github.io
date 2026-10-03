@@ -1,0 +1,130 @@
+<html>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+       <head>
+           <link rel="stylesheet" type="text/css" href="s.css">
+           <script type="application/javascript" src="api.js"></script>
+           <script type="text/javascript" src="/fs/get/sjcl.js"></script>
+       </head>
+         <body data-theme="hero">
+               <main>
+               <h2>View Open Channel Msg</h2>
+               <label for="openChannel">/OpenChannel/</label>
+               <input class="Input" id="openChannel" name="openChannel" value="" placeholder="OpenChannelUID"/>
+               <button class="Button" onclick="javascript:goSendIt();">Get it</button>
+                <p>
+                    <label for="sender">From: /OpenChannel/</label>
+                    <input class="Input" id="sender" name="sender" value="" placeholder="OpenChannelUID"/>
+                </p>
+                <p>
+                        <label for="verifiedSig">Msg Signature Verified</label>
+                        <input type="checkbox" class="Input" id="verifiedSig" name="verifiedSig" disabled="true"/>
+                </p>
+                <p>
+                        <textarea id="msgList" style="width: 100%; height: 100px;" onmouseup="sendLine(this);"></textarea>
+                </p>
+                <p>
+                        <textarea id="msg" style="width: 100%; height: 300px;"></textarea>
+                </p>                
+               <div>
+                       <iframe id="h2t-basic" src="https://head2toes.asuscomm.com:8443/api/basic.html" frameborder="0" width="0" height="0" ></iframe>
+               </div>
+               <div id="system-msg"></div>
+               </main>
+         </body>
+       </html>
+       <script>
+               let step = 'INIT';
+               let currentMsgPath = '';
+               populateUid();
+           window.addEventListener('message', (event) => {
+               if (event){
+                       if (step === 'INIT'){
+                               if (!event.data || event.data.length === 0){
+                                        document.getElementById('system-msg').innerHTML = "Open Channel has no messages";
+                                        return;
+                               }
+                               else if (event.data[0].path){
+                                        document.getElementById('msgList').innerHTML = formatList(event.data);
+                                       step = "READ";
+                                       doSend(event.data[0].path);
+                                       return;
+                               }
+                       }
+                       if (event.data.sig){
+                               const validSig = verify(event.data.pub, event.data.msg, event.data.sig, "EC");
+                               document.getElementById('verifiedSig').checked = validSig;
+
+                       } else {
+                        document.getElementById('verifiedSig').checked = false; 
+                       }
+                       document.getElementById('msg').innerHTML =  parseMsg(event.data, currentMsgPath); //JSON.stringify(event.data);
+               }
+           });
+               const ifrm = document.getElementById("h2t-basic");
+               function goSendIt (){
+                       step = "INIT";
+                       const uid = document.getElementById('openChannel').value;
+                       const url = "/OpenChannel/" + uid + "/?search=%msg.json";
+                       sendMsg(ifrm, {"op":"get", "url":url});
+                       return true;
+               }
+               function doSend (path){
+                        currentMsgPath = path; 
+                        const uid = document.getElementById('openChannel').value;
+                        sendMsg(ifrm, {"op":"get", "url":path});
+                        return true;
+               }
+       
+                function sendMsg (ifrm, data){
+                        ifrm.contentWindow.postMessage (data, "*");
+                }
+                function populateUid (){
+                        document.getElementById('openChannel').value = localStorage.openchanneluid;
+                }
+                function formatList(data){
+                        var ret = "";
+                        for (let i=0; i<data.length; i++){
+                                ret = ret + data[i].path + "\n";
+                        }
+                        return ret;
+                }
+        
+        function verify (pubB64, msg, sig, alg){
+                try{
+                var pubKey = new sjcl.ecc.ecdsa.publicKey(
+                        sjcl.ecc.curves.c256,
+                        sjcl.codec.base64.toBits(pubB64)
+                );
+                if ("EC" === alg){
+                        return pubKey.verify(sjcl.hash.sha256.hash(msg), sjcl.codec.base64.toBits(sig));
+                } else {
+                return false;
+                }
+        } catch (err){
+                return false;
+        }
+        }
+        function sendLine(textarea) {
+                const currentNo = textarea.value.substr(0, textarea.selectionStart).split("\n").length;
+                var lines = textarea.value.split("\n");
+                var line = lines[currentNo-1];
+                step = "READ";
+                doSend (line);
+        }
+        function parseMsg(data, url){
+                let ret = data.msg;
+                let timeSent = "";
+                let from = "";
+                if (url){
+                        const urlTokens = url.split("/");
+                        timeSent = urlTokens[3];
+                        from = urlTokens[4];
+                }
+                ret = 
+                        "Time sent: " + new Date(parseInt(timeSent)) + "\n" +
+                        "From: " + from + "\n" +
+                        "---\n" +
+                        ret;
+                return ret;
+        }
+       </script>

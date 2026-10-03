@@ -1,0 +1,125 @@
+/* Theme variables --------------------------------- */
+
+/* Default */
+[data-theme="default"] {
+    --fg:         hsl(0,0%,25%);
+    --border:     hsl(0,0%,75%);
+    
+    --bg:         hsl(0,0%,95%);
+    --button-bg:  hsl(0,0%,99%);
+    --input-bg:   hsl(0,0%,90%);
+  }
+  
+  /* Dark */
+  [data-theme="dark"] {
+    --fg:         hsl(0,10%,70%);
+    --border:     hsl(0,10%,10%);
+    
+    --bg:         hsl(0,0%,20%);
+    --button-bg:  hsl(0,0%,25%);
+    --input-bg:   hsl(0,0%,15%);
+  }
+
+    /* Dark */
+    [data-theme="footer"] {
+      --fg:         hsl(0,10%,70%);
+      --border:     hsl(0,10%,10%);
+      
+      --bg:         hsl(0,0%,10%);
+      --button-bg:  hsl(0,0%,25%);
+      --input-bg:   hsl(0,0%,15%);
+    }
+  
+  
+  [data-theme="hero"] {
+    --fg:         hsl(240,50%,90%);
+    --border:     hsl(240,50%,10%);
+    
+    --bg:         hsl(240,33%,30%);
+    --button-bg:  hsl(240,33%,40%);
+    --input-bg:   hsl(240,33%,20%);
+  }
+  
+  
+  /* Components --------------------------------- */
+  
+  [data-theme] {
+    color: var(--fg);
+    background-color: var(--bg);
+  }
+  
+  .Button {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--button-bg);
+  }
+  
+  .Input {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--input-bg);
+  }
+
+  a {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--input-bg);
+  }
+  
+  textarea {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--input-bg);
+  }
+  select {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--input-bg);
+  }
+  ul {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--input-bg);
+  }
+  ol {
+    color: var(--fg);
+    border: 1px solid var(--border);
+    background-color: var(--input-bg);
+  }
+  
+  
+  /* Some more styling --------------------------------- */
+  
+  html {
+    height: 100%;
+  }
+  
+  body {
+    margin: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    font-family: system-ui, sans-serif;
+  }
+  
+  header,
+  main,
+  footer {
+    padding: 2rem;
+  }
+  
+  header,
+  footer {
+    flex: .25;
+  }
+  
+  main {
+    flex: 1;
+  }
+  
+  .Button,
+  .Input {
+    padding: .4em .8em;
+    border-radius: 4px;
+    font: inherit;
+  }

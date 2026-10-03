@@ -13,7 +13,15 @@ record what was done. Everything else is still open.
 
 ## Correctness and security — fix first
 
-### 1. Arbitrary file read through the file-system namespace
+### 1. Arbitrary file read through the file-system namespace — **FIXED**
+`Render.fileUnder(root, suffix)` resolves the request path and refuses, with
+a 404 and no path in the answer, anything outside its root: `src/fs` for
+`/fs/get/`, `src/static` for `/static/`, and `<repo>/mp4` for `/mp4/get/`. The
+roots are constructor options, so the `renderMP4` tests no longer reach their
+fixtures through `..`. Found live with the Pals push keys at stake: a raw
+`GET /fs/get/../../../abcd.db` served the whole database. Cloudflare's own
+`..` filtering hid it on the public host name, but not on the server's ports.
+
 `Render.renderFromFS`, `renderStatic` and `renderMP4` paste the request path
 straight into `path.join` with no normalisation check
 (`Render.js:44-58, 67-68`):
@@ -36,7 +44,7 @@ const file = path.resolve(root, '.' + path.normalize(suffix));
 if (!file.startsWith(root + path.sep)) { /* 403 */ }
 ```
 
-Covered by a `todo` test in `tests/Render.test.js`.
+Covered by tests in `tests/Render.test.js` and `tests/PushApi.test.js`.
 
 ### 2. On a fresh database the unique index is never created
 The constructor fires two `db.run` calls back to back

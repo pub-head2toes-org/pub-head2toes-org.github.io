@@ -9,6 +9,7 @@
     <script type="text/javascript" src="db.js"></script>
     <script type="text/javascript" src="oo.js"></script>
     <script type="text/javascript" src="idcard.js"></script>
+    <script type="text/javascript" src="keystore.js"></script>
     <script type="text/javascript" src="session.js"></script>
     <link rel="stylesheet" media="screen" href="style.css">
 </head>
@@ -112,7 +113,9 @@
             const who = card.username ? `${card.username} (${card.pub})` : card.pub;
             say(`ID loaded!  ID=${who}`);
 
-            // "Load Id Card & Continue": there is nothing left to do on this page.
+            // "Load Id Card & Continue": there is nothing left to do on this
+            // page, once the key-agreement copy is safely in IndexedDB.
+            await session.kept();
             window.location.href = getNextURL();
 
             }

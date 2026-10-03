@@ -4,7 +4,35 @@ import * as pathModule from 'node:path';
 const __dirname = import.meta.dirname;
 import fs from 'node:fs';
 
+/**
+ * A request path as a file inside `root`, or an error with status 404 when it
+ * would resolve anywhere else (REFACTORING.md #1). `..` in a request used to
+ * walk straight out: `GET /fs/get/../../../abcd.db` served the database.
+ */
+export function fileUnder (root, suffix){
+    const file = pathModule.resolve(root, '.' + pathModule.sep + suffix);
+    if (file !== root && !file.startsWith(root + pathModule.sep)){
+        const err = new Error('no such file');
+        err.status = 404;
+        throw err;
+    }
+    return file;
+}
+
 export default class Render {
+    /**
+     * Where each file namespace is served from: /fs/get/ from src/fs,
+     * /static/ from src/static, /mp4/get/ from an mp4 folder beside the
+     * repository. Tests point them elsewhere.
+     */
+    constructor({ fsRoot = pathModule.resolve(__dirname, '..', 'fs'),
+                  staticRoot = pathModule.resolve(__dirname, '..', 'static'),
+                  mp4Root = pathModule.resolve(__dirname, '..', '..', '..', 'mp4') } = {}){
+        this.fsRoot = fsRoot;
+        this.staticRoot = staticRoot;
+        this.mp4Root = mp4Root;
+    }
+
     render(db, author, group, path, q, res){
         let _res = res;
         let _this = this;
@@ -46,16 +74,15 @@ export default class Render {
         // a stale copy. Nothing here carries a validator to revalidate against.
         res.setHeader('Cache-Control', 'no-cache');
         let data = {};
-        data.filePath = pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/'));
-        data.value = fs.readFileSync (pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/')));
-        //data.value = fs.readFileSync (pathModule.join(__dirname + "/../" + path.replace('/fs/get','/fs/'))).toString();
+        data.filePath = fileUnder(this.fsRoot, path.slice('/fs/get'.length));
+        data.value = fs.readFileSync (data.filePath);
         data.type = this.getType(path);
         this.renderData (data, res);
     }
 
     renderStatic(path, res){
         let data = {};
-        data.value = fs.readFileSync (pathModule.join(__dirname + "/../" + path));
+        data.value = fs.readFileSync (fileUnder(this.staticRoot, path.slice('/static'.length)));
         data.type = this.getType(path);
         this.renderData (data, res);
     }
@@ -68,7 +95,7 @@ export default class Render {
     }
 
     renderMP4(path, req, res){
-            var file = pathModule.join(__dirname + "/../../../" + path.replace('/mp4/get','/mp4/'));
+            var file = fileUnder(this.mp4Root, path.slice('/mp4/get'.length));
             var filename = pathModule.basename(file);
             var stats = fs.statSync(file);
             var extension = path.split('.').reverse()[0];

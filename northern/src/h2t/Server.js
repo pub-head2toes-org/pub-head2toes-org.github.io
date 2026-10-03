@@ -13,7 +13,22 @@ import fs from 'node:fs';
 import SqliteDB from './SqliteDB.js';
 import SezamApi from './SezamApi.js';
 import SezamDB from './SezamDB.js';
+import PushApi from './PushApi.js';
+import { posix } from 'node:path';
 const sub = {};
+
+// The host name Pals is served under (UPDATE_1). An origin is only Pals' own
+// if nobody else's page can run on it, and here every user can write a page:
+// a database row with no extension is served as HTML. So on this host only the
+// app and the sign-in pages run as themselves; every other document is served
+// sandboxed, in an origin of its own, with no script.
+const PALS_HOST = /^pals\./i;
+const PALS_HOME = '/fs/get/pwa/pals/index.html';
+const runsOnPalsHost = function (path) {
+    const clean = posix.normalize(path);
+    return (clean.startsWith('/fs/get/pwa/pals/') && !clean.startsWith('/fs/get/pwa/pals/example/'))
+        || clean.startsWith('/fs/get/reg/');
+};
 
 export default class Server{
     constructor(port, dbFilePath, sslPort = 9443) {
@@ -26,6 +41,8 @@ export default class Server{
         // The archive is opened on the first /api/sezam/ request, not here, so a
         // node that has no archive configured still starts normally.
         const sezam = new SezamApi(db, { render, openDb: resolved => SezamDB.open(resolved) });
+        // Its VAPID keys are read, or made, on the first /push/api/ request.
+        const push = new PushApi(db, { render, verifySsid: ssid => crypto.verifySsid(ssid) });
 
         const privateKey = fs.readFileSync('server.key').toString();
         const certificate = fs.readFileSync('server.crt').toString();
@@ -106,12 +123,23 @@ export default class Server{
             var q = input.query;
             const path = input.pathname;
             input.type = render.getType(path);
+            const palsHost = PALS_HOST.test(req.headers.host || '');
             if (path==="/" && !q.search){
-                redirect('/fs/get/home.html', res);
+                redirect(palsHost ? PALS_HOME : '/fs/get/home.html', res);
                 return;
+            }
+            if (palsHost){
+                res.setHeader('X-Content-Type-Options', 'nosniff');
+                if (!runsOnPalsHost(path || '')){
+                    res.setHeader('Content-Security-Policy', 'sandbox');
+                }
             }
             var body = '';
             const ssid = getCookie (req.headers.cookie, 'ssid');
+            if (path && PushApi.owns(path)) {
+                push.handle(req, res, ssid);
+                return;
+            }
             if (ssid === '' && !path.startsWith("/fs/get/reg") && req.method !== 'GET'){
                 redirect(`/fs/get/reg/Reg.html#${path}`, res);
                 return; 
@@ -143,7 +171,11 @@ export default class Server{
                 }
             } catch (err){
                 console.log(err);
-                render.renderJSON(err, res);
+                if (err && err.status){
+                    render.renderJSON({ error: err.message }, res, err.status);
+                } else {
+                    render.renderJSON(err, res);
+                }
                 return;
             }  
         
@@ -158,6 +190,7 @@ export default class Server{
 
         this.db = db;
         this.sezam = sezam;
+        this.push = push;
         this.httpServer = server;
         this.sslServer = ssl;
     }

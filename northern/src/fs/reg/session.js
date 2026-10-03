@@ -27,6 +27,21 @@ const session = (function () {
     // The private key, never written to storage.
     let held = null;
 
+    // The key-agreement copy kept by reg/keystore.js, on pages that load it:
+    // not extractable, and unable to sign (FEATURES J6). `kept()` resolves
+    // once the latest copy is in IndexedDB, so a page can wait for it before
+    // navigating away.
+    let keeping = Promise.resolve(false);
+    const keep = function (pub, priv) {
+        if (typeof NorthernKeys === 'undefined' || !NorthernKeys.available()) {
+            return;
+        }
+        keeping = NorthernKeys.keep(pub, priv).then(() => true, function (e) {
+            console.log('the key could not be kept for key agreement', e);
+            return false;
+        });
+    };
+
     const store = () => window.localStorage;
 
     const secretKeyFrom = privB64 => new sjcl.ecc.ecdsa.secretKey(
@@ -79,6 +94,7 @@ const session = (function () {
 
         held = { priv: card.priv, sec: secretKeyFrom(card.priv) };
         store()[PUB] = card.pub;
+        keep(card.pub, card.priv);
         if (idcard.cleanName(card.username) || !sameIdentity) {
             api.rememberUserName(card.username);
         }
@@ -104,6 +120,7 @@ const session = (function () {
     api.adopt = function (draft, username) {
         held = { priv: draft.priv, sec: draft.sec };
         store()[PUB] = draft.pub;
+        keep(draft.pub, draft.priv);
         api.rememberUserName(username);
         return api.card();
     };
@@ -139,7 +156,15 @@ const session = (function () {
     };
 
     /** Forgets everything: the key in memory, the stored identity, the cookie. */
+    /** Resolves true once the key-agreement copy is kept, false if it could not be. */
+    api.kept = function () {
+        return keeping;
+    };
+
     api.forget = function () {
+        if (api.pub() && typeof NorthernKeys !== 'undefined' && NorthernKeys.available()) {
+            NorthernKeys.forget(api.pub()).catch(() => {});
+        }
         held = null;
         store()[PUB] = LOGGED_OUT;
         delete store()[NAME];
@@ -169,6 +194,7 @@ const session = (function () {
         }
         try {
             held = { priv: stored, sec: secretKeyFrom(stored) };
+            keep(api.pub(), stored);
             return true;
         } catch (e) {
             held = null;
