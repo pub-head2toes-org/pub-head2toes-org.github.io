@@ -49,8 +49,9 @@ textarea {
 
 .menu-item {
     display: inline-block;
-    padding: 5px 10px;
-    margin: 0 5px;
+    padding: 8px 16px;
+    margin: 10px;
+    border-radius: 6px;
     background-color: #0f0;
     color: #000;
     text-decoration: none;
@@ -71,7 +72,7 @@ textarea {
     transform: scale(0.98);
 }
 
-/* Reg.html: one page-wide column of sections, the message board on top. */
+/* Reg.html: one page-wide column of sections, the Info board on top. */
 .page-wrapper {
     width: 100%;
     max-width: 720px;
@@ -89,15 +90,52 @@ section.intro h2 {
     padding-bottom: 5px;
 }
 
-/* The message board: read only, and the full width of the page. */
-.board textarea {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    margin: 10px 0 0;
-    border: 1px solid #0f0;
-    padding: 10px;
-    resize: vertical;
+/* The Info board: read only, the full width of the page, and quieter than
+   the panels below it - smaller type, and no borders. */
+section.intro.board h2 {
+    font-size: 1em;
+    border-bottom: none;
+}
+
+.board .info {
+    margin: 5px 0 0;
+    padding: 0 10px;
+    font-size: 0.85em;
+    white-space: pre-wrap;          /* the messages are written in lines */
+    overflow-wrap: anywhere;        /* and a public key is one long word */
+    min-height: 6.5em;              /* room for the longest, so the panels do not jump */
+}
+
+/* Sign in and Reg: an accordion of two panels, the heading is the toggle. */
+details.panel > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+details.panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.panel > summary h2::before {
+    content: "\25B8\00A0";
+}
+
+details.panel[open] > summary h2::before {
+    content: "\25BE\00A0";
+}
+
+details.panel > summary:hover h2 {
+    color: #fff;
+}
+
+details.panel > summary:focus-visible {
+    outline: 1px dashed #0f0;
+    outline-offset: 4px;
+}
+
+/* The same gap under each panel's title, before its first field. */
+details.panel > .summary {
+    padding-top: 20px;
 }
 
 input[readonly] {

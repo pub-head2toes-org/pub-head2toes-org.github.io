@@ -10,7 +10,7 @@ const read = name => fs.readFileSync(path.join(REG_DIR, name), 'utf8');
 
 /** The functions a page may expose; each is optional, pages differ. */
 const EXPORTS = ['init', 'saveIdCard', 'saveToNamedFile', 'currentIdCard',
-    'rememberUserName', 'idcard', 'session', 'getNextURL'];
+    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels'];
 
 /** The inline <script> of a page, in order; <script src=...> tags carry no body. */
 function inlineScripts(html) {
@@ -62,6 +62,9 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
 
     const document = {
         getElementById: element,
+        // Only Reg.html's accordion asks, and only for its two panels.
+        querySelectorAll: selector => selector === 'details.panel'
+            ? ['signin_panel', 'reg_panel'].map(element) : [],
         createElement: () => ({ href: '', download: '', click() { downloads.push({ name: this.download, href: this.href }); } }),
         body: { appendChild() {}, removeChild() {} },
         get cookie() {

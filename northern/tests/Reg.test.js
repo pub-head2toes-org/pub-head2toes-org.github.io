@@ -98,7 +98,7 @@ describe('Reg.html first visit', () => {
         const page = loadRegPage();
         await page.init();
 
-        assert.match(page.element('msg').value, /NOT saved in the browser/);
+        assert.match(page.element('msg').textContent, /NOT saved in the browser/);
     });
 
     it('warns before leaving while the new identity is unsaved', async () => {
@@ -155,23 +155,25 @@ describe('Reg.html returning visitor', () => {
         const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
         await page.init();
 
-        assert.match(page.element('msg').value, /Signed in as alice/);
+        assert.match(page.element('msg').textContent, /Signed in as alice/);
     });
 
     it('asks for the ID Card when the session has expired, keeping the same identity', async () => {
         const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }) });
         await page.init();
 
-        assert.match(page.element('msg').value, /session has expired/);
+        assert.match(page.element('msg').textContent, /session has expired/);
         assert.strictEqual(page.localStorage.pub, PUB, 'the identity is not replaced');
         assert.strictEqual(page.cookie(), '', 'and no cookie is minted without the key');
     });
 
-    it('prefills the user name field', async () => {
+    // UPDATE_7: Reg is for a new identity, so it does not offer the last name
+    it('starts with the user name field empty', async () => {
         const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }), cookie: liveCookie() });
         await page.init();
 
-        assert.strictEqual(page.element('username').value, 'alice');
+        assert.strictEqual(page.element('username').value, '');
+        assert.match(page.element('msg').textContent, /Signed in as alice/, 'the name is still used to greet');
     });
 
     it('sends the visitor on to the path in the fragment once the ID Card is loaded', async () => {
@@ -427,7 +429,7 @@ describe('Reg.html passphrase', () => {
 
         assert.strictEqual(page.downloads.length, 0, 'nothing is downloaded');
         assert.strictEqual(page.requests.length, 0, 'nothing is registered');
-        assert.match(page.element('msg').value, /do not match/);
+        assert.match(page.element('msg').textContent, /do not match/);
     });
 
     it('leaves the download unencrypted when no passphrase is set', async () => {
@@ -451,7 +453,7 @@ describe('Reg.html ID Card upload', () => {
         assert.strictEqual(page.localStorage.pub, PUB);
         assert.strictEqual(page.localStorage.pub_name, 'alice');
         assert.strictEqual(page.element('username').value, 'alice');
-        assert.match(page.element('msg').value, /ID loaded/);
+        assert.match(page.element('msg').textContent, /ID loaded/);
     });
 
     it('still loads a v1 "<pub>.<priv>" card saved before user names existed', async () => {
@@ -462,7 +464,7 @@ describe('Reg.html ID Card upload', () => {
 
         assert.strictEqual(page.localStorage.pub, PUB);
         assert.strictEqual(page.session.card().priv, PRIV);
-        assert.match(page.element('msg').value, /ID loaded/);
+        assert.match(page.element('msg').textContent, /ID loaded/);
     });
 
     it('does not put the last user name on an unnamed card belonging to someone else', async () => {
@@ -523,7 +525,7 @@ describe('Reg.html ID Card upload', () => {
 
         await page.upload(envelope);
 
-        assert.match(page.element('msg').value, /passphrase/);
+        assert.match(page.element('msg').textContent, /passphrase/);
         assert.strictEqual(page.session.unlocked(), false, 'nothing was unlocked');
     });
 
@@ -535,7 +537,7 @@ describe('Reg.html ID Card upload', () => {
 
         await page.upload(envelope);
 
-        assert.match(page.element('msg').value, /wrong passphrase/);
+        assert.match(page.element('msg').textContent, /wrong passphrase/);
         assert.strictEqual(page.localStorage.pub, PUB);
     });
 
@@ -545,7 +547,7 @@ describe('Reg.html ID Card upload', () => {
 
         await page.upload('this is just some text');
 
-        assert.match(page.element('msg').value, /not an ID Card/);
+        assert.match(page.element('msg').textContent, /not an ID Card/);
         assert.strictEqual(page.localStorage.pub, PUB);
     });
 
@@ -572,24 +574,46 @@ describe('Reg.html ID Card upload', () => {
 
 // UPDATE_3: one title, three sections, and a passphrase in each place one is typed
 describe('Reg.html layout', () => {
-    it('names the site once, at the top', () => {
+    // UPDATE_7: the header says what the page is for, not which domain it is on
+    it('names the page once, at the top', () => {
         const titles = HTML.match(/<h1[^>]*>([\s\S]*?)<\/h1>/g) || [];
 
         assert.strictEqual(titles.length, 1);
-        assert.match(titles[0], />\s*pub\.head2toes\.org\s*</);
+        assert.match(titles[0], />\s*User Registration\s*</);
+        assert.ok(!/pub\.head2toes\.org/.test(titles[0]));
     });
 
-    it('has a Messages, a Sign in and a Reg section, in that order', () => {
+    it('has an Info, a Sign in and a Reg section, in that order', () => {
         const headings = [...HTML.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)].map(m => m[1].trim());
 
-        assert.deepStrictEqual(headings, ['Messages', 'Sign in', 'Reg']);
+        assert.deepStrictEqual(headings, ['Info', 'Sign in', 'Reg']);
     });
 
-    it('makes the message board a read only text area of its own', () => {
-        const board = HTML.match(/<textarea[^>]*id="msg"[^>]*>/);
+    it('keeps the Info board small and without borders', () => {
+        const board = CSS.match(/\.board \.info\s*{([^}]*)}/);
 
-        assert.ok(board, 'the message area is a textarea in the markup, not built by script');
-        assert.match(board[0], /\breadonly\b/);
+        assert.ok(board);
+        assert.ok(!/border/.test(board[1]), 'a div has none unless it is given one');
+        assert.match(board[1], /font-size:\s*0?\.\d+em/, 'smaller than the text around it');
+        assert.match(board[1], /white-space:\s*pre-wrap/, 'and keeps the line breaks a message is written with');
+        assert.match(CSS, /section\.intro\.board h2\s*{[^}]*border-bottom:\s*none/, 'its heading is not underlined either');
+    });
+
+    it('gives the buttons rounded corners and a little room around them', () => {
+        const button = CSS.match(/\.menu-item\s*{([^}]*)}/);
+
+        assert.match(button[1], /border-radius:\s*\d+px/);
+        assert.match(button[1], /margin:\s*\d+px/);
+    });
+
+    // UPDATE_7: the Info board is a plain div, written as text
+    it('makes the Info board a live region of its own', () => {
+        const board = HTML.match(/<div[^>]*id="msg"[^>]*>/);
+
+        assert.ok(board, 'the Info board is in the markup, not built by script');
+        assert.match(board[0], /\baria-live="polite"/);
+        assert.ok(!/<textarea/.test(HTML), 'and is no longer a text area');
+        assert.match(HTML, /getElementById\("msg"\)\.textContent = text/);
         assert.ok(!/innerHTML/.test(HTML), 'and messages are written to it as text');
     });
 
@@ -621,11 +645,76 @@ describe('Reg.html layout', () => {
         assert.ok(CSS.indexOf('[hidden]') < CSS.indexOf('.menu-item {'), 'and says it before .menu-item');
     });
 
-    it('shows the public key in a read only field, and never the private one', () => {
+    // UPDATE_7: the key is still written to the field, but neither it nor its label shows
+    it('keeps the public key in a hidden read only field, and never the private one', () => {
         const field = HTML.match(/<input[^>]*id="pubkey"[^>]*>/);
+        const label = HTML.match(/<label[^>]*for="pubkey"[^>]*>/);
 
         assert.ok(field);
         assert.match(field[0], /\breadonly\b/);
+        assert.match(field[0], /\bhidden\b/);
+        assert.ok(label);
+        assert.match(label[0], /\bhidden\b/);
         assert.ok(!/id="priv/.test(HTML), 'there is no field for the private key');
+    });
+});
+
+// UPDATE_7: Sign in and Reg are an accordion, one panel open at most
+describe('Reg.html accordion', () => {
+    const panels = () => [...HTML.matchAll(/<details class="panel"[^>]*>/g)].map(m => m[0]);
+
+    it('puts Sign in and Reg each in a panel of one exclusive group', () => {
+        const [signin, reg] = panels();
+
+        assert.strictEqual(panels().length, 2);
+        assert.match(signin, /id="signin_panel"/);
+        assert.match(reg, /id="reg_panel"/);
+        for (const panel of [signin, reg]) {
+            assert.match(panel, /\bname="access"/, 'a shared name makes the browser close the other one');
+            assert.match(panel, /ontoggle="closeOtherPanels\(this\)"/, 'and the script does it where it does not');
+        }
+    });
+
+    it('puts the same gap under each panel title', () => {
+        assert.match(CSS, /details\.panel > \.summary\s*{[^}]*padding-top:\s*\d+px/);
+        assert.strictEqual((HTML.match(/<\/summary>\s*<div class="summary"/g) || []).length, 2,
+            'and both panels open onto that body');
+    });
+
+    it('starts with both panels collapsed', () => {
+        for (const panel of panels()) {
+            assert.ok(!/\bopen\b/.test(panel), panel);
+        }
+    });
+
+    it('uses the section headings as the panels\' toggles', () => {
+        assert.match(HTML, /<summary><h2>Sign in<\/h2><\/summary>/);
+        assert.match(HTML, /<summary><h2>Reg<\/h2><\/summary>/);
+    });
+
+    it('closes the other panel when one is opened', () => {
+        const page = loadRegPage();
+        const signin = page.element('signin_panel');
+        const reg = page.element('reg_panel');
+
+        signin.open = true;
+        page.closeOtherPanels(signin);
+        reg.open = true;
+        page.closeOtherPanels(reg);
+
+        assert.strictEqual(reg.open, true);
+        assert.strictEqual(signin.open, false);
+    });
+
+    it('leaves the other panel alone when one is closed', () => {
+        const page = loadRegPage();
+        const signin = page.element('signin_panel');
+        const reg = page.element('reg_panel');
+
+        reg.open = true;
+        signin.open = false;
+        page.closeOtherPanels(signin);
+
+        assert.strictEqual(reg.open, true);
     });
 });

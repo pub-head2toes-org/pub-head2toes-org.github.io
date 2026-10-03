@@ -20,18 +20,23 @@
   <div class="page-wrapper">
 
     <header role="banner" class="site">
-        <h1>pub.head2toes.org</h1>
+        <h1>User Registration</h1>
     </header>
 
-    <!-- Messages: everything the page has to say, in one place. -->
+    <!-- Info: everything the page has to say, in one place. -->
     <section class="intro board">
-        <h2>Messages</h2>
-        <textarea id="msg" rows="8" readonly aria-live="polite"></textarea>
+        <h2>Info</h2>
+        <div id="msg" class="info" role="status" aria-live="polite"></div>
     </section>
+
+    <!-- Sign in and Reg are an accordion: both start closed, and opening one
+         closes the other. <details name> does that in current browsers;
+         closeOtherPanels() covers the ones that predate it. -->
 
     <!-- Sign in: for an ID Card that already exists. -->
     <section class="intro">
-        <h2>Sign in</h2>
+      <details class="panel" name="access" id="signin_panel" ontoggle="closeOtherPanels(this)">
+        <summary><h2>Sign in</h2></summary>
 
         <div class="summary" role="article">
             <label for="signin_passphrase">Passphrase <small>(optional)</small></label>
@@ -48,11 +53,13 @@
             <!-- Shown only while the session cookie is live: no file needed then. -->
             <a id="continue" class="menu-item" href="#" hidden>Continue</a>
         </div>
+      </details>
     </section>
 
     <!-- Reg: for a brand new identity, which exists only until its card is saved. -->
     <section class="intro">
-        <h2>Reg</h2>
+      <details class="panel" name="access" id="reg_panel" ontoggle="closeOtherPanels(this)">
+        <summary><h2>Reg</h2></summary>
 
         <div class="summary" role="article">
           <label for="username">User name</label>
@@ -67,12 +74,14 @@
           <input type="password" id="passphrase2" name="passphrase2" autocomplete="new-password"
                  placeholder="repeat it - a typo here cannot be recovered" />
 
-          <label for="pubkey">Public key</label>
-          <input type="text" id="pubkey" name="pubkey" readonly
+          <!-- Kept for the script, which still fills it in, but not shown. -->
+          <label for="pubkey" hidden>Public key</label>
+          <input type="text" id="pubkey" name="pubkey" readonly hidden
                  placeholder="generated for you" />
 
           <button class="menu-item" onclick="javascript:saveToNamedFile()">Save Id Card &amp; Continue</button>
         </div>
+      </details>
     </section>
 
   </div>
@@ -137,9 +146,8 @@ async function init() {
 
     var localStorage = window.localStorage;
 
-    if (session.userName()){
-      document.getElementById("username").value = session.userName();
-    }
+    // The User name field starts empty: Reg makes a new identity, so the last
+    // name used in this browser is not offered for it.
 
     if (localStorage.remotectrl){
 
@@ -160,14 +168,14 @@ async function init() {
 
       // The cookie is still good, so nothing has to be signed on this visit.
       say(`Signed in as ${session.userName() || session.pub()}.
-Continue above, or load your ID Card if you want to save a fresh copy.
-The ID Card below is a new identity - saving it replaces this one.`);
+Open Sign in to continue, or to load your ID Card if you want to save a fresh copy.
+The ID Card under Reg is a new identity - saving it replaces this one.`);
 
     } else if (session.known()){
 
       say(`Your session has expired.
-Load the ID Card for ${session.userName() || session.pub()} to sign in again,
-or save the ID Card below to register as somebody new.`);
+Open Sign in and load the ID Card for ${session.userName() || session.pub()},
+or open Reg and save a new ID Card to register as somebody new.`);
 
     } else {
 
@@ -175,10 +183,11 @@ or save the ID Card below to register as somebody new.`);
       session.mintCookie();
       unsavedIdentity = true;
 
-      say(`New ID keys generated - the public half is shown below.
+      say(`New ID keys generated.
 
 These keys are held in this page only - they are NOT saved in the browser.
-Save the ID Card now or the identity is lost when you leave this page.`);
+Open Reg and save the ID Card now, or the identity is lost when you leave this page.
+Already have an ID Card? Open Sign in and load it instead.`);
    }
 
     showPub();
@@ -198,9 +207,9 @@ window.addEventListener("beforeunload", function (event) {
   }
 });
 
-// The message board: read only, and always showing the latest word.
+// The Info board: always showing the latest word, as text and never as markup.
 function say (text){
-  document.getElementById("msg").value = text;
+  document.getElementById("msg").textContent = text;
 }
 
 /**
@@ -220,8 +229,8 @@ function savedPub (){
   return session.unlocked() ? session.pub() : currentDraft().pub;
 }
 
-// The public half of that key, shown in the Reg section. The private half is
-// only ever in the file.
+// The public half of that key, kept in the Reg section's hidden field. The
+// private half is only ever in the file.
 function showPub (){
   document.getElementById("pubkey").value = savedPub();
 }
@@ -246,6 +255,19 @@ function showContinue (){
     button.href = getNextURL();
     button.textContent = `Continue as ${whoAmI()}`;
   }
+}
+
+// Sign in and Reg are an accordion: opening one panel closes the other.
+// Browsers that know <details name> have done it already.
+function closeOtherPanels (opened){
+  if (!opened.open){
+    return;
+  }
+  document.querySelectorAll("details.panel").forEach(function (panel){
+    if (panel !== opened){
+      panel.open = false;
+    }
+  });
 }
 
 function getNextURL () {
