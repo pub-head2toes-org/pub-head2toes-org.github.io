@@ -9,7 +9,7 @@ import nodeCrypto from 'node:crypto';
 import { REPO_ROOT, tmpDbPaths, seedSchema } from './helpers/db.js';
 import { loadPals, agreementKey, plain } from './helpers/palsPage.js';
 import sjclClass from '../src/h2t/sjclClass.js';
-import PushApi, { AUTHOR, CONFIG_PATH, MAX_PAYLOAD, encryptPush, generateKeys, providerOf,
+import PushApi, { AUTHOR, CONFIG_PATH, MAX_PAYLOAD, PROOF_WINDOW, encryptPush, generateKeys, providerOf,
     readKeys, vapidHeader } from '../src/h2t/PushApi.js';
 
 const sjcl = new sjclClass().get();
@@ -333,6 +333,57 @@ describe('PushApi - through the server', () => {
         await assert.rejects(Seal.open(aliceKey, { ...outer, from: bob.pub, to: alice.pub }), 'nor can it bounce the message back to alice as bob\'s');
         await assert.rejects(Seal.open(bobKey, { ...outer, part: 2 }), 'nor move it to another part');
         await assert.rejects(Seal.open(bobKey, { ...outer, id: 'other' }), 'or another message');
+    });
+
+    // A send as the page makes it once the cookie has expired: proven with the
+    // key reg/keystore.js keeps, against the server's VAPID key (UPDATE_3).
+    const proven = async (who, body, at = Date.now()) => {
+        const { publicKey } = (await call('GET', '/push/api/config/pub')).json();
+        return { ...body, ...plain(await Seal.prove(await agreementKey(who), who.pub, publicKey, body, at)) };
+    };
+
+    it('sends with no cookie on a proof made in the browser with the kept key, as the key that made it', async () => {
+        const phone = await device();
+        const w = { id: 'p1', part: 1, parts: 1 };
+        const sealed = await Seal.seal(await agreementKey(alice), alice.pub, bob.pub, w, { ts: 7, body: 'after midnight' });
+        const body = await proven(alice, { to: bob.pub, subscription: phone.subscription('https://fcm.googleapis.com/fcm/send/bob-phone'), sealed, ...w });
+        pushed.length = 0;
+
+        const response = await call('POST', '/push/api/send', body);
+        assert.strictEqual(response.status, 200);
+        const outer = JSON.parse((await openPush(pushed[0].body, phone.privateKey, phone.p256dh, phone.auth)).toString('utf8'));
+        assert.strictEqual(outer.from, alice.pub);
+        assert.strictEqual(plain(await Seal.open(await agreementKey(bob), outer)).body, 'after midnight');
+
+        const withCookie = await call('POST', '/push/api/send', body, as(carol));
+        assert.strictEqual(withCookie.status, 200);
+        assert.strictEqual(JSON.parse((await openPush(pushed[1].body, phone.privateKey, phone.p256dh, phone.auth)).toString('utf8')).from, alice.pub,
+            'a proof names the sender, whoever\'s cookie comes with it');
+    });
+
+    it('refuses a proof made with another key, for another push, or at another time - and a live cookie does not rescue it', async () => {
+        const phone = await device();
+        const body = { to: bob.pub, subscription: phone.subscription('https://fcm.googleapis.com/fcm/send/b'), ...wire };
+        const good = await proven(alice, body);
+        const before = pushed.length;
+        const attempts = {
+            'carol\'s proof, claiming alice': { ...(await proven(carol, body)), from: alice.pub },
+            'another receiver': { ...good, to: carol.pub },
+            'another device': { ...good, subscription: phone.subscription('https://fcm.googleapis.com/fcm/send/c') },
+            'another seal': { ...good, sealed: 'B'.repeat(100) },
+            'another part': { ...good, part: 1, parts: 2 },
+            'another time': { ...good, at: good.at + 1 },
+            'too old': await proven(alice, body, Date.now() - PROOF_WINDOW - 60000),
+            'from the future': await proven(alice, body, Date.now() + PROOF_WINDOW + 60000),
+            'no proof in it': { ...good, proof: '' },
+            'a from that is no point': { ...good, from: 'A'.repeat(86) + '==' }
+        };
+        for (const [what, attempt] of Object.entries(attempts)) {
+            const response = await call('POST', '/push/api/send', attempt, as(alice));
+            assert.strictEqual(response.status, 401, what);
+            assert.strictEqual(response.json().error, 'Unauthorized', what);
+        }
+        assert.strictEqual(pushed.length, before, 'and none of those went out');
     });
 
     it('has no way left to open a message on the server', async () => {

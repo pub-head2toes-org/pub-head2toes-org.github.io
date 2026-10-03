@@ -117,6 +117,12 @@ a.link {
   font-size: 0.85rem;
 }
 
+/* The session cookie ran out; the link beside it renews it. */
+.expired {
+  color: var(--error);
+  font-size: 0.85rem;
+}
+
 /* ---- panels ---- */
 
 .panels {

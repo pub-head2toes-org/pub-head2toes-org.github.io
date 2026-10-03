@@ -11,6 +11,7 @@ import { loadPals, mountPals, mountWelcome, fakeIndexedDB, agreementKey, plain, 
 import { REPO_ROOT, tmpDbPaths, seedSchema } from './helpers/db.js';
 import sjclClass from '../src/h2t/sjclClass.js';
 import Crypto from '../src/h2t/Crypto.js';
+import { generateKeys, readKeys, sendProof } from '../src/h2t/PushApi.js';
 
 const { Model, Views, Seal, Keys } = loadPals();
 const sjcl = new sjclClass().get();
@@ -716,6 +717,8 @@ describe('Pals shell', () => {
 // ---------------------------------------------------------------------------
 
 describe('Pals page', () => {
+    // The server's VAPID keys, which a send proof is made against.
+    const vapid = readKeys(JSON.stringify(generateKeys()));
     const signedIn = (who = alice) => ({
         localStorage: { pub: who.pub, pub_name: who.name },
         cookie: `ssid=${who.pub}.${Date.now()}.sig`
@@ -729,6 +732,7 @@ describe('Pals page', () => {
         [one(bob)]: [listed(bob)],
         [one(carol)]: [listed(carol)],
         [one(dave)]: [listed(dave)],
+        'GET /push/api/config/pub': { publicKey: vapid.publicKey },
         'POST /push/api/send': () => [200, { status: 'OK' }],
         ...extra
     });
@@ -794,9 +798,50 @@ describe('Pals page', () => {
         assert.strictEqual(page.fetch.calls.length, 0);
     });
 
-    it('does the same when the cookie belongs to somebody else', () => {
-        const page = mountPals({ localStorage: { pub: alice.pub }, cookie: `ssid=${bob.pub}.1.sig` });
+    it('does the same for a browser that signed out', () => {
+        const page = mountPals({ localStorage: { pub: 'notloggedin' }, cookie: `ssid=${alice.pub}.1.sig` });
         assert.ok(page.location.replaced.startsWith('/fs/get/reg/Reg.html#'));
+    });
+
+    it('stays open when the session cookie has expired, and says so with a link to sign in again', async () => {
+        for (const cookie of ['', `ssid=${bob.pub}.1.sig`]) {
+            const page = await open({ cookie });
+
+            assert.strictEqual(page.location.replaced, null, 'expired, or somebody else\'s: ' + cookie);
+            assert.ok(page.html('user').includes(`>alice (${tag(alice.pub)})<`));
+            assert.strictEqual(page.element('session_expired').hidden, false);
+            assert.strictEqual(page.element('sign_in_again').href, `/fs/get/reg/Reg.html#${PAGE}`);
+        }
+        const live = await open();
+        assert.strictEqual(live.element('session_expired').hidden, true);
+    });
+
+    it('notices the cookie expiring while the page is open, and it coming back', async () => {
+        const page = await open();
+        page.document.cookie = '';
+        page.show();
+        assert.strictEqual(page.element('session_expired').hidden, false);
+
+        page.document.cookie = signedIn().cookie;
+        page.show();
+        assert.strictEqual(page.element('session_expired').hidden, true);
+    });
+
+    it('sends with the kept key when the session has expired, with a proof the server checks', async () => {
+        const page = await open({ cookie: '' });
+        await addPal(page, bob);
+        const before = Date.now();
+        await write(page, 'still here');
+
+        const [push] = sent(page);
+        assert.strictEqual(page.stored().messages[0].delivery[bob.pub], 'sent');
+        assert.strictEqual(page.element('status').textContent, 'Sent.');
+        assert.strictEqual(push.from, alice.pub);
+        assert.ok(push.at >= before && push.at <= Date.now());
+        assert.strictEqual(push.proof, sendProof(vapid, push).toString('base64url'), 'made against the server\'s key, as the server makes it');
+        assert.notStrictEqual(push.proof, sendProof(vapid, { ...push, to: carol.pub }).toString('base64url'), 'and good for this push only');
+        assert.strictEqual((await opened(page))[0].body, 'still here');
+        assert.strictEqual(page.fetch.calls.filter(c => c.url === '/push/api/config/pub').length, 1, 'the server\'s key is asked for once');
     });
 
     it('sends a user who has not set this device up to welcome.html', async () => {
@@ -879,9 +924,10 @@ describe('Pals page', () => {
         await write(page, 'hello bob');
 
         const [push] = sent(page);
-        assert.deepStrictEqual({ ...push, id: 'x', sealed: '' }, {
+        assert.deepStrictEqual({ ...push, id: 'x', sealed: '', at: 0, proof: '' }, {
             to: bob.pub, provider: 'google', sealed: '', id: 'x', part: 1, parts: 1,
-            subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/bob-9', keys: { p256dh: 'BP-bob', auth: 'auth-bob' } }
+            subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/bob-9', keys: { p256dh: 'BP-bob', auth: 'auth-bob' } },
+            from: alice.pub, at: 0, proof: ''
         });
         assert.match(push.id, /^[0-9a-f]{24}$/);
         assert.ok(!JSON.stringify(page.fetch.calls).includes('hello bob'), 'the text never leaves the browser unsealed');

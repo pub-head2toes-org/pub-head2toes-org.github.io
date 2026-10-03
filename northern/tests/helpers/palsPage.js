@@ -271,9 +271,13 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     const store = storage(localStorage);
     const confirms = [];
 
+    const document = {
+        cookie, hidden: false, listeners: {}, getElementById: element, querySelectorAll: () => [], execCommand() {},
+        addEventListener(event, fn) { this.listeners[event] = fn; }
+    };
     const sandbox = {
         console: { log() {}, warn() {} },
-        document: { cookie, getElementById: element, querySelectorAll: () => [], execCommand() {} },
+        document,
         localStorage: store,
         location: location(PAGE),
         confirm: text => { confirms.push(text); return confirm; },
@@ -289,7 +293,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     };
 
     return {
-        element, fetch, store, stored, confirms, worker, indexedDB, settle,
+        element, fetch, store, stored, confirms, worker, indexedDB, settle, document,
         location: sandbox.location,
         html: id => element(id).innerHTML,
         /** The text of every row in a list, markup stripped. */
@@ -302,6 +306,8 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
         }),
         /** Presses the Add button of an overlay. */
         submit: name => element('dlg_' + name).querySelector('form').onsubmit({ preventDefault() {} }),
+        /** The user comes back to the page: another tab, or the app brought forward. */
+        show: () => { document.hidden = false; document.listeners.visibilitychange(); },
         /** What the service worker says to an open page when a push came. */
         push: () => worker.listeners.message({ data: { type: 'pals:push' } })
     };

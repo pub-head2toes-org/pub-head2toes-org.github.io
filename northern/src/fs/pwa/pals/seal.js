@@ -48,11 +48,16 @@ const PalsSeal = (function () {
     const additional = (from, to, id, part, parts) =>
         utf8(['Pals', VERSION, from, to, id, part, parts].join('\0'));
 
+    /** ECDH between a private key and a 65-byte point, ready for HKDF. */
+    function agree(own, otherPoint) {
+        return subtle().importKey('raw', otherPoint, { name: 'ECDH', namedCurve: 'P-256' }, false, [])
+            .then(publicKey => subtle().deriveBits({ name: 'ECDH', public: publicKey }, own, 256))
+            .then(secret => subtle().importKey('raw', secret, 'HKDF', false, ['deriveKey']));
+    }
+
     /** The AES key for one message from `from` to `to`; `own` is whichever end's private key this is. */
     function messageKey(own, other, from, to, salt) {
-        return subtle().importKey('raw', point(other), { name: 'ECDH', namedCurve: 'P-256' }, false, [])
-            .then(publicKey => subtle().deriveBits({ name: 'ECDH', public: publicKey }, own, 256))
-            .then(secret => subtle().importKey('raw', secret, 'HKDF', false, ['deriveKey']))
+        return agree(own, point(other))
             .then(ikm => subtle().deriveKey(
                 { name: 'HKDF', hash: 'SHA-256', salt: salt, info: join(utf8(INFO), point(from), point(to)) },
                 ikm, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']));
@@ -97,6 +102,28 @@ const PalsSeal = (function () {
                 const inner = JSON.parse(new TextDecoder().decode(plain));
                 return { v: VERSION, from: o.from, to: o.to, id: o.id, part: o.part, parts: o.parts, ts: inner.ts, body: inner.body };
             });
+    };
+
+    /**
+     * A send proof for /push/api/send (UPDATE_3): HMAC-SHA256 over what the
+     * request pushes where, keyed by HKDF over ECDH(own private key, the
+     * server's VAPID key). It shows the server that the sender holds `from`'s
+     * key - which the kept key can do, while the session cookie it would
+     * otherwise go by lasts a day. `server` is the VAPID point as
+     * /push/api/config/pub gives it, `request` the body of the send and `at`
+     * the time. PushApi.sendProof checks it. Resolves to `{from, at, proof}`,
+     * to go in the body beside the rest.
+     */
+    api.prove = function (own, from, server, request, at) {
+        const serverPoint = bytes(server);
+        const endpoint = request.subscription && request.subscription.endpoint;
+        const signed = ['Pals send', 1, from, request.to, request.id, request.part, request.parts, at, endpoint, request.sealed].join('\0');
+        return agree(own, serverPoint)
+            .then(ikm => subtle().deriveKey(
+                { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: join(utf8('Pals send v1\0'), point(from), serverPoint) },
+                ikm, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign']))
+            .then(key => subtle().sign('HMAC', key, utf8(signed)))
+            .then(mac => ({ from: from, at: at, proof: b64u(new Uint8Array(mac)) }));
     };
 
     /**

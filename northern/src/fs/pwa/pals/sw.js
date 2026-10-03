@@ -2,7 +2,7 @@
 // open with it, the model to name a sender, and the store to keep what came.
 importScripts('../../reg/keystore.js', './model.js', './store.js', './seal.js');
 
-const CACHE_NAME = 'pals-v4';
+const CACHE_NAME = 'pals-v5';
 const urlsToCache = [
   './index.html',
   './welcome.html',

@@ -31,7 +31,7 @@ alice's page                    Northern (pals.<domain>)            push service
   |-- GET /pals/?searchPlus=%/<bob> --> where bob's device is
   |   seal to bob's pinned key
   |   (alice's key ⨯ bob's key)
-  |-- POST /push/api/send ---------->  from := alice's verified cookie
+  |-- POST /push/api/send ---------->  from := alice's send proof, or cookie
   |    {to, subscription, sealed,      encrypt {v, from, to, id, part,
   |     id, part, parts}                 parts, sealed} for bob's device
   |                                    sign VAPID token -------------> holds it -----> push event
@@ -54,8 +54,9 @@ alice's page                    Northern (pals.<domain>)            push service
   (FEATURES J6).
 - **Identity: the seal.** A message opens only with the key shared with the
   sender it names, so `from` is proven by the crypto, not by the server's
-  word. The server still sets `from` from the verified cookie, for routing and
-  abuse control.
+  word. The server still sets `from` itself, for routing and abuse control:
+  from a send proof made with the kept key (Update 3), or else the verified
+  cookie.
 - **One VAPID key pair, the server's own** — V1 of the evaluation. It only
   proves to the push service that pushes come from this server; it protects no
   content.
@@ -108,7 +109,7 @@ alice's page                    Northern (pals.<domain>)            push service
 | Route | Does |
 | --- | --- |
 | `GET /push/api/config/pub` | `{publicKey}`: the 65-byte VAPID point, base64url, as `pushManager.subscribe` takes it |
-| `POST /push/api/send` | `{to, subscription, provider?, sealed, id, part, parts}`, signed in. Puts `{v: 2, from, to, id, part, parts, sealed}` - `from` being the cookie's key - in a push encrypted for the subscription, and POSTs it to the push service with a VAPID token. Answers `{status:'OK', id, part, parts, ts, provider}` |
+| `POST /push/api/send` | `{to, subscription, provider?, sealed, id, part, parts}`, with a send proof `{from, at, proof}` or signed in. Puts `{v: 2, from, to, id, part, parts, sealed}` - `from` being the proof's key, or else the cookie's - in a push encrypted for the subscription, and POSTs it to the push service with a VAPID token. Answers `{status:'OK', id, part, parts, ts, provider}` |
 
 There is no `/push/api/open` any more: it answers 404, like any other path the
 API does not have.
@@ -143,7 +144,8 @@ and opened by `seal.js` in the browsers. The server only checks it is
 base64url of a sane length.
 
 **The checks `send` makes:**
-- A signed session (401).
+- A send proof that checks out, or - when the body has none - a signed
+  session (401). A failed proof is not rescued by a live cookie.
 - `Content-Type: application/json` (415), and an `Origin` header, if present,
   whose host is the request's own `Host` (403). Together these stop a form on
   another site sending as the visitor.
@@ -422,6 +424,33 @@ grow.
 
 ---
 
+## Update 3 — an expired session
+
+The `ssid` cookie lasts a day, and only a loaded ID Card can mint a new one.
+Pals used to send a visitor without a live cookie to `Reg.html`, and
+`/push/api/send` refused them, though the key that seals and opens every
+message was still on the device.
+
+- **The page stays.** It leaves for `Reg.html` only when the browser has no
+  identity at all, or signed out. With the cookie gone - or one for somebody
+  else - the header says *The session has expired: sign in again*, the link
+  going to `Reg.html` and back. It is checked on every render and whenever
+  the page comes back into view.
+- **Sending goes on, with a send proof.** Each `send` carries
+  `{from, at, proof}`: HMAC-SHA256 over `to, id, part, parts, at, endpoint,
+  sealed`, keyed by HKDF over ECDH(the kept key, the server's VAPID key)
+  (`PalsSeal.prove`, `PushApi.sendProof`). Only the holder of `from`'s key, or
+  the server, can make it. The page sends one every time, cookie or not, and
+  asks `/push/api/config/pub` for the key once per load.
+- **What it lets through, and does not.** A proof is good for 5 minutes either
+  side of the server's clock, for that one push; within that window the same
+  request could be replayed, which pushes a part the receiver already has and
+  drops as a duplicate. It needs no signing key, so FEATURES J6 holds. A
+  script running as Pals could already seal with the kept key; it can now send
+  after the cookie expires as well (see 3 below).
+- **Still needs a live session:** *set up this device again* (it writes the
+  `/pals/` row), and everything outside Pals.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**
@@ -445,7 +474,7 @@ grow.
    sends opens for nobody without the owner's key. Checking the age (a day, as
    `session.js` mints it) would be a one-line change to `PushApi.session`.
 3. **The kept key outlives the cookie.** Pals keeps working on a device after
-   the cookie expires, for reading. On a shared device, signing out must call
+   the cookie expires, for reading and, since Update 3, for sending. On a shared device, signing out must call
    `session.forget()` on the `pals.` host, or the key stays. Pals has no
    *Sign out* of its own yet; `Logout.html` only clears the cookie.
 4. **Anybody signed in can message anybody listed.** Anyone can register a key,

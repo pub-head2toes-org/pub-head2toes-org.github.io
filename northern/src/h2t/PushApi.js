@@ -17,6 +17,9 @@ export const MAX_BODY = 16384;
 export const TTL = 4 * 7 * 24 * 3600;
 // The payload version: 2 is sealed in the browsers (UPDATE_2).
 const VERSION = 2;
+// How far a send proof's clock may be from the server's (UPDATE_3).
+export const PROOF_WINDOW = 5 * 60 * 1000;
+const PROOF = /^[A-Za-z0-9_-]{43}$/;
 
 /**
  * Who may be asked to deliver a push. The relay POSTs to an address a client
@@ -149,6 +152,23 @@ export function vapidHeader (endpoint, keys, subject, nowSeconds){
 }
 
 /**
+ * What a send proof must be for this request (UPDATE_3): HMAC-SHA256 over
+ * every field that decides what is pushed where, with a key made by HKDF from
+ * ECDH(VAPID private key, `from`). seal.js makes the same in the browser,
+ * from the other end of the agreement. Throws when `from` is not a point.
+ */
+export function sendProof (keys, { from, to, id, part, parts, at, sealed, subscription }){
+    const point = Buffer.concat([Buffer.from([4]), Buffer.from(from, 'base64')]);
+    const ecdh = crypto.createECDH('prime256v1');
+    ecdh.setPrivateKey(fromB64u(keys.privateKey));
+    const secret = ecdh.computeSecret(point);
+    const info = Buffer.concat([Buffer.from('Pals send v1\0'), point, fromB64u(keys.publicKey)]);
+    const key = Buffer.from(crypto.hkdfSync('sha256', secret, Buffer.alloc(0), info, 32));
+    const endpoint = subscription && subscription.endpoint;
+    return hmac(key, Buffer.from(['Pals send', 1, from, to, id, part, parts, at, endpoint, sealed].join('\0'), 'utf8'));
+}
+
+/**
  * The push relay for Pals, mounted at /push/api/.
  *
  *   GET  /push/api/config/pub   the VAPID public key, for pushManager.subscribe
@@ -158,8 +178,9 @@ export function vapidHeader (endpoint, keys, subject, nowSeconds){
  * through here is opaque, and nothing of it is stored. The VAPID key pair - a
  * row in abcd, made on first use - only proves to the push service that the
  * push comes from this server; it protects no content. Who sent a message is
- * the key the caller's session cookie is signed with, and the seal opens only
- * with that sender's key, so the server cannot name anybody else.
+ * the key the caller's session cookie is signed with - or, once that has
+ * expired, the key a send proof is made with - and the seal opens only with
+ * that sender's key, so the server cannot name anybody else.
  */
 export default class PushApi {
     constructor(db, { render, verifySsid, fetch = (...args) => globalThis.fetch(...args),
@@ -230,7 +251,8 @@ export default class PushApi {
             if (req.method === 'GET' && path === '/push/api/config/pub'){
                 data = { publicKey: (await this.keys()).publicKey };
             } else if (req.method === 'POST' && path === '/push/api/send'){
-                data = await this.send(await this.readJson(req), this.session(ssid), req);
+                const body = await this.readJson(req);
+                data = await this.send(body, body.proof === undefined ? this.session(ssid) : await this.proven(body), req);
             } else {
                 fail(404, 'NotFound', 'no such push API route');
             }
@@ -252,6 +274,36 @@ export default class PushApi {
             fail(401, 'Unauthorized', 'sign in to Northern first');
         }
         return checked.pubB64;
+    }
+
+    /**
+     * The caller's public key, from a send proof (UPDATE_3): an HMAC over the
+     * request, keyed by ECDH between the sender's Northern key and the
+     * server's VAPID key. The browser makes it with the key reg/keystore.js
+     * keeps - ECDH only, it cannot sign a cookie - so Pals keeps sending after
+     * the day-long cookie has expired. Only the holder of `from`'s private key,
+     * or the server, can make it. A proof decides on its own: a live cookie
+     * does not rescue one that fails.
+     */
+    async proven (body){
+        const { from, at, proof } = body;
+        if (typeof from !== 'string' || !PUB.test(from) || typeof proof !== 'string' || !PROOF.test(proof) || !Number.isInteger(at)){
+            fail(401, 'Unauthorized', 'the send proof is not one: "from", "at" and "proof" are needed');
+        }
+        if (Math.abs(this.now() - at) > PROOF_WINDOW){
+            fail(401, 'Unauthorized', 'the send proof is out of date; check this device\'s clock');
+        }
+        const keys = await this.keys();
+        let expected;
+        try {
+            expected = sendProof(keys, body);
+        } catch (e) {
+            fail(401, 'Unauthorized', 'the send proof does not check out');
+        }
+        if (!crypto.timingSafeEqual(expected, fromB64u(proof))){
+            fail(401, 'Unauthorized', 'the send proof does not check out');
+        }
+        return from;
     }
 
     /**
@@ -307,7 +359,8 @@ export default class PushApi {
 
     /**
      * Pushes one sealed message - or one part of one - to the device behind
-     * `subscription`: `{to, subscription, provider?, sealed, id, part, parts}`.
+     * `subscription`: `{to, subscription, provider?, sealed, id, part, parts}`,
+     * and `{from, at, proof}` when it comes with a send proof.
      * The push carries `{v, from, to, id, part, parts, sealed}` as JSON text,
      * `from` being the caller's verified key. A browser hands a push payload
      * to its service worker as UTF-8 text and nulls one that is not, so it is

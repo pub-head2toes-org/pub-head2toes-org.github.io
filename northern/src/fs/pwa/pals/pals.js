@@ -3,9 +3,11 @@
 
 (function () {
 
-    // Pals is for whoever is signed in to Northern. Anybody else registers or
-    // signs in first, and Reg.html sends them back here.
-    if (!session.signedIn()) {
+    // Pals is for whoever this browser is signed in to Northern as. Anybody
+    // else registers or signs in first, and Reg.html sends them back here. A
+    // session cookie that has expired is no reason to leave: messages are
+    // sealed, opened and sent with the key kept on the device (UPDATE_3).
+    if (!session.known()) {
         window.location.replace(PalsModel.regUrl(
             window.location.pathname, window.location.search, window.location.hash));
         return;
@@ -27,6 +29,13 @@
     function needCard(missing) {
         $('need_card').hidden = !missing;
         $('need_card_link').href = PalsModel.regUrl(window.location.pathname, window.location.search, '');
+    }
+
+    // The cookie lasts a day, so it can expire with the page open: this runs
+    // on every render and whenever the page comes back into view.
+    function checkSession() {
+        $('session_expired').hidden = session.signedIn();
+        $('sign_in_again').href = PalsModel.regUrl(window.location.pathname, window.location.search, '');
     }
 
     // What is selected in each list, and what the log is showing.
@@ -63,6 +72,34 @@
         });
     }
 
+    let serverKey = null;
+
+    /** The server's VAPID key, which send proofs are made against; asked for once. */
+    function pushKey() {
+        if (!serverKey) {
+            serverKey = fetch('/push/api/config/pub', { credentials: 'same-origin' })
+                .then(response => response.json())
+                .then(function (config) {
+                    if (!config || !config.publicKey) {
+                        throw new Error('Northern has no push key to give: ' + (config && config.message || 'no answer'));
+                    }
+                    return config.publicKey;
+                });
+            serverKey.catch(() => { serverKey = null; });
+        }
+        return serverKey;
+    }
+
+    /**
+     * Pushes one sealed part, with a proof made with the kept key that this is
+     * the user sending - so it goes whether the session cookie is live or not.
+     */
+    function send(request) {
+        return pushKey()
+            .then(server => PalsSeal.prove(ownKey, me.pub, server, request, Date.now()))
+            .then(proof => post('/push/api/send', Object.assign({}, request, proof)));
+    }
+
     const PAGE = 100;
 
     /** Everybody listed under /pals/ whose path matches `pattern`, newest row per key. */
@@ -91,6 +128,7 @@
     // ---- the page ------------------------------------------------------
 
     function render() {
+        checkSession();
         $('pals').innerHTML = PalsViews.pals(state, ui.pal);
         $('groups').innerHTML = PalsViews.groups(state, ui.group);
         $('members').innerHTML = PalsViews.members(state, ui.group, ui.member);
@@ -241,7 +279,7 @@
                     return PalsModel.pushes(message, [pub]).reduce((sent, push) => sent.then(function () {
                         const wire = { id: push.id, part: push.part, parts: push.parts };
                         return PalsSeal.seal(ownKey, me.pub, push.to, wire, { ts: message.ts, body: push.message })
-                            .then(sealed => post('/push/api/send', {
+                            .then(sealed => send({
                                 to: push.to,
                                 subscription: device.subscription,
                                 provider: device.provider,
@@ -475,6 +513,12 @@
     // ---- start ---------------------------------------------------------
 
     $('user').innerHTML = PalsViews.pill(me.name, me.pub);
+    checkSession();
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            checkSession();
+        }
+    });
 
     onRow('pals', 'data-pub', selectPal);
     onRow('groups', 'data-group', selectGroup);
