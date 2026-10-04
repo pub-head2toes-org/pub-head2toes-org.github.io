@@ -56,8 +56,10 @@
       </details>
     </section>
 
-    <!-- Reg: for a brand new identity, which exists only until its card is saved. -->
-    <section class="intro">
+    <!-- Reg: for a brand new identity, which exists only until its card is saved.
+         Hidden when somebody who signed in here before comes back after their
+         session expired: signing in again is what they are here for. -->
+    <section class="intro" id="reg_section">
       <details class="panel" name="access" id="reg_panel" ontoggle="closeOtherPanels(this)">
         <summary><h2>Reg</h2></summary>
 
@@ -173,9 +175,13 @@ The ID Card under Reg is a new identity - saving it replaces this one.`);
 
     } else if (session.known()){
 
+      // Somebody signed in here before, and the cookie has run out. Offering
+      // Reg as well made new users of people who only had to sign in again,
+      // so Sign in is all there is (UPDATE_4 of Pals).
+      hideReg();
       say(`Your session has expired.
-Open Sign in and load the ID Card for ${session.userName() || session.pub()},
-or open Reg and save a new ID Card to register as somebody new.`);
+Sign in again: load the ID Card for ${session.userName() || session.pub()}.
+To register as somebody new, sign out first.`);
 
     } else {
 
@@ -255,6 +261,13 @@ function showContinue (){
     button.href = getNextURL();
     button.textContent = `Continue as ${whoAmI()}`;
   }
+}
+
+// Leaves Sign in as the only way on, opened ready for the ID Card.
+function hideReg (){
+  document.getElementById("reg_section").hidden = true;
+  document.getElementById("reg_panel").open = false;
+  document.getElementById("signin_panel").open = true;
 }
 
 // Sign in and Reg are an accordion: opening one panel closes the other.

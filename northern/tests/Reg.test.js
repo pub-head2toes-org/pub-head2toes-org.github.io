@@ -227,6 +227,32 @@ describe('Reg.html returning visitor', () => {
 
         assert.strictEqual(page.element('continue').hidden, true);
     });
+
+    // UPDATE_4 of Pals: offering Reg as well made new users of people who
+    // only had to sign in again.
+    it('hides Reg when the session has expired, and opens Sign in', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }) });
+        await page.init();
+
+        assert.strictEqual(page.element('reg_section').hidden, true);
+        assert.strictEqual(page.element('signin_panel').open, true);
+        assert.match(page.element('msg').textContent, /Sign in again: load the ID Card for alice/);
+        assert.doesNotMatch(page.element('msg').textContent, /open Reg/);
+    });
+
+    it('keeps Reg for a brand new visitor, a live session, and a browser that signed out', async () => {
+        for (const options of [{}, { localStorage: known(), cookie: liveCookie() }, { localStorage: { pub: 'notloggedin' } }]) {
+            const page = loadRegPage(options);
+            await page.init();
+
+            assert.notStrictEqual(page.element('reg_section').hidden, true, JSON.stringify(options));
+            assert.notStrictEqual(page.element('signin_panel').open, true);
+        }
+    });
+
+    it('hides Reg as a whole section, so no empty gap is left', () => {
+        assert.match(HTML, /<section class="intro" id="reg_section">\s*<details class="panel" name="access" id="reg_panel"/);
+    });
 });
 
 // UPDATE_2 improvements 1-3

@@ -163,10 +163,16 @@ export function fakeIndexedDB(seed = {}) {
     return api;
 }
 
+/** The ids a page's HTML has: getElementById answers null for any other, as a browser does. */
+const idsOf = html => new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
+
 /** An element of the DOM stub: remembers what was written to it and which listeners it has. */
-function stubElements() {
+function stubElements(ids) {
     const elements = {};
     const element = id => {
+        if (ids && !ids.has(id)) {
+            return null;
+        }
         if (!elements[id]) {
             const form = { onsubmit: null };
             elements[id] = {
@@ -247,8 +253,8 @@ function location(pathname, replaced) {
 }
 
 /**
- * Runs the real page scripts - the Northern identity ones, then model.js,
- * store.js, views.js and pals.js - with just enough of a browser around them.
+ * Runs the real page scripts - the Northern identity ones, then version.js,
+ * model.js, store.js, views.js and pals.js - with just enough of a browser around them.
  *
  * The DOM is a table of elements by id that remember what was written to them
  * and which listeners were attached; a list's content stays the HTML text the
@@ -260,7 +266,7 @@ function location(pathname, replaced) {
  * Unless it says otherwise, the user has been through welcome.html.
  */
 export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm = true, idb, indexedDB: reuse, subscription } = {}) {
-    const element = stubElements();
+    const element = stubElements(idsOf(read('index.html')));
     const pub = localStorage.pub;
     const setup = pub ? { [pub]: { path: '/pals/x/y', endpoint: 'https://fcm.googleapis.com/fcm/send/device' } } : {};
     const indexedDB = reuse || fakeIndexedDB(idb ? { setup, ...idb } : { setup });
@@ -285,7 +291,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
         crypto: globalThis.crypto,
         indexedDB, fetch, Date, JSON, Promise, encodeURIComponent, Uint8Array, TextEncoder, TextDecoder, atob, btoa
     };
-    run(sandbox, ['model.js', 'store.js', 'seal.js', 'views.js', 'pals.js']);
+    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'views.js', 'pals.js']);
 
     const stored = () => {
         const state = indexedDB.stores.state && indexedDB.stores.state.get(pub);
@@ -319,7 +325,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
  * the Push API, as Safari is outside a Home Screen app.
  */
 export function mountWelcome({ localStorage = {}, cookie = '', routes = {}, permission = 'granted', push = true, subscription = null, idb = {} } = {}) {
-    const element = stubElements();
+    const element = stubElements(idsOf(read('welcome.html')));
     const indexedDB = fakeIndexedDB(idb);
     const worker = stubWorker({ subscription });
     const fetch = fakeFetch(routes);

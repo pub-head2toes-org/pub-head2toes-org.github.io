@@ -517,7 +517,7 @@ describe('Pals shell', () => {
     const index = read('index.html');
     const welcome = read('welcome.html');
     const sw = read('sw.js');
-    const scriptsOf = html => [...html.matchAll(/<script[^>]*src=["']([^"']+)["']/g)].map(m => m[1]);
+    const scriptsOf = html => [...html.matchAll(/<script[^>]*src=["']([^"'?]+)(\?[^"']*)?["']/g)].map(m => m[1]);
     const cached = [...sw.matchAll(/'(\.{1,2}\/[^']+)'/g)].map(m => m[1]);
 
     it('has the three panels side by side and the incoming list under them, and no invite link', () => {
@@ -591,6 +591,7 @@ describe('Pals shell', () => {
         const indexedDB = fakeIndexedDB(idb);
         const context = {
             URL, Promise, JSON, Date, atob, btoa, Uint8Array, String, TextEncoder, TextDecoder, indexedDB,
+            Request: function Request(url, options) { this.url = url; Object.assign(this, options); },
             crypto: globalThis.crypto,
             caches: {
                 open: () => Promise.resolve(cache),
@@ -623,6 +624,7 @@ describe('Pals shell', () => {
         context.importScripts = (...files) => files.forEach(file => vm.runInContext(source(file), context, { filename: file }));
         vm.createContext(context);
         vm.runInContext(sw, context, { filename: 'sw.js' });
+        did.global = name => vm.runInContext(name, context);
         const fire = async (name, event = {}) => {
             let answered;
             const waits = [];
@@ -652,6 +654,45 @@ describe('Pals shell', () => {
         assert.ok(await get(here + 'welcome.html'));
         assert.ok(await get('https://pals.example/fs/get/reg/session.js'));
         assert.strictEqual(did.fetched.length, 2, 'the pages\' own files do, network first');
+    });
+
+    // UPDATE_4: the page shows the version the service worker's cache is named after.
+    it('shows the app version at the foot of the page, the one the cache is named after', async () => {
+        const { did } = worker();
+        const version = did.global('PALS_VERSION');
+        assert.ok(Number.isInteger(version) && version >= 6);
+        assert.strictEqual(did.global('CACHE_NAME'), `pals-v${version}`);
+        assert.ok(index.indexOf('id="version"') > index.indexOf('id="panel_incoming"'), 'below everything else');
+
+        const page = mountPals({ localStorage: { pub: alice.pub, pub_name: 'alice' }, cookie: `ssid=${alice.pub}.${Date.now()}.sig`,
+            idb: { keys: kept(alice) } });
+        await page.settle();
+        assert.strictEqual(page.location.replaced, null);
+        assert.strictEqual(page.element('version').textContent, `v${version}`);
+    });
+
+    // Cloudflare turns the server's no-cache on .js into max-age=14400, while
+    // the HTML stays no-cache: a new index.html then ran an old pals.js, which
+    // threw on the element Update 4 took out.
+    it('asks for every script and the stylesheet by its version, so no cache can mix two versions', () => {
+        const { did } = worker();
+        const version = did.global('PALS_VERSION');
+        for (const [name, html] of [['index.html', index], ['welcome.html', welcome]]) {
+            const assets = [...html.matchAll(/<(?:script[^>]*src|link rel="stylesheet"[^>]*href)="(\.{1,2}\/[^"]+)"/g)].map(m => m[1]);
+            assert.ok(assets.length > 5, name);
+            for (const url of assets) {
+                assert.ok(url.endsWith(`?v=${version}`), `${name}: ${url} is not asked for as v${version}`);
+            }
+        }
+    });
+
+    it('fills its cache past the browser\'s, and is checked for updates past it too', async () => {
+        const { did, fire } = worker();
+        await fire('install');
+        assert.ok(did.precached.length > 10);
+        assert.ok(did.precached.every(request => request.cache === 'reload'), 'not from the HTTP cache');
+        assert.match(read('pals.js'), /register\('\.\/sw\.js', \{ updateViaCache: 'none' \}\)/);
+        assert.match(read('welcome.js'), /register\('\.\/sw\.js', \{ updateViaCache: 'none' \}\)/);
     });
 
     it('answers from the cache when there is no network', async () => {
@@ -803,32 +844,43 @@ describe('Pals page', () => {
         assert.ok(page.location.replaced.startsWith('/fs/get/reg/Reg.html#'));
     });
 
-    it('stays open when the session cookie has expired, and says so with a link to sign in again', async () => {
+    // UPDATE_4: a notice to sign in again was missed, and the next message
+    // went undelivered - so an expired session goes to Reg.html instead.
+    it('sends a visitor whose session cookie has expired to Reg.html, with the way back', async () => {
         for (const cookie of ['', `ssid=${bob.pub}.1.sig`]) {
-            const page = await open({ cookie });
+            const page = mountPals({ localStorage: { pub: alice.pub, pub_name: 'alice' }, cookie, idb: { keys: kept(alice) } });
+            await page.settle();
 
-            assert.strictEqual(page.location.replaced, null, 'expired, or somebody else\'s: ' + cookie);
-            assert.ok(page.html('user').includes(`>alice (${tag(alice.pub)})<`));
-            assert.strictEqual(page.element('session_expired').hidden, false);
-            assert.strictEqual(page.element('sign_in_again').href, `/fs/get/reg/Reg.html#${PAGE}`);
+            assert.strictEqual(page.location.replaced, `/fs/get/reg/Reg.html#${PAGE}`, 'expired, or somebody else\'s: ' + cookie);
+            assert.strictEqual(page.html('pals'), '', 'and draws nothing');
+            assert.strictEqual(page.fetch.calls.length, 0);
         }
-        const live = await open();
-        assert.strictEqual(live.element('session_expired').hidden, true);
     });
 
-    it('notices the cookie expiring while the page is open, and it coming back', async () => {
+    it('goes to Reg.html when the cookie expires while the page is open, once it is looked at again', async () => {
         const page = await open();
+        page.show();
+        assert.strictEqual(page.location.replaced, null, 'not while the cookie is live');
+
         page.document.cookie = '';
         page.show();
-        assert.strictEqual(page.element('session_expired').hidden, false);
-
-        page.document.cookie = signedIn().cookie;
-        page.show();
-        assert.strictEqual(page.element('session_expired').hidden, true);
+        assert.strictEqual(page.location.replaced, `/fs/get/reg/Reg.html#${PAGE}`);
     });
 
-    it('sends with the kept key when the session has expired, with a proof the server checks', async () => {
-        const page = await open({ cookie: '' });
+    it('goes to Reg.html instead of writing a message, once the cookie has expired', async () => {
+        const page = await open();
+        await addPal(page, bob);
+        page.document.cookie = '';
+
+        page.click('message_add');
+        await page.settle();
+        assert.strictEqual(page.location.replaced, `/fs/get/reg/Reg.html#${PAGE}`);
+        assert.strictEqual(page.element('dlg_compose').open, false, 'nothing is written that could not be sent');
+        assert.deepStrictEqual(sent(page), []);
+    });
+
+    it('sends every part with a proof made with the kept key, which the server checks', async () => {
+        const page = await open();
         await addPal(page, bob);
         const before = Date.now();
         await write(page, 'still here');
@@ -994,6 +1046,21 @@ describe('Pals page', () => {
         await page.settle();
         assert.deepStrictEqual(sent(page).slice(before).map(p => p.to), [carol.pub]);
         assert.ok(!page.html('log').includes('not delivered'));
+    });
+
+    it('goes to Reg.html instead of sending again, once the cookie has expired', async () => {
+        const page = await open({ routes: { 'POST /push/api/send': () => [410, { error: 'Gone', message: 'gone' }] } });
+        await addPal(page, bob);
+        await write(page, 'hi');
+        const before = sent(page).length;
+        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.document.cookie = '';
+
+        page.element('message_retry').onclick();
+        await page.settle();
+        assert.strictEqual(page.location.replaced, `/fs/get/reg/Reg.html#${PAGE}`);
+        assert.strictEqual(sent(page).length, before);
+        assert.notStrictEqual(page.stored().messages[0].delivery[bob.pub], 'sending', 'left as it was, to send again after');
     });
 
     it('does not send to a pal who is not in the directory, and says so', async () => {

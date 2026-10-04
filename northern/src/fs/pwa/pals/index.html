@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=7">
   <title>Pals</title>
 </head>
 <body>
@@ -20,9 +20,6 @@
   <header class="who">
     <h1>Pals</h1>
     <p>Signed in as <span id="user"></span>
-      <!-- The day-long session cookie has run out. Pals goes on with the key kept on this device. -->
-      <span class="expired" id="session_expired" hidden>The session has expired:
-        <a class="link" id="sign_in_again" href="/fs/get/reg/Reg.html">sign in again</a></span>
       <a class="link" href="./welcome.html" id="setup_again">set up this device again</a></p>
   </header>
 
@@ -79,6 +76,9 @@
   </section>
 
   <p class="status" id="status" role="status"></p>
+
+  <!-- The version of the app: the one its service worker's cache is named after. -->
+  <footer class="version">Pals <span id="version"></span></footer>
 
 </main>
 
@@ -169,18 +169,22 @@
   </form>
 </dialog>
 
+<!-- Every script and the stylesheet carry ?v=<the version in version.js>: a
+     cache between here and the browser (Cloudflare keeps .js for 4 hours) can
+     then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js"></script>
-<script src="../../reg/cookies.js"></script>
-<script src="../../reg/oo.js"></script>
-<script src="../../reg/idcard.js"></script>
-<script src="../../reg/keystore.js"></script>
-<script src="../../reg/session.js"></script>
+<script src="../../reg/sjcl.js?v=7"></script>
+<script src="../../reg/cookies.js?v=7"></script>
+<script src="../../reg/oo.js?v=7"></script>
+<script src="../../reg/idcard.js?v=7"></script>
+<script src="../../reg/keystore.js?v=7"></script>
+<script src="../../reg/session.js?v=7"></script>
 
-<script src="./model.js"></script>
-<script src="./store.js"></script>
-<script src="./seal.js"></script>
-<script src="./views.js"></script>
-<script src="./pals.js"></script>
+<script src="./version.js?v=7"></script>
+<script src="./model.js?v=7"></script>
+<script src="./store.js?v=7"></script>
+<script src="./seal.js?v=7"></script>
+<script src="./views.js?v=7"></script>
+<script src="./pals.js?v=7"></script>
 </body>
 </html>

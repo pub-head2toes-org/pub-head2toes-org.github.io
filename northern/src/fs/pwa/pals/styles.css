@@ -117,10 +117,12 @@ a.link {
   font-size: 0.85rem;
 }
 
-/* The session cookie ran out; the link beside it renews it. */
-.expired {
-  color: var(--error);
-  font-size: 0.85rem;
+/* The app's version, at the foot of the page. */
+.version {
+  margin-top: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 /* ---- panels ---- */

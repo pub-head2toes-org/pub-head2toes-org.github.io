@@ -102,7 +102,8 @@
                     throw new Error('Pals can only tell you about a message if it may notify you. ' +
                         'Allow notifications for this site, then press Go again.');
                 }
-                return navigator.serviceWorker.register('./sw.js');
+                // Its imports are checked past the HTTP cache too (see pals.js).
+                return navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
             })
             .then(() => navigator.serviceWorker.ready)
             .then(function (ready) {

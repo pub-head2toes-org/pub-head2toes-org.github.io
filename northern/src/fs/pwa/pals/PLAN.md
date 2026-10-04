@@ -451,6 +451,30 @@ message was still on the device.
 - **Still needs a live session:** *set up this device again* (it writes the
   `/pals/` row), and everything outside Pals.
 
+## Update 4 — an expired session goes to sign in
+
+A test user missed the *sign in again* notice of Update 3, wrote a message
+anyway, and got *Not delivered*. So the notice is gone, and:
+
+- **Pals leaves for `Reg.html`** whenever the session is not live - on load,
+  when the page comes back into view, and before a message is written or sent
+  again - and `Reg.html` sends the user back after. A message mid-send when
+  the cookie runs out still goes, with its send proof, which stays.
+- **`Reg.html` hides Reg** for a browser that knows its user but whose
+  session has expired, and opens Sign in: signing in again with the same ID
+  Card is what that user wants, not a new identity by mistake. A first visit,
+  a live session and a browser that signed out still get Reg.
+- **The version at the foot of the page.** `version.js` holds
+  `PALS_VERSION`; `sw.js` names its cache `pals-v<version>` after it and the
+  page shows `Pals v<version>`. Bump it whenever a cached file changes.
+- **One version at a time, whatever caches it.** Cloudflare turns the
+  server's `no-cache` on `.js` into `max-age=14400` (its Browser Cache TTL),
+  while HTML passes through. A new `index.html` then ran a 4-hour-old
+  `pals.js`, which threw on the element this update took out. So every script
+  and the stylesheet in `index.html` and `welcome.html` is asked for as
+  `?v=<version>` (a test holds them to `PALS_VERSION`), the worker precaches
+  with `cache: 'reload'`, and it is registered with `updateViaCache: 'none'`.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**
@@ -474,7 +498,8 @@ message was still on the device.
    sends opens for nobody without the owner's key. Checking the age (a day, as
    `session.js` mints it) would be a one-line change to `PushApi.session`.
 3. **The kept key outlives the cookie.** Pals keeps working on a device after
-   the cookie expires, for reading and, since Update 3, for sending. On a shared device, signing out must call
+   the cookie expires: the service worker still opens what arrives, though
+   since Update 4 the page itself goes to sign in. On a shared device, signing out must call
    `session.forget()` on the `pals.` host, or the key stays. Pals has no
    *Sign out* of its own yet; `Logout.html` only clears the cookie.
 4. **Anybody signed in can message anybody listed.** Anyone can register a key,

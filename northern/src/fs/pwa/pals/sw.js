@@ -1,12 +1,14 @@
 // What a push needs: the key the ID Card left on this device, the seal to
 // open with it, the model to name a sender, and the store to keep what came.
-importScripts('../../reg/keystore.js', './model.js', './store.js', './seal.js');
+importScripts('./version.js', '../../reg/keystore.js', './model.js', './store.js', './seal.js');
 
-const CACHE_NAME = 'pals-v5';
+// Named after the app's version, which index.html shows: bump it in version.js.
+const CACHE_NAME = 'pals-v' + PALS_VERSION;
 const urlsToCache = [
   './index.html',
   './welcome.html',
   './styles.css',
+  './version.js',
   './model.js',
   './store.js',
   './seal.js',
@@ -28,7 +30,9 @@ const urlsToCache = [
 const shell = urlsToCache.map((url) => new URL(url, self.location.href).href);
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache)));
+  // Past the browser's HTTP cache, which may hold another version's files.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) =>
+    cache.addAll(urlsToCache.map((url) => new Request(url, { cache: 'reload' })))));
   self.skipWaiting();
 });
 

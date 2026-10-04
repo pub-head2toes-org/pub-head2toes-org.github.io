@@ -3,11 +3,10 @@
 
 (function () {
 
-    // Pals is for whoever this browser is signed in to Northern as. Anybody
-    // else registers or signs in first, and Reg.html sends them back here. A
-    // session cookie that has expired is no reason to leave: messages are
-    // sealed, opened and sent with the key kept on the device (UPDATE_3).
-    if (!session.known()) {
+    // Pals is for whoever is signed in to Northern. Anybody else - and anybody
+    // whose day-long session cookie has expired - signs in first, and Reg.html
+    // sends them back here (UPDATE_4).
+    if (!session.signedIn()) {
         window.location.replace(PalsModel.regUrl(
             window.location.pathname, window.location.search, window.location.hash));
         return;
@@ -31,11 +30,17 @@
         $('need_card_link').href = PalsModel.regUrl(window.location.pathname, window.location.search, '');
     }
 
-    // The cookie lasts a day, so it can expire with the page open: this runs
-    // on every render and whenever the page comes back into view.
+    // The cookie lasts a day, so it can expire with the page open. A notice
+    // to sign in again was easy to miss, and writing on regardless ended in
+    // "Not delivered" (UPDATE_4): so the page goes to Reg.html, and back here
+    // after. This runs whenever the page comes back into view, and before a
+    // message is written or sent again. False when the page is leaving.
     function checkSession() {
-        $('session_expired').hidden = session.signedIn();
-        $('sign_in_again').href = PalsModel.regUrl(window.location.pathname, window.location.search, '');
+        if (session.signedIn()) {
+            return true;
+        }
+        window.location.replace(PalsModel.regUrl(window.location.pathname, window.location.search, ''));
+        return false;
     }
 
     // What is selected in each list, and what the log is showing.
@@ -128,7 +133,6 @@
     // ---- the page ------------------------------------------------------
 
     function render() {
-        checkSession();
         $('pals').innerHTML = PalsViews.pals(state, ui.pal);
         $('groups').innerHTML = PalsViews.groups(state, ui.group);
         $('members').innerHTML = PalsViews.members(state, ui.group, ui.member);
@@ -237,6 +241,9 @@
         $('message_retry').hidden = !failures;
         $('message_retry').onclick = function () {
             $('dlg_message').close();
+            if (!checkSession()) {
+                return;
+            }
             Object.keys(m.delivery).forEach(function (pub) {
                 if (m.delivery[pub] !== 'sent') {
                     m.delivery[pub] = 'sending';
@@ -301,6 +308,9 @@
     }
 
     function addMessage() {
+        if (!checkSession()) {
+            return;
+        }
         if (!ownKey) {
             say('Load your ID Card on this device first - messages are sealed with its key.');
             return;
@@ -513,7 +523,7 @@
     // ---- start ---------------------------------------------------------
 
     $('user').innerHTML = PalsViews.pill(me.name, me.pub);
-    checkSession();
+    $('version').textContent = 'v' + PALS_VERSION;
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) {
             checkSession();
@@ -567,7 +577,10 @@
             needCard(!ownKey);
             render();
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js')
+                // updateViaCache 'none': the worker's own imports (version.js,
+                // model.js...) are checked past the HTTP cache too, so a new
+                // version is seen at once.
+                navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
                     .catch(err => console.warn('Service Worker registration failed', err));
                 // The service worker took something in: file it.
                 navigator.serviceWorker.addEventListener('message', function (event) {
