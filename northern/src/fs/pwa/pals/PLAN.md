@@ -475,6 +475,24 @@ anyway, and got *Not delivered*. So the notice is gone, and:
   `?v=<version>` (a test holds them to `PALS_VERSION`), the worker precaches
   with `cache: 'reload'`, and it is registered with `updateViaCache: 'none'`.
 
+## Update 5 — reply and correction
+
+- **A bubble of three dots** (`...`, light grey) sits by the sender's name on
+  every row of the Log: the message opens to more than reading.
+- **Reply**, bottom left of an incoming message: a text area opens under the
+  message and the button turns into *Send*, which sends the original, a line
+  `Sent by: <name> on <date sent>`, a line `--- Reply ---`, then the reply - as a new message, to where the original
+  came from: its group, or its sender. A sender who is not a pal cannot be
+  answered (their key is not one the user chose); the overlay says so.
+- **Correction**, bottom left of an outgoing message: the text area opens
+  with a copy of the message to edit, and *Correct* sends the original, its
+  `Sent by:` line, a line `--- Correction ---`, then the edited copy, to where the original went. A
+  copy left as it was is not sent.
+- Both are ordinary messages (`PalsModel.answer`), sealed and delivered as
+  any other; the original stays as it was. Both go to `Reg.html` first when
+  the session has expired, as writing a message does.
+- `PALS_VERSION` is 8.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**

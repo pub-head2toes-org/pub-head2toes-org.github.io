@@ -253,7 +253,67 @@
             render();
             deliver(m);
         };
+        answer(m);
         $('dlg_message').showModal();
+    }
+
+    /**
+     * Reply to an incoming message, or send a correction of an outgoing one
+     * (UPDATE_5). The first click opens a text area under the message - empty
+     * for a reply, a copy of the message for a correction - and the button
+     * turns into Send, or Correct, which sends the original, a separator line
+     * and the new text as a new message.
+     */
+    function answer(m) {
+        const kind = m.out ? 'correction' : 'reply';
+        const button = $('message_answer');
+        const body = $('message_answer_body');
+        let writing = false;
+        button.textContent = m.out ? 'Correction' : 'Reply';
+        button.className = '';
+        $('message_answer_box').hidden = true;
+        $('message_body').rows = 12;
+        button.onclick = function () {
+            if (!checkSession()) {
+                $('dlg_message').close();
+                return;
+            }
+            if (!ownKey) {
+                $('message_status').textContent = 'Load your ID Card on this device first - messages are sealed with its key.';
+                return;
+            }
+            if (!writing) {
+                try {
+                    PalsModel.answerTo(state, m);
+                } catch (e) {
+                    $('message_status').textContent = e.message;
+                    return;
+                }
+                writing = true;
+                $('message_answer_label').textContent = m.out ? 'The message, corrected' : 'Your reply';
+                body.value = m.out ? m.body : '';
+                $('message_answer_box').hidden = false;
+                $('message_body').rows = 6;
+                $('message_retry').hidden = true;
+                $('message_status').textContent = '';
+                button.textContent = m.out ? 'Correct' : 'Send';
+                button.className = 'primary';
+                body.focus();
+                return;
+            }
+            let message;
+            try {
+                message = PalsModel.answer(state, me, m, kind, body.value, Date.now(), wireId());
+            } catch (e) {
+                $('message_status').textContent = e.message;
+                return;
+            }
+            $('dlg_message').close();
+            save();
+            render();
+            say('Sending…');
+            deliver(message);
+        };
     }
 
     // ---- sending -------------------------------------------------------

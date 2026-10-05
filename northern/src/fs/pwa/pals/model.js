@@ -333,6 +333,17 @@ const PalsModel = (function () {
 
     // ---- messages ------------------------------------------------------
 
+    /** When a message was sent, as the log and an answer show it: 2026-10-05 13:07, local time. */
+    api.time = function (ts) {
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) {
+            return '';
+        }
+        const two = n => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) +
+            ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
+    };
+
     /** One line of a message: its first 128 characters, line breaks flattened. */
     api.excerpt = function (body) {
         return Array.from(String(body || '').replace(/\s+/g, ' ').trim()).slice(0, api.EXCERPT).join('');
@@ -430,6 +441,52 @@ const PalsModel = (function () {
             body: text,
             delivery: delivery
         });
+    };
+
+    // The line between a message and the reply or correction sent with it (UPDATE_5).
+    api.SEPARATORS = { reply: '--- Reply ---', correction: '--- Correction ---' };
+
+    /**
+     * Where an answer to a message goes: a reply to where an incoming one
+     * came from - its group, or its sender - and a correction to where an
+     * outgoing one went. Throws when that pal or group is no longer here.
+     */
+    api.answerTo = function (state, message) {
+        const m = message;
+        if (m.to.kind === 'group') {
+            if (!api.group(state, m.to.id)) {
+                throw new Error('there is no group ' + m.to.name + ' any more');
+            }
+            return { kind: 'group', id: m.to.id };
+        }
+        const pub = m.out ? m.to.id : m.from;
+        if (!api.pal(state, pub)) {
+            const name = m.out ? m.to.name : m.fromName;
+            throw new Error(api.label(name, pub) + ' is not a pal - add them first');
+        }
+        return { kind: 'pal', id: pub };
+    };
+
+    /**
+     * A reply to an incoming message or a correction of an outgoing one
+     * (`kind` 'reply' or 'correction'): a new message that carries the
+     * original, who sent it and when, a separator line, then `text`.
+     */
+    api.answer = function (state, me, message, kind, text, ts, wire) {
+        const added = String(text || '');
+        if (!added.trim()) {
+            throw new Error(kind === 'reply' ? 'write the reply first' : 'there is nothing to send');
+        }
+        if (kind === 'correction' && added.trim() === message.body.trim()) {
+            throw new Error('nothing is corrected yet');
+        }
+        const target = api.answerTo(state, message);
+        // The name a sender has now, or the one they had when it was filed - as the log shows it.
+        const known = api.nameOf(state, message.from, me);
+        const sender = api.label(known === '?' && message.fromName ? message.fromName : known, message.from);
+        const sent = 'Sent by: ' + sender + ' on ' + api.time(message.ts);
+        return api.compose(state, me, target,
+            message.body + '\n' + sent + '\n' + api.SEPARATORS[kind] + '\n' + added, ts, wire);
     };
 
     /**

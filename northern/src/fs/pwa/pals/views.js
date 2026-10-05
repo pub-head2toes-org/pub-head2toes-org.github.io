@@ -46,15 +46,7 @@ const PalsViews = (function () {
             '" ' + attrs + '>' + inner + '</button>';
     };
 
-    const time = function (ts) {
-        const d = new Date(ts);
-        if (isNaN(d.getTime())) {
-            return '';
-        }
-        const two = n => String(n).padStart(2, '0');
-        return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) +
-            ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
-    };
+    const time = PalsModel.time;
     api.time = time;
 
     api.pals = function (state, selected) {
@@ -67,7 +59,11 @@ const PalsViews = (function () {
         ).join('');
     };
 
-    /** A message takes two rows: how it starts, then who sent it. */
+    /**
+     * A message takes two rows: how it starts, then who sent it - with a
+     * bubble of three dots by the name, as there is more to do once it is
+     * opened: reply, or send a correction (UPDATE_5).
+     */
     api.log = function (messages, state, me) {
         if (!messages.length) {
             return api.empty('Nothing here yet.');
@@ -84,6 +80,7 @@ const PalsViews = (function () {
             return row('data-message="' + esc(m.id) + '"', false,
                 '<span class="line">' + esc(text) + (more ? '&hellip;' : '') + '</span>' +
                 '<span class="line meta">' + api.pill(name, m.from) +
+                '<span class="more" title="' + (m.out ? 'Open to send a correction' : 'Open to reply') + '">...</span>' +
                 (where ? '<span class="where">' + esc(where) + '</span>' : '') +
                 (status ? '<span class="state ' + status.kind + '">' + esc(status.text) + '</span>' : '') +
                 '<time>' + esc(time(m.ts)) + '</time></span>');

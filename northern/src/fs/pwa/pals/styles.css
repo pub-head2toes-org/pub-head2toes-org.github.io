@@ -8,6 +8,7 @@
   --muted: #5f6e64;
   --selected: #e2efe7;
   --error: #a8322a;
+  --more-bg: #e4e7e4;
   --pill-bg: 60% 86%;
   --pill-text: 45% 22%;
   /* How tall a list is. The right hand column stacks two in the same height. */
@@ -26,6 +27,7 @@
     --muted: #9aa89f;
     --selected: #2a3a31;
     --error: #ff9d94;
+    --more-bg: #39433d;
     --pill-bg: 35% 28%;
     --pill-text: 60% 88%;
   }
@@ -201,6 +203,19 @@ a.link {
 
 .meta time { margin-left: auto; flex: none; }
 
+/* By the sender's name: a message opens to more - Reply, or Correction. */
+.more {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--more-bg);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: bold;
+  line-height: 1.35;
+  letter-spacing: 1px;
+}
+
 .where {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -343,6 +358,11 @@ dialog .buttons {
 }
 
 dialog .meta { margin: 0; }
+
+/* Reply and Correction sit on the left, away from Close. */
+#message_answer { margin-right: auto; }
+
+.answer label { margin: 4px 0; }
 
 .error {
   margin: 0;

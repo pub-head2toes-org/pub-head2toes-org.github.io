@@ -353,6 +353,52 @@ describe('Pals model - messages', () => {
         assert.deepStrictEqual(bodies({ kind: 'member', id: 'Family', pub: carol.pub }), ['c-group']);
         assert.deepStrictEqual(bodies({ kind: 'nonsense' }), []);
     });
+
+    // UPDATE_5: a reply and a correction are new messages carrying the
+    // original, then who sent it and when.
+    it('replies where a message came from: its group, or its sender', () => {
+        const state = withPals();
+        const direct = Model.receive(state, me, envelope(bob, 'are you in?', { id: 'a' }));
+        const group = Model.receive(state, me, envelope(carol, '[Family] dinner at 8', { id: 'b' }));
+
+        const reply = Model.answer(state, me, direct, 'reply', 'yes', 5, 'w1');
+        assert.deepStrictEqual(plain(reply.to), { kind: 'pal', id: bob.pub, name: 'bob' });
+        assert.strictEqual(reply.body, `are you in?\nSent by: bob (${tag(bob.pub)}) on ${Model.time(1000)}\n--- Reply ---\nyes`);
+        assert.strictEqual(reply.out, true);
+        assert.deepStrictEqual(plain(reply.delivery), { [bob.pub]: 'sending' });
+
+        const toGroup = Model.answer(state, me, group, 'reply', 'see you', 6, 'w2');
+        assert.deepStrictEqual(plain(toGroup.to), { kind: 'group', id: 'Family', name: 'Family' });
+        assert.strictEqual(toGroup.body, `dinner at 8\nSent by: carol (${tag(carol.pub)}) on ${Model.time(1000)}\n--- Reply ---\nsee you`);
+        assert.deepStrictEqual(Object.keys(toGroup.delivery), [bob.pub, carol.pub]);
+    });
+
+    it('sends a correction where the message went, after the original', () => {
+        const state = withPals();
+        const m = Model.compose(state, me, { kind: 'pal', id: carol.pub }, 'dinner at 8', 1, 'w1');
+        const fixed = Model.answer(state, me, m, 'correction', 'dinner at 9', 2, 'w2');
+
+        assert.deepStrictEqual(plain(fixed.to), { kind: 'pal', id: carol.pub, name: 'carol' });
+        assert.strictEqual(fixed.body, `dinner at 8\nSent by: alice (${tag(alice.pub)}) on ${Model.time(1)}\n--- Correction ---\ndinner at 9`);
+        assert.notStrictEqual(fixed.id, m.id, 'a new message');
+        assert.strictEqual(m.body, 'dinner at 8', 'the original stays as it was');
+    });
+
+    it('refuses an empty reply, a correction that changes nothing, and an answer to nobody', () => {
+        const state = withPals();
+        const fromBob = Model.receive(state, me, envelope(bob, 'hi', { id: 'a' }));
+        const fromDave = Model.receive(state, me, envelope(dave, 'hi', { id: 'b' }), 'dave');
+        const mine = Model.compose(state, me, { kind: 'group', id: 'Family' }, 'hi all', 1, 'w');
+        const count = state.messages.length;
+
+        assert.throws(() => Model.answer(state, me, fromBob, 'reply', ' \n', 2, 'w'), /write the reply first/);
+        assert.throws(() => Model.answer(state, me, mine, 'correction', 'hi all ', 2, 'w'), /nothing is corrected/);
+        assert.throws(() => Model.answer(state, me, mine, 'correction', '', 2, 'w'), /nothing to send/);
+        assert.throws(() => Model.answer(state, me, fromDave, 'reply', 'who?', 2, 'w'), new RegExp(`dave \\(${tag(dave.pub)}\\) is not a pal`));
+        Model.removeGroup(state, 'Family');
+        assert.throws(() => Model.answer(state, me, mine, 'correction', 'hi everyone', 2, 'w'), /no group Family any more/);
+        assert.strictEqual(state.messages.length, count, 'nothing was filed');
+    });
 });
 
 describe('Pals model - keeping it', () => {
@@ -474,6 +520,17 @@ describe('Pals views', () => {
         assert.ok(second.includes(`class="pill" style="--hue:${Views.hue(bob.pub)}">bob (${tag(bob.pub)})`));
     });
 
+    it('puts a bubble of three dots by the sender, as a message opens to more', () => {
+        const s = Model.load(plain(state));
+        Model.receive(s, me, envelope(bob, 'hi'));
+        Model.compose(s, me, { kind: 'pal', id: bob.pub }, 'hi', 1, 'w');
+        const html = Views.log(Model.log(s), s, me);
+
+        assert.ok(html.includes(`bob (${tag(bob.pub)})</span><span class="more" title="Open to reply">...</span>`));
+        assert.ok(html.includes(`alice (${tag(alice.pub)})</span><span class="more" title="Open to send a correction">...</span>`));
+        assert.match(read('styles.css'), /\.more\s*{[^}]*background:\s*var\(--more-bg\)/);
+    });
+
     it('says when a message is on its way, did not get there, or is missing parts', () => {
         const s = Model.load(plain(state));
         const m = Model.compose(s, me, { kind: 'pal', id: bob.pub }, 'hi', 1, 'w');
@@ -527,7 +584,7 @@ describe('Pals shell', () => {
         assert.ok(order.every(at => at !== -1), 'every section is on the page');
         assert.deepStrictEqual(order, [...order].sort((a, b) => a - b), 'in the order the prompt gives');
         assert.ok(!/invite/i.test(index), 'UPDATE_1 takes the invite link out');
-        for (const id of ['pal_add', 'pal_remove', 'message_add', 'group_add', 'group_remove', 'member_add', 'member_remove', 'pal_pick', 'message_retry']) {
+        for (const id of ['pal_add', 'pal_remove', 'message_add', 'group_add', 'group_remove', 'member_add', 'member_remove', 'pal_pick', 'message_retry', 'message_answer', 'message_answer_body']) {
             assert.ok(index.includes(`id="${id}"`), id);
         }
         assert.match(read('styles.css'), /\.panels\s*{[^}]*grid-template-columns:(\s*minmax\([^)]*fr\)){3};/);
@@ -1105,6 +1162,91 @@ describe('Pals page', () => {
         page.element('verify_reset').onclick();
         await page.settle();
         assert.strictEqual(page.stored().pals[0].verified, false);
+    });
+
+    // UPDATE_5: Reply on an incoming message, Correction on an outgoing one.
+    it('replies to an incoming message: Reply opens a text area and turns into Send', async () => {
+        const page = await open({ idb: { inbox: { 1: openedItem(bob, 'are you in?') } } });
+        await addPal(page, bob);
+        await page.settle();
+        const id = page.stored().messages[0].id;
+        page.pick('log', 'data-message', id);
+
+        const button = page.element('message_answer');
+        assert.strictEqual(button.textContent, 'Reply');
+        assert.strictEqual(page.element('message_answer_box').hidden, true);
+        button.onclick();
+        assert.strictEqual(page.element('message_answer_box').hidden, false);
+        assert.strictEqual(page.element('message_answer_body').value, '');
+        assert.strictEqual(button.textContent, 'Send');
+
+        button.onclick();
+        assert.strictEqual(page.element('message_status').textContent, 'write the reply first');
+        assert.strictEqual(page.element('dlg_message').open, true);
+
+        type(page, 'message_answer_body', 'yes, at 8');
+        button.onclick();
+        await page.settle();
+        assert.strictEqual(page.element('dlg_message').open, false);
+        const [push] = sent(page);
+        assert.strictEqual(push.to, bob.pub);
+        const replied = `are you in?\nSent by: bob (${tag(bob.pub)}) on ${Model.time(1000)}\n--- Reply ---\nyes, at 8`;
+        assert.strictEqual((await opened(page))[0].body, replied);
+        assert.deepStrictEqual(page.stored().messages.map(m => [m.out, m.body]), [[false, 'are you in?'], [true, replied]]);
+        assert.strictEqual(page.element('status').textContent, 'Sent.');
+
+        // Opened again, the overlay starts closed up, as Reply.
+        page.pick('log', 'data-message', id);
+        assert.strictEqual(button.textContent, 'Reply');
+        assert.strictEqual(page.element('message_answer_box').hidden, true);
+    });
+
+    it('corrects an outgoing message: Correction opens a copy to edit and turns into Correct', async () => {
+        const page = await populated();
+        await write(page, 'dinner at 8');
+        page.pick('log', 'data-message', page.stored().messages[0].id);
+
+        const button = page.element('message_answer');
+        assert.strictEqual(button.textContent, 'Correction');
+        button.onclick();
+        assert.strictEqual(page.element('message_answer_body').value, 'dinner at 8');
+        assert.strictEqual(button.textContent, 'Correct');
+
+        type(page, 'message_answer_body', 'dinner at 9');
+        const before = sent(page).length;
+        button.onclick();
+        await page.settle();
+        const pushes = sent(page).slice(before);
+        assert.deepStrictEqual(pushes.map(p => p.to).sort(), [bob.pub, carol.pub].sort(), 'to the group, as the original');
+        const bodies = (await opened(page)).slice(before).map(b => b.body);
+        const at = Model.time(page.stored().messages[0].ts);
+        assert.deepStrictEqual(bodies, Array(2).fill(`[Family] dinner at 8\nSent by: alice (${tag(alice.pub)}) on ${at}\n--- Correction ---\ndinner at 9`));
+    });
+
+    it('says why a message from somebody who is not a pal cannot be answered, and opens nothing', async () => {
+        const page = await open({ idb: { inbox: { 1: await sealedItem(dave, 'hi') } } });
+        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.element('message_answer').onclick();
+
+        assert.strictEqual(page.element('message_status').textContent, `dave (${tag(dave.pub)}) is not a pal - add them first`);
+        assert.strictEqual(page.element('message_answer_box').hidden, true);
+        assert.strictEqual(page.element('message_answer').textContent, 'Reply');
+    });
+
+    it('goes to Reg.html instead of replying, once the cookie has expired', async () => {
+        const page = await open({ idb: { inbox: { 1: openedItem(bob, 'hi') } } });
+        await addPal(page, bob);
+        await page.settle();
+        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.element('message_answer').onclick();
+        type(page, 'message_answer_body', 'hello');
+        page.document.cookie = '';
+
+        page.element('message_answer').onclick();
+        await page.settle();
+        assert.strictEqual(page.location.replaced, `/fs/get/reg/Reg.html#${PAGE}`);
+        assert.deepStrictEqual(sent(page), []);
+        assert.strictEqual(page.stored().messages.length, 1);
     });
 
     it('refuses an empty message and has nobody to write to on a first visit', async () => {

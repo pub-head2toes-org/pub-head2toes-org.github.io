@@ -302,9 +302,9 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
         element, fetch, store, stored, confirms, worker, indexedDB, settle, document,
         location: sandbox.location,
         html: id => element(id).innerHTML,
-        /** The text of every row in a list, markup stripped. */
+        /** The text of every row in a list, markup and the bubble of dots stripped. */
         rows: id => [...element(id).innerHTML.matchAll(/<button[^>]*class="row"[^>]*>(.*?)<\/button>/g)]
-            .map(m => m[1].replace(/<time>.*?<\/time>/, '').replace(/<\/span>/g, '\n').replace(/<[^>]+>/g, '').trim()),
+            .map(m => m[1].replace(/<time>.*?<\/time>/, '').replace(/<span class="more"[^>]*>.*?<\/span>/, '').replace(/<\/span>/g, '\n').replace(/<[^>]+>/g, '').trim()),
         click: id => element(id).listeners.click({}),
         /** A click on the row of a list that carries this attribute value. */
         pick: (id, attribute, value) => element(id).listeners.click({
