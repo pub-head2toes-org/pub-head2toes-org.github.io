@@ -14,7 +14,8 @@ import SqliteDB from './SqliteDB.js';
 import SezamApi from './SezamApi.js';
 import SezamDB from './SezamDB.js';
 import PushApi from './PushApi.js';
-import { posix } from 'node:path';
+import TempApi from './TempApi.js';
+import { posix, join, dirname } from 'node:path';
 const sub = {};
 
 // The host name Pals is served under (UPDATE_1). An origin is only Pals' own
@@ -43,6 +44,9 @@ export default class Server{
         const sezam = new SezamApi(db, { render, openDb: resolved => SezamDB.open(resolved) });
         // Its VAPID keys are read, or made, on the first /push/api/ request.
         const push = new PushApi(db, { render, verifySsid: ssid => crypto.verifySsid(ssid) });
+        // Temp files are kept in UPLOAD, next to the database file (UPDATE_8).
+        const temp = new TempApi(join(import.meta.dirname, dirname(dbFilePath), 'UPLOAD'),
+            { render, verifySsid: ssid => crypto.verifySsid(ssid) });
 
         const privateKey = fs.readFileSync('server.key').toString();
         const certificate = fs.readFileSync('server.crt').toString();
@@ -140,6 +144,10 @@ export default class Server{
                 push.handle(req, res, ssid);
                 return;
             }
+            if (path && TempApi.owns(path)) {
+                temp.handle(req, res, ssid);
+                return;
+            }
             if (ssid === '' && !path.startsWith("/fs/get/reg") && req.method !== 'GET'){
                 redirect(`/fs/get/reg/Reg.html#${path}`, res);
                 return; 
@@ -191,6 +199,7 @@ export default class Server{
         this.db = db;
         this.sezam = sezam;
         this.push = push;
+        this.temp = temp;
         this.httpServer = server;
         this.sslServer = ssl;
     }

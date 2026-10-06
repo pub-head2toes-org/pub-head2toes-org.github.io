@@ -55,7 +55,8 @@ export function storage(initial = {}) {
 /**
  * A fetch that answers from a table of { 'METHOD url': answer }, and keeps
  * what it was asked. An answer is the body, sent with 200 - or a function of
- * the call that returns [status, body], for anything else.
+ * the call that returns [status, body], for anything else. A body of bytes
+ * (a Uint8Array) is answered as bytes.
  */
 export function fakeFetch(routes = {}) {
     const calls = [];
@@ -74,9 +75,16 @@ export function fakeFetch(routes = {}) {
         } catch (e) {
             return Promise.reject(e);
         }
+        if (body instanceof Uint8Array) {
+            const bytes = Uint8Array.from(body);
+            return Promise.resolve({ status, ok: status >= 200 && status < 300,
+                arrayBuffer: () => Promise.resolve(bytes.buffer),
+                json: () => Promise.reject(new SyntaxError('not JSON')) });
+        }
         const text = typeof body === 'string' ? body : JSON.stringify(body);
         return Promise.resolve({ status, ok: status >= 200 && status < 300,
-            text: () => Promise.resolve(text), json: () => Promise.resolve(JSON.parse(text)) });
+            text: () => Promise.resolve(text), json: () => Promise.resolve(JSON.parse(text)),
+            arrayBuffer: () => Promise.resolve(new TextEncoder().encode(text).buffer) });
     };
     fetch.calls = calls;
     return fetch;
@@ -276,6 +284,12 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     const fetch = fakeFetch(routes);
     const store = storage(localStorage);
     const confirms = [];
+    // Object URLs, as the page makes them for a photo or a video: blob:1, blob:2...
+    const urls = { made: new Map(), revoked: [] };
+    const URL = {
+        createObjectURL(blob) { const url = 'blob:' + (urls.made.size + 1); urls.made.set(url, blob); return url; },
+        revokeObjectURL(url) { urls.revoked.push(url); }
+    };
 
     const document = {
         cookie, hidden: false, listeners: {}, getElementById: element, querySelectorAll: () => [], execCommand() {},
@@ -289,7 +303,8 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
         confirm: text => { confirms.push(text); return confirm; },
         navigator: { serviceWorker: worker.serviceWorker },
         crypto: globalThis.crypto,
-        indexedDB, fetch, Date, JSON, Promise, encodeURIComponent, Uint8Array, TextEncoder, TextDecoder, atob, btoa
+        indexedDB, fetch, Date, JSON, Promise, encodeURIComponent, Uint8Array, TextEncoder, TextDecoder, atob, btoa,
+        Blob, URL
     };
     run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'views.js', 'pals.js']);
 
@@ -299,7 +314,9 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     };
 
     return {
-        element, fetch, store, stored, confirms, worker, indexedDB, settle, document,
+        element, fetch, store, stored, confirms, worker, indexedDB, settle, document, urls,
+        /** What this device keeps of a message's photo or video. */
+        file: id => indexedDB.stores.files && indexedDB.stores.files.get(pub + ' ' + id),
         location: sandbox.location,
         html: id => element(id).innerHTML,
         /** The text of every row in a list, markup and the bubble of dots stripped. */

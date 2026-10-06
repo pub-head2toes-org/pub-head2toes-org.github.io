@@ -69,8 +69,10 @@ const PalsViews = (function () {
             return api.empty('Nothing here yet.');
         }
         return messages.map(m => {
-            const text = PalsModel.excerpt(m.body);
+            // A photo with no words shows its file name instead.
+            const text = PalsModel.excerpt(m.body) || (m.attachment ? m.attachment.name : '');
             const more = Array.from(m.body.replace(/\s+/g, ' ').trim()).length > PalsModel.EXCERPT;
+            const clip = m.attachment ? '<span class="clip" title="' + esc(api.kind(m.attachment) + ': ' + m.attachment.name) + '">&#128206;</span>' : '';
             // The name a pal has now, or the one they had when the message was filed.
             const known = PalsModel.nameOf(state, m.from, me);
             const name = known === '?' && m.fromName ? m.fromName : known;
@@ -78,13 +80,49 @@ const PalsViews = (function () {
                 : m.out ? 'to ' + PalsModel.label(m.to.name, m.to.id) : '';
             const status = api.status(m);
             return row('data-message="' + esc(m.id) + '"', false,
-                '<span class="line">' + esc(text) + (more ? '&hellip;' : '') + '</span>' +
+                '<span class="line">' + clip + esc(text) + (more ? '&hellip;' : '') + '</span>' +
                 '<span class="line meta">' + api.pill(name, m.from) +
                 '<span class="more" title="' + (m.out ? 'Open to send a correction' : 'Open to reply') + '">...</span>' +
                 (where ? '<span class="where">' + esc(where) + '</span>' : '') +
                 (status ? '<span class="state ' + status.kind + '">' + esc(status.text) + '</span>' : '') +
                 '<time>' + esc(time(m.ts)) + '</time></span>');
         }).join('');
+    };
+
+    /** 'Photo' or 'Video'. */
+    api.kind = function (att) {
+        return String(att && att.type).indexOf('video/') === 0 ? 'Video' : 'Photo';
+    };
+
+    /** A file's size in words: 820 bytes, 34 KB, 2.5 MB. */
+    api.size = function (bytes) {
+        const n = Number(bytes) || 0;
+        return n < 1024 ? n + ' bytes' : n < 1024 * 1024 ? Math.round(n / 1024) + ' KB'
+            : (Math.round(n / 1024 / 1024 * 10) / 10) + ' MB';
+    };
+
+    /**
+     * The photo or video that goes with a message, for the overlay. `url` is
+     * where the page put the file kept on this device (an object URL); without
+     * one it says how the file stands: not sent yet, being fetched, or why it
+     * could not be.
+     */
+    api.attachment = function (m, url) {
+        const att = m.attachment;
+        if (!att) {
+            return '';
+        }
+        const what = esc(api.kind(att) + ': ' + att.name + ', ' + api.size(att.size));
+        if (url) {
+            const media = api.kind(att) === 'Video'
+                ? '<video controls playsinline preload="metadata" src="' + esc(url) + '"></video>'
+                : '<img src="' + esc(url) + '" alt="' + esc(att.name) + '">';
+            return media + '<a class="link" href="' + esc(url) + '" download="' + esc(att.name) + '">Save ' + what + '</a>';
+        }
+        const status = m.out
+            ? (att.id ? 'This device no longer has it.' : 'Not sent yet.')
+            : att.error ? 'It could not be fetched: ' + att.error : 'Fetching it…';
+        return '<p class="file">' + what + '. ' + esc(status) + '</p>';
     };
 
     /** How a message stands, when there is anything to say: sending, not delivered, incomplete. */

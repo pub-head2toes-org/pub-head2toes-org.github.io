@@ -11,7 +11,7 @@ import { loadPals, mountPals, mountWelcome, fakeIndexedDB, agreementKey, plain, 
 import { REPO_ROOT, tmpDbPaths, seedSchema } from './helpers/db.js';
 import sjclClass from '../src/h2t/sjclClass.js';
 import Crypto from '../src/h2t/Crypto.js';
-import { generateKeys, readKeys, sendProof } from '../src/h2t/PushApi.js';
+import { generateKeys, readKeys, sendProof, MAX_PAYLOAD } from '../src/h2t/PushApi.js';
 
 const { Model, Views, Seal, Keys } = loadPals();
 const sjcl = new sjclClass().get();
@@ -569,6 +569,139 @@ describe('Pals views', () => {
 // ---------------------------------------------------------------------------
 // The files, and sw.js
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// attachments: a photo or a video that goes with a message
+// ---------------------------------------------------------------------------
+
+describe('Pals attachments - model, seal and views', () => {
+    const withPals = () => {
+        const state = Model.empty();
+        Model.addPal(state, bob.pub, 'bob', me);
+        Model.addPal(state, carol.pub, 'carol', me);
+        Model.addGroup(state, 'Family');
+        Model.addMember(state, 'Family', bob.pub);
+        Model.addMember(state, 'Family', carol.pub);
+        return state;
+    };
+    const fileId = 'F'.repeat(43);
+    const fileKey = 'K'.repeat(43);
+
+    it('takes a photo or a video of at most 50 MB, sealed, and names it without a path', () => {
+        assert.deepStrictEqual(plain(Model.attachment('IMG_0001.JPG', 'image/jpeg', 2048)),
+            { name: 'IMG_0001.JPG', type: 'image/jpeg', size: 2048, id: '', key: '' });
+        assert.strictEqual(Model.attachment('clip.mov', 'Video/QuickTime', 1).type, 'video/quicktime');
+        assert.strictEqual(Model.attachment('C:\\Users\\a\\b/c\u0007.png', 'image/png', 1).name, 'c.png');
+        assert.strictEqual(Array.from(Model.attachment('🍉'.repeat(100), 'image/png', 1).name).length, 60);
+        assert.strictEqual(Model.attachment('', 'image/png', 1).name, 'attachment');
+        assert.strictEqual(Model.MAX_FILE + 29, 50 * 1024 * 1024, 'what the temp API takes, less what sealing adds');
+        assert.ok(Model.attachment('big.mp4', 'video/mp4', Model.MAX_FILE));
+
+        assert.throws(() => Model.attachment('a.pdf', 'application/pdf', 10), /only a photo or a video/);
+        assert.throws(() => Model.attachment('a', '', 10), /only a photo or a video/);
+        assert.throws(() => Model.attachment('a.png', 'image/png', 0), /empty/);
+        assert.throws(() => Model.attachment('big.mp4', 'video/mp4', Model.MAX_FILE + 1), /50 MB at most/);
+    });
+
+    it('sends a photo with no words, and a long text with one in shorter parts, the photo with every part', () => {
+        const state = withPals();
+        assert.throws(() => Model.compose(state, me, { kind: 'pal', id: bob.pub }, ' ', 1, 'w'), /nothing to send/);
+
+        const photo = Model.compose(state, me, { kind: 'pal', id: bob.pub }, '', 1, 'w1', Model.attachment('a.jpg', 'image/jpeg', 10));
+        Object.assign(photo.attachment, { id: fileId, key: fileKey });
+        assert.deepStrictEqual(plain(Model.pushes(photo)), [{ to: bob.pub, id: 'w1', part: 1, parts: 1, message: '',
+            att: { id: fileId, key: fileKey, type: 'image/jpeg', name: 'a.jpg', size: 10 } }]);
+
+        const long = Model.compose(state, me, { kind: 'group', id: 'Family' }, '🍉'.repeat(1300), 2, 'w2', Model.attachment('a.jpg', 'image/jpeg', 10));
+        Object.assign(long.attachment, { id: fileId, key: fileKey });
+        const pushes = plain(Model.pushes(long));
+        assert.deepStrictEqual(pushes.map(p => [p.part, p.parts]), [[1, 3], [2, 3], [3, 3], [1, 3], [2, 3], [3, 3]],
+            'without the photo it is two parts; the photo takes room in each');
+        assert.ok(pushes.every(p => p.att.id === fileId && p.message.startsWith('[Family] ')));
+    });
+
+    it('still fits every part in one push, at the worst: emoji, the longest names, 100 parts', async () => {
+        const state = Model.empty();
+        Model.addPal(state, bob.pub, 'bob', me);
+        // A name is cut to 40 UTF-16 units: 20 emoji.
+        const group = Model.addGroup(state, '🍉'.repeat(40)).name;
+        Model.addMember(state, group, bob.pub);
+        const att = Model.attachment('"🍉'.repeat(30), 'image/' + 'x'.repeat(34), Model.MAX_FILE);
+        for (const text of ['🍉'.repeat(30000), '\u0001'.repeat(30000), '"'.repeat(30000)]) {
+            const m = Model.compose(state, me, { kind: 'group', id: group }, text, Date.now(), 'x'.repeat(40), att);
+            Object.assign(m.attachment, { id: fileId, key: fileKey });
+            const [push] = plain(Model.pushes(m));
+            const wire = { id: push.id, part: 100, parts: 100 };
+            const sealed = await Seal.seal(keys.alice, alice.pub, bob.pub, wire, { ts: Date.now(), body: push.message, att: push.att });
+            const payload = JSON.stringify({ v: 2, from: alice.pub, to: bob.pub, ...wire, sealed });
+            assert.ok(sealed.length <= 3800, `the seal is ${sealed.length} characters`);
+            assert.ok(payload.length <= MAX_PAYLOAD, `the push is ${payload.length} characters`);
+        }
+    });
+
+    it('seals the photo\'s id and key in with the text, and opens them only for the receiver', async () => {
+        const wire = { id: 'w1', part: 1, parts: 1 };
+        const att = { id: fileId, key: fileKey, type: 'image/jpeg', name: 'a.jpg', size: 10 };
+        const outer = { v: 2, from: alice.pub, to: bob.pub, ...wire, sealed: await Seal.seal(keys.alice, alice.pub, bob.pub, wire, { ts: 1, body: 'look', att }) };
+
+        assert.deepStrictEqual(plain(await Seal.open(keys.bob, outer)), { v: 2, from: alice.pub, to: bob.pub, ...wire, ts: 1, body: 'look', att });
+        assert.ok(!Buffer.from(outer.sealed, 'base64url').toString('latin1').includes(fileKey));
+        await assert.rejects(Seal.open(keys.carol, { ...outer, to: carol.pub }));
+        assert.ok(!('att' in plain(await Seal.open(keys.bob, await sealedFrom(alice, bob, 'no photo')))), 'and a message without one has none');
+    });
+
+    it('locks a file under a key of its own, which opens it and nothing else does', async () => {
+        const photo = nodeCrypto.randomBytes(70000);
+        const { locked, key } = await Seal.lock(photo);
+        const bytes = Buffer.from(locked);
+
+        assert.match(key, /^[A-Za-z0-9_-]{43}$/);
+        assert.strictEqual(bytes.length, photo.length + 29);
+        assert.strictEqual(bytes.indexOf(photo.subarray(0, 32)), -1, 'Northern holds nothing it can read');
+        assert.deepStrictEqual(Buffer.from(await Seal.unlock(bytes, key)), photo);
+        assert.notStrictEqual((await Seal.lock(photo)).key, key, 'a fresh key every time');
+
+        await assert.rejects(Seal.unlock(bytes, (await Seal.lock(photo)).key), 'not with another key');
+        const changed = Buffer.from(bytes);
+        changed[100] ^= 1;
+        await assert.rejects(Seal.unlock(changed, key), 'not once a byte has changed');
+        await assert.rejects(Seal.unlock(bytes.subarray(0, 20), key));
+        await assert.rejects(Seal.unlock(bytes, 'short'));
+    });
+
+    it('files a received photo once, from whichever part comes first, and only one worth fetching', () => {
+        const state = withPals();
+        const att = { id: fileId, key: fileKey, type: 'image/jpeg', name: '../../a.jpg', size: 10 };
+        const m = Model.receive(state, me, envelope(bob, 'part two', { part: 2, parts: 2, att }));
+        Model.receive(state, me, envelope(bob, 'part one', { part: 1, parts: 2, att: { ...att, id: 'G'.repeat(43) } }));
+
+        assert.deepStrictEqual(plain(m.attachment), { name: 'a.jpg', type: 'image/jpeg', size: 10, id: fileId, key: fileKey,
+            saved: false, lost: false, error: '' });
+        assert.deepStrictEqual(plain(Model.unfetched(state)).map(x => x.id), [m.id]);
+        m.attachment.lost = true;
+        assert.deepStrictEqual(plain(Model.unfetched(state)), [], 'one Northern no longer has is not asked for again');
+
+        for (const bad of [{ ...att, id: 'short' }, { ...att, key: '../x' }, { ...att, type: 'text/html' }, 'x', null]) {
+            assert.strictEqual(Model.receive(state, me, envelope(carol, 'hi', { id: JSON.stringify(bad), att: bad })).attachment, undefined, JSON.stringify(bad));
+        }
+    });
+
+    it('shows a paperclip in the log, and the photo or video in the overlay - names never markup', () => {
+        const state = withPals();
+        const m = Model.compose(state, me, { kind: 'pal', id: bob.pub }, '', 1, 'w', Model.attachment('<b>"x\'.png', 'image/png', 2500000));
+        assert.match(Views.log([m], state, me), /<span class="line"><span class="clip" title="Photo: &lt;b&gt;&quot;x&#39;\.png">&#128206;<\/span>&lt;b&gt;&quot;x&#39;\.png<\/span>/);
+
+        assert.strictEqual(Views.attachment(m, 'blob:1'),
+            '<img src="blob:1" alt="&lt;b&gt;&quot;x&#39;.png"><a class="link" href="blob:1" download="&lt;b&gt;&quot;x&#39;.png">Save Photo: &lt;b&gt;&quot;x&#39;.png, 2.4 MB</a>');
+        const video = { attachment: { name: 'v.mp4', type: 'video/mp4', size: 3000 } };
+        assert.match(Views.attachment(video, 'blob:2'), /^<video controls playsinline preload="metadata" src="blob:2"><\/video>/);
+        assert.match(Views.attachment({ out: true, ...video }, null), /Video: v\.mp4, 3 KB\. Not sent yet\./);
+        assert.match(Views.attachment(video, null), /Fetching it…/);
+        assert.match(Views.attachment({ attachment: { ...video.attachment, error: 'Northern no longer has it' } }, null), /It could not be fetched: Northern no longer has it/);
+        assert.strictEqual(Views.attachment({ attachment: undefined }, null), '');
+        assert.deepStrictEqual([Views.size(900), Views.size(34 * 1024), Views.size(2.5 * 1024 * 1024)], ['900 bytes', '34 KB', '2.5 MB']);
+    });
+});
 
 describe('Pals shell', () => {
     const index = read('index.html');
@@ -1370,6 +1503,161 @@ describe('Pals page', () => {
         assert.match(page.element('status').textContent, /no longer gets messages/);
         const replaced = await open({ subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/other' } });
         assert.match(replaced.element('status').textContent, /no longer gets messages/);
+    });
+
+    // A photo the user picks, as an <input type="file"> holds it.
+    const picked = (bytes, name = 'beach.jpg', type = 'image/jpeg') =>
+        ({ name, type, size: bytes.length, arrayBuffer: () => Promise.resolve(Uint8Array.from(bytes).buffer) });
+    const writeWith = async (page, body, file) => {
+        page.click('message_add');
+        choose(page, 'compose_to');
+        type(page, 'compose_body', body);
+        page.element('compose_file').files = file ? [file] : [];
+        page.submit('compose');
+        await page.settle();
+        await page.settle();
+    };
+    const FILE_ID = 'f'.repeat(43);
+    const uploads = page => page.fetch.calls.filter(c => c.url === '/temp/api/upload');
+
+    it('uploads a photo locked in the browser first, then seals its id and key into every part, once for a whole group', async () => {
+        const photo = nodeCrypto.randomBytes(5000);
+        const page = await populated({ routes: { 'POST /temp/api/upload': () => [200, { status: 'OK', id: FILE_ID, size: 5029 }] } });
+        await writeWith(page, 'z'.repeat(1500), picked(photo));
+
+        const [up] = uploads(page);
+        assert.strictEqual(uploads(page).length, 1, 'one upload for both members');
+        assert.strictEqual(up.method, 'POST');
+        assert.strictEqual(up.headers['Content-Type'], 'application/octet-stream');
+        assert.strictEqual(Buffer.from(up.body).indexOf(photo.subarray(0, 32)), -1, 'Northern gets only what it cannot open');
+        assert.ok(page.fetch.calls.indexOf(up) < page.fetch.calls.findIndex(c => c.url === '/push/api/send'), 'before anything is pushed');
+
+        const bodies = await opened(page);
+        assert.strictEqual(bodies.length, 4, 'two parts to each of bob and carol');
+        const { att } = bodies[0];
+        assert.deepStrictEqual({ ...att, key: '' }, { id: FILE_ID, key: '', type: 'image/jpeg', name: 'beach.jpg', size: 5000 });
+        assert.ok(bodies.every(b => JSON.stringify(b.att) === JSON.stringify(att)), 'every part carries it');
+        assert.deepStrictEqual(Buffer.from(await Seal.unlock(Uint8Array.from(up.body), att.key)), photo, 'and the key in the seal opens it');
+        assert.ok(!JSON.stringify(sent(page)).includes(att.key), 'the key never travels outside the seal');
+
+        const [m] = page.stored().messages;
+        assert.deepStrictEqual([m.attachment.id, m.attachment.key], [FILE_ID, att.key]);
+        assert.deepStrictEqual(Buffer.from(page.file(m.id).bytes), photo, 'the photo stays on this device');
+        assert.strictEqual(page.element('status').textContent, 'Sent.');
+        assert.match(page.html('log'), /class="clip"/);
+
+        page.pick('log', 'data-message', m.id);
+        await page.settle();
+        assert.strictEqual(page.element('message_attachment').hidden, false);
+        assert.match(page.html('message_attachment'), /^<img src="blob:1" alt="beach\.jpg">/);
+        assert.deepStrictEqual(Buffer.from(await page.urls.made.get('blob:1').arrayBuffer()), photo);
+        page.element('dlg_message').listeners.close();
+        assert.deepStrictEqual(page.urls.revoked, ['blob:1'], 'its URL is let go when the overlay closes');
+    });
+
+    it('sends nothing when the photo cannot be uploaded, says why, and uploads it on Send again', async () => {
+        let full = true;
+        const page = await open({ routes: { 'POST /temp/api/upload': () => full
+            ? [507, { error: 'InsufficientStorage', message: 'the temp space is full; try again later' }]
+            : [200, { status: 'OK', id: FILE_ID, size: 39 }] } });
+        await addPal(page, bob);
+        await writeWith(page, 'look', picked(Buffer.from('0123456789')));
+
+        assert.deepStrictEqual(sent(page), [], 'no message without its photo');
+        const [m] = page.stored().messages;
+        assert.strictEqual(m.delivery[bob.pub], 'the photo could not be sent: the temp space is full; try again later');
+        page.pick('log', 'data-message', m.id);
+        await page.settle();
+        assert.match(page.html('message_attachment'), /^<img src="blob:1"/, 'the sender still sees it');
+
+        full = false;
+        page.element('message_retry').onclick();
+        await page.settle();
+        await page.settle();
+        assert.strictEqual(uploads(page).length, 2);
+        assert.strictEqual(sent(page).length, 1);
+        assert.strictEqual((await opened(page))[0].att.id, FILE_ID);
+        assert.strictEqual(page.stored().messages[0].delivery[bob.pub], 'sent');
+    });
+
+    it('keeps the overlay open, saying why, for a file that is not a photo or a video, or too large', async () => {
+        const page = await open();
+        await addPal(page, bob);
+        for (const [file, why] of [
+            [picked(Buffer.from('%PDF'), 'a.pdf', 'application/pdf'), 'only a photo or a video can go with a message'],
+            [{ ...picked(Buffer.from('x'), 'big.mp4', 'video/mp4'), size: 60 * 1024 * 1024 }, 'that file is too large to send: 50 MB at most']
+        ]) {
+            await writeWith(page, 'x', file);
+            assert.strictEqual(page.element('compose_error').textContent, why);
+            assert.strictEqual(page.element('dlg_compose').open, true);
+        }
+        assert.deepStrictEqual(page.stored().messages, [], 'nothing was filed');
+        assert.deepStrictEqual(uploads(page), []);
+    });
+
+    it('fetches a received photo by its id at once, opens it with the key from the seal, and keeps it here', async () => {
+        const photo = nodeCrypto.randomBytes(3000);
+        const { locked, key } = await Seal.lock(photo);
+        const att = { id: FILE_ID, key, type: 'image/png', name: 'cat.png', size: photo.length };
+        const page = await open({
+            routes: { [`GET /temp/api/download/${FILE_ID}`]: Uint8Array.from(locked) },
+            idb: { inbox: { 1: await (async () => {
+                const wire = { id: 'p1', part: 1, parts: 1 };
+                const sealed = await Seal.seal(keys.bob, bob.pub, alice.pub, wire, { ts: 5, body: '', att });
+                return { payload: { v: 2, from: bob.pub, to: alice.pub, ...wire, sealed }, at: Date.now() };
+            })() } }
+        });
+        await page.settle();
+
+        const [m] = page.stored().messages;
+        assert.deepStrictEqual(page.fetch.calls.filter(c => c.url.startsWith('/temp/api/')).map(c => `${c.method} ${c.url}`),
+            [`GET /temp/api/download/${FILE_ID}`]);
+        assert.strictEqual(m.attachment.saved, true);
+        assert.deepStrictEqual(Buffer.from(page.file(m.id).bytes), photo);
+        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n').slice(0, 2)), [['&#128206;', 'cat.png']],
+            'a paperclip, and for a photo with no words, its name');
+
+        page.pick('log', 'data-message', m.id);
+        await page.settle();
+        assert.match(page.html('message_attachment'), /^<img src="blob:1" alt="cat\.png"><a class="link" href="blob:1" download="cat\.png">/);
+
+        page.push();
+        await page.settle();
+        assert.strictEqual(page.fetch.calls.filter(c => c.url.startsWith('/temp/api/')).length, 1, 'and it is fetched once');
+    });
+
+    it('tries a photo again when Northern is out of reach, and gives up on one it no longer has, or that will not open', async () => {
+        const photo = nodeCrypto.randomBytes(100);
+        const { locked, key } = await Seal.lock(photo);
+        const ids = ['a', 'b', 'c'].map(c => c.repeat(43));
+        let reachable = false;
+        const page = await open({
+            routes: {
+                [`GET /temp/api/download/${ids[0]}`]: () => reachable ? [200, Uint8Array.from(locked)] : [502, 'Bad Gateway'],
+                [`GET /temp/api/download/${ids[1]}`]: () => [404, { error: 'NotFound', message: 'no such file; it may have been purged' }],
+                [`GET /temp/api/download/${ids[2]}`]: Uint8Array.from(locked)
+            },
+            idb: { inbox: Object.fromEntries(ids.map((id, i) => [i + 1, openedItem(bob, 'p' + i, { id: 'w' + i,
+                att: { id, key: i === 2 ? (Buffer.alloc(32, 1)).toString('base64url') : key, type: 'image/png', name: i + '.png', size: 100 } })])) }
+        });
+        await page.settle();
+
+        const errors = () => page.stored().messages.map(m => [m.attachment.saved, m.attachment.lost, m.attachment.error]);
+        assert.deepStrictEqual(errors(), [
+            [false, false, 'Northern answered 502'],
+            [false, true, 'Northern no longer has it'],
+            [false, true, 'it does not open with the key it came with']
+        ]);
+        page.pick('log', 'data-message', page.stored().messages[1].id);
+        await page.settle();
+        assert.match(page.html('message_attachment'), /It could not be fetched: Northern no longer has it/);
+
+        reachable = true;
+        page.push();
+        await page.settle();
+        assert.deepStrictEqual(errors()[0], [true, false, '']);
+        const asked = page.fetch.calls.filter(c => c.url.startsWith('/temp/api/')).map(c => c.url.slice(-1));
+        assert.deepStrictEqual(asked, ['a', 'b', 'c', 'a'], 'only the one that could still come was asked for again');
     });
 
     it('asks Northern for nothing but the directory and the push API, and writes nothing to the database', async () => {

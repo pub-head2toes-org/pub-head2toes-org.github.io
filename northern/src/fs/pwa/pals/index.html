@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=8">
+  <link rel="stylesheet" href="./styles.css?v=9">
   <title>Pals</title>
 </head>
 <body>
@@ -87,6 +87,8 @@
   <form method="dialog">
     <p class="meta"><span id="message_from"></span><span class="where" id="message_where"></span><time id="message_time"></time></p>
     <textarea id="message_body" readonly rows="12"></textarea>
+    <!-- The photo or video that goes with it, once it is on this device. -->
+    <div class="attachment" id="message_attachment" hidden></div>
     <!-- Reply to an incoming message, or correct an outgoing one: opens under it. -->
     <div class="answer" id="message_answer_box" hidden>
       <label for="message_answer_body" id="message_answer_label"></label>
@@ -108,6 +110,8 @@
     <select id="compose_to"></select>
     <label for="compose_body">Message</label>
     <textarea id="compose_body" rows="10"></textarea>
+    <label for="compose_file">Photo or video (50 MB at most)</label>
+    <input type="file" id="compose_file" accept="image/*,video/*">
     <p class="error" id="compose_error"></p>
     <div class="buttons">
       <button type="button" data-close>Cancel</button>
@@ -179,18 +183,18 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=8"></script>
-<script src="../../reg/cookies.js?v=8"></script>
-<script src="../../reg/oo.js?v=8"></script>
-<script src="../../reg/idcard.js?v=8"></script>
-<script src="../../reg/keystore.js?v=8"></script>
-<script src="../../reg/session.js?v=8"></script>
+<script src="../../reg/sjcl.js?v=9"></script>
+<script src="../../reg/cookies.js?v=9"></script>
+<script src="../../reg/oo.js?v=9"></script>
+<script src="../../reg/idcard.js?v=9"></script>
+<script src="../../reg/keystore.js?v=9"></script>
+<script src="../../reg/session.js?v=9"></script>
 
-<script src="./version.js?v=8"></script>
-<script src="./model.js?v=8"></script>
-<script src="./store.js?v=8"></script>
-<script src="./seal.js?v=8"></script>
-<script src="./views.js?v=8"></script>
-<script src="./pals.js?v=8"></script>
+<script src="./version.js?v=9"></script>
+<script src="./model.js?v=9"></script>
+<script src="./store.js?v=9"></script>
+<script src="./seal.js?v=9"></script>
+<script src="./views.js?v=9"></script>
+<script src="./pals.js?v=9"></script>
 </body>
 </html>

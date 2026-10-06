@@ -493,6 +493,46 @@ anyway, and got *Not delivered*. So the notice is gone, and:
   the session has expired, as writing a message does.
 - `PALS_VERSION` is 8.
 
+## Update 6 — a photo or a video with a message
+
+- **New message** has a file picker (`image/*`, `video/*`, 50 MB at most).
+  The text may then be empty.
+- **Sending.** Before anything is pushed, the file is locked in the browser
+  (`PalsSeal.lock`: AES-256-GCM under a fresh key of its own) and the locked
+  bytes go to `POST /temp/api/upload` (`src/h2t/TempApi.js`). Northern holds
+  only what it cannot open. The id it answers and the key go in the seal of
+  **every part**, as `att: {id, key, type, name, size}`, so a part that
+  arrives alone still brings it. A group message uploads once for every
+  member. Parts are cut shorter by what `att` takes (at most 427 bytes); a
+  test seals the worst case and checks it still fits one push.
+- **An upload that fails sends nothing.** Every receiver is marked *the photo
+  could not be sent: <why>*, and *Send again* uploads it before it pushes.
+- **Receiving.** Once a message is filed, the page fetches
+  `GET /temp/api/download/<id>` at once, since the first fetch marks the file
+  for deletion on Northern. It unlocks it with the key from the seal and
+  keeps it on the device. A fetch that fails is tried again on the next push
+  or load. A file Northern no longer has (404), or one that will not unlock,
+  is given up, and the overlay says why.
+- **Where it is kept.** IndexedDB `pals` version 2 adds the `files` store,
+  `<pub> <message id>` → `{name, type, bytes}`, apart from `state` so a save
+  stays small. The sender keeps their own copy there too. An open tab of an
+  older version closes its connection when the upgrade comes.
+- **Shown.** A 📎 by the message in the Log, or its file name when there is no
+  text. The overlay shows the photo or plays the video, from an object URL
+  that is let go when the overlay closes, with a link to save it.
+- **The service worker is unchanged.** It asks the server nothing; the page
+  does the fetching.
+- **What to know:**
+  - Uploading needs a live session cookie. The page sends the user to sign in
+    before writing, so this only matters if the cookie expires mid-send.
+  - In a group, the first member to fetch marks the file for deletion. The
+    others can still fetch it until the temp space runs short and purges it.
+  - A receiving device fetches every attachment as soon as it arrives, up to
+    50 MB each, on whatever network it is on.
+  - Replies and corrections carry the text, not the attachment.
+  - Files are kept on the device for good; nothing deletes them yet.
+- `PALS_VERSION` is 9.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**

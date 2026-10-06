@@ -10,11 +10,15 @@
  * only from the sender it names, and only in the direction it was sent, so it
  * cannot be bounced back to its sender as the other pal's.
  *
- *   sealed = 2 | salt(16) | iv(12) | AES-256-GCM({ts, body}) | tag(16), base64url
+ *   sealed = 2 | salt(16) | iv(12) | AES-256-GCM({ts, body, att?}) | tag(16), base64url
  *
  * `v, from, to, id, part, parts` are AES-GCM additional data. They travel
  * beside the seal, in clear inside the push encryption, and none of them can
  * be changed without the seal failing to open.
+ *
+ * `att`, when a photo or a video goes with the message, says where the file
+ * is held and holds the key it was locked with (`lock`), so only the
+ * receivers can fetch it and open it.
  *
  * Works in a page and in a service worker. The private key is the one
  * reg/keystore.js keeps: not extractable, ECDH only.
@@ -67,22 +71,23 @@ const PalsSeal = (function () {
     api.VERSION = VERSION;
 
     /**
-     * Seals `{ts, body}` from `from` (whose private key is `own`) to `to`.
-     * `wire` is `{id, part, parts}`. Resolves to the base64url seal.
+     * Seals `{ts, body, att?}` from `from` (whose private key is `own`) to
+     * `to`. `wire` is `{id, part, parts}`. Resolves to the base64url seal.
      */
     api.seal = function (own, from, to, wire, inner) {
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const iv = crypto.getRandomValues(new Uint8Array(12));
+        const plain = inner.att ? { ts: inner.ts, body: inner.body, att: inner.att } : { ts: inner.ts, body: inner.body };
         return messageKey(own, to, from, to, salt)
             .then(key => subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: additional(from, to, wire.id, wire.part, wire.parts) },
-                key, utf8(JSON.stringify({ ts: inner.ts, body: inner.body }))))
+                key, utf8(JSON.stringify(plain))))
             .then(sealed => b64u(join(Uint8Array.of(VERSION), salt, iv, new Uint8Array(sealed))));
     };
 
     /**
      * Opens what arrived for `to` (whose private key is `own`):
      * `{v, from, to, id, part, parts, sealed}`. Resolves to the envelope the
-     * model files - `{v, from, to, id, part, parts, ts, body}` - or rejects.
+     * model files - `{v, from, to, id, part, parts, ts, body, att?}` - or rejects.
      */
     api.open = function (own, outer) {
         const o = outer || {};
@@ -100,8 +105,43 @@ const PalsSeal = (function () {
                 key, raw.subarray(29)))
             .then(function (plain) {
                 const inner = JSON.parse(new TextDecoder().decode(plain));
-                return { v: VERSION, from: o.from, to: o.to, id: o.id, part: o.part, parts: o.parts, ts: inner.ts, body: inner.body };
+                const envelope = { v: VERSION, from: o.from, to: o.to, id: o.id, part: o.part, parts: o.parts, ts: inner.ts, body: inner.body };
+                if (inner.att) {
+                    envelope.att = inner.att;
+                }
+                return envelope;
             });
+    };
+
+    /**
+     * Locks a file - a photo or a video - before it goes to Northern's temp
+     * API: AES-256-GCM under a fresh key of its own. Resolves to `{locked,
+     * key}`: `1 | iv(12) | ciphertext | tag(16)` as bytes, and the key as
+     * base64url, which travels inside the seal of the message.
+     */
+    api.lock = function (file) {
+        const raw = crypto.getRandomValues(new Uint8Array(32));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        return subtle().importKey('raw', raw, 'AES-GCM', false, ['encrypt'])
+            .then(key => subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: utf8('Pals file v1') }, key, file))
+            .then(locked => ({ locked: join(Uint8Array.of(1), iv, new Uint8Array(locked)), key: b64u(raw) }));
+    };
+
+    /** Opens what `lock` made, with its key. Resolves to the file's bytes, or rejects. */
+    api.unlock = function (locked, key) {
+        const data = new Uint8Array(locked);
+        let raw;
+        try {
+            raw = bytes(String(key || ''));
+        } catch (e) {
+            return Promise.reject(new Error('not a file key'));
+        }
+        if (raw.length !== 32 || data.length < 29 || data[0] !== 1) {
+            return Promise.reject(new Error('not a locked Pals file'));
+        }
+        return subtle().importKey('raw', raw, 'AES-GCM', false, ['decrypt'])
+            .then(aes => subtle().decrypt({ name: 'AES-GCM', iv: data.subarray(1, 13), additionalData: utf8('Pals file v1') }, aes, data.subarray(13)))
+            .then(plain => new Uint8Array(plain));
     };
 
     /**

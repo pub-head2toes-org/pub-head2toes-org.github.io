@@ -58,22 +58,46 @@
 
     // ---- Northern ------------------------------------------------------
 
-    /** A POST to the push API. Throws what the server said, with its status. */
+    /** What an API answered, as JSON. Throws what the server said, with its status. */
+    function answered(response) {
+        return response.json().catch(() => null).then(function (data) {
+            if (response.status < 200 || response.status > 299) {
+                const error = new Error(data && data.message || 'the server answered ' + response.status);
+                error.status = response.status;
+                throw error;
+            }
+            if (!data) {
+                throw new Error('the server gave no answer');
+            }
+            return data;
+        });
+    }
+
+    /** A POST to the push API. */
     function post(url, body) {
         return fetch(url, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
-        }).then(function (response) {
-            return response.json().then(function (data) {
-                if (response.status < 200 || response.status > 299) {
-                    const error = new Error(data && data.message || 'the server answered ' + response.status);
-                    error.status = response.status;
-                    throw error;
-                }
-                return data;
-            });
+        }).then(answered);
+    }
+
+    /**
+     * Hands a locked file to Northern's temp API, which keeps it until it is
+     * fetched, and answers the random id it is kept under.
+     */
+    function upload(locked) {
+        return fetch('/temp/api/upload', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: locked
+        }).then(answered).then(function (data) {
+            if (!/^[A-Za-z0-9_-]{43}$/.test(data.id || '')) {
+                throw new Error('Northern did not say where it keeps the file');
+            }
+            return data.id;
         });
     }
 
@@ -236,6 +260,8 @@
             : m.out ? 'to ' + PalsModel.label(m.to.name, m.to.id) : '';
         $('message_time').textContent = PalsViews.time(m.ts);
         $('message_body').value = m.body;
+        shown = m.id;
+        showAttachment(m);
         const failures = m.out ? PalsViews.failures(m, state, me) : '';
         $('message_status').textContent = failures ? 'Not delivered to ' + failures : '';
         $('message_retry').hidden = !failures;
@@ -256,6 +282,41 @@
         answer(m);
         $('dlg_message').showModal();
     }
+
+    // The message the overlay shows, and the object URL of its photo or video.
+    let shown = null;
+    let shownUrl = null;
+
+    function forgetUrl() {
+        if (shownUrl) {
+            URL.revokeObjectURL(shownUrl);
+            shownUrl = null;
+        }
+    }
+
+    /** The photo or video under a message in the overlay, from where this device keeps it. */
+    function showAttachment(m) {
+        const box = $('message_attachment');
+        forgetUrl();
+        box.hidden = !m.attachment;
+        box.innerHTML = PalsViews.attachment(m, null);
+        if (!m.attachment) {
+            return Promise.resolve();
+        }
+        return PalsStore.get('files', PalsModel.fileKey(me, m)).then(function (file) {
+            if (!file || shown !== m.id) {
+                return;
+            }
+            forgetUrl();
+            shownUrl = URL.createObjectURL(new Blob([file.bytes], { type: m.attachment.type }));
+            box.innerHTML = PalsViews.attachment(m, shownUrl);
+        }).catch(() => {});
+    }
+
+    $('dlg_message').addEventListener('close', function () {
+        shown = null;
+        forgetUrl();
+    });
 
     /**
      * Reply to an incoming message, or send a correction of an outgoing one
@@ -325,15 +386,59 @@
         return Array.from(bytes, b => ('0' + b.toString(16)).slice(-2)).join('');
     }
 
+    /** Keeps the file the user picked on this device, until it is sent and after. */
+    function keepFile(message, picked) {
+        return picked.arrayBuffer().then(bytes => PalsStore.put('files', PalsModel.fileKey(me, message),
+            { name: message.attachment.name, type: message.attachment.type, bytes: bytes }));
+    }
+
+    /**
+     * Uploads a message's photo or video, once: locked here under a key of
+     * its own, so Northern holds only what it cannot open. The id it is held
+     * under and the key go in the seal of every part. A group message uploads
+     * it once for every member.
+     */
+    function uploaded(message) {
+        const att = message.attachment;
+        if (!att || att.id) {
+            return Promise.resolve();
+        }
+        return PalsStore.get('files', PalsModel.fileKey(me, message))
+            .then(function (file) {
+                if (!file) {
+                    throw new Error('it is no longer on this device');
+                }
+                return PalsSeal.lock(file.bytes);
+            })
+            .then(sealed => upload(sealed.locked).then(function (id) {
+                att.id = id;
+                att.key = sealed.key;
+                return save();
+            }));
+    }
+
     /**
      * Sends a message to everybody it has not reached yet: each receiver's
      * device is looked up in /pals/ afresh, and each part is sealed here, to
      * the key stored with the pal, and pushed on its own, in order. A group
      * message is one of these per member. The directory only says where to
-     * push; what is sealed to whom never comes from it.
+     * push; what is sealed to whom never comes from it. A photo or a video
+     * is uploaded first; without it nothing goes.
      */
     function deliver(message) {
         const pubs = Object.keys(message.delivery).filter(pub => message.delivery[pub] === 'sending');
+        return uploaded(message).then(() => pushAll(message, pubs), function (err) {
+            const why = 'the ' + PalsViews.kind(message.attachment).toLowerCase() + ' could not be sent: ' + (err.message || 'Northern is out of reach');
+            pubs.forEach(pub => PalsModel.delivered(state, message.id, pub, why));
+        }).then(function () {
+            save();
+            render();
+            const result = PalsModel.deliveryOf(message);
+            say(result === 'sent' ? 'Sent.' : 'Not delivered to everybody - open the message to see why.');
+        });
+    }
+
+    function pushAll(message, pubs) {
         return Promise.all(pubs.map(function (pub) {
             return lookUp(pub)
                 .then(function (device) {
@@ -345,7 +450,7 @@
                     }
                     return PalsModel.pushes(message, [pub]).reduce((sent, push) => sent.then(function () {
                         const wire = { id: push.id, part: push.part, parts: push.parts };
-                        return PalsSeal.seal(ownKey, me.pub, push.to, wire, { ts: message.ts, body: push.message })
+                        return PalsSeal.seal(ownKey, me.pub, push.to, wire, { ts: message.ts, body: push.message, att: push.att })
                             .then(sealed => send({
                                 to: push.to,
                                 subscription: device.subscription,
@@ -359,12 +464,7 @@
                 })
                 .then(() => PalsModel.delivered(state, message.id, pub, 'sent'),
                       err => PalsModel.delivered(state, message.id, pub, err.message || 'it could not be sent'));
-        })).then(function () {
-            save();
-            render();
-            const result = PalsModel.deliveryOf(message);
-            say(result === 'sent' ? 'Sent.' : 'Not delivered to everybody - open the message to see why.');
-        });
+        }));
     }
 
     function addMessage() {
@@ -381,11 +481,16 @@
         }
         $('compose_to').innerHTML = PalsViews.targets(state, ui.filter);
         $('compose_body').value = '';
+        $('compose_file').value = '';
         ask('compose', function () {
             const target = PalsViews.target($('compose_to').value);
-            const message = PalsModel.compose(state, me, target, $('compose_body').value, Date.now(), wireId());
+            const files = $('compose_file').files;
+            const picked = files && files.length ? files[0] : null;
+            const attachment = picked ? PalsModel.attachment(picked.name, picked.type, picked.size) : null;
+            const message = PalsModel.compose(state, me, target, $('compose_body').value, Date.now(), wireId(), attachment);
             say('Sending…');
-            return () => deliver(message);
+            // A file that cannot be read is not kept; uploading it then says so.
+            return () => (picked ? keepFile(message, picked).catch(() => {}) : Promise.resolve()).then(() => deliver(message));
         });
         $('compose_body').focus();
     }
@@ -439,6 +544,60 @@
         });
     }
 
+    let fetching = null;
+
+    /**
+     * Fetches the photos and videos that came with messages, opens each with
+     * the key its message carried, and keeps it on this device. The first
+     * fetch marks it for deletion on Northern, so it is fetched as soon as it
+     * is filed. One that failed is tried again next time; one Northern no
+     * longer has, or that will not open, is given up.
+     */
+    function fetchAttachments() {
+        if (fetching) {
+            return fetching;
+        }
+        const waiting = PalsModel.unfetched(state);
+        if (!waiting.length) {
+            return Promise.resolve();
+        }
+        fetching = waiting.reduce((done, m) => done.then(() => fetchOne(m)), Promise.resolve())
+            .then(function () {
+                fetching = null;
+                save();
+                render();
+                const open = shown && PalsModel.message(state, shown);
+                if (open && open.attachment) {
+                    showAttachment(open);
+                }
+            });
+        return fetching;
+    }
+
+    function fetchOne(m) {
+        const att = m.attachment;
+        const lost = text => Object.assign(new Error(text), { lost: true });
+        return fetch('/temp/api/download/' + att.id, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (response.status === 404) {
+                    throw lost('Northern no longer has it');
+                }
+                if (!response.ok) {
+                    throw new Error('Northern answered ' + response.status);
+                }
+                return response.arrayBuffer();
+            })
+            .then(locked => PalsSeal.unlock(locked, att.key).catch(() => { throw lost('it does not open with the key it came with'); }))
+            .then(bytes => PalsStore.put('files', PalsModel.fileKey(me, m), { name: att.name, type: att.type, bytes: bytes.buffer }))
+            .then(function () {
+                att.saved = true;
+                att.error = '';
+            }, function (err) {
+                att.lost = !!err.lost;
+                att.error = err.message || 'Northern is out of reach';
+            });
+    }
+
     let draining = null;
     let again = false;
 
@@ -465,6 +624,7 @@
                     again = false;
                     return drain();
                 }
+                return fetchAttachments();
             });
         return draining;
     }

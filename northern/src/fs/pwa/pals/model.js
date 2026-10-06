@@ -39,6 +39,11 @@ const PalsModel = (function () {
     // Where a part that never arrived shows in a message.
     api.MISSING = '[…]';
     api.REG = '/fs/get/reg/Reg.html';
+    // An attachment is sealed in the browser and held by Northern's temp API
+    // until it is fetched (/temp/api/): 50 MB a file, less what sealing adds
+    // (PalsSeal.lock: a version byte, the iv and the tag).
+    api.MAX_FILE = 50 * 1024 * 1024 - 29;
+    api.FILE_NAME_MAX = 60;
     // Where every device that set Pals up is listed: /pals/<username>/<key>.
     api.DIRECTORY = '/pals/';
 
@@ -360,15 +365,81 @@ const PalsModel = (function () {
         return cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
     };
     const costOf = text => Array.from(text).reduce((sum, ch) => sum + cost(ch), 0);
+    // UTF-8 bytes, for text that is JSON already.
+    const bytesOf = text => Array.from(text).reduce(function (sum, ch) {
+        const cp = ch.codePointAt(0);
+        return sum + (cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4);
+    }, 0);
+
+    // ---- attachments ---------------------------------------------------
+    //
+    // A photo or a video goes with a message as a file sealed in the browser
+    // under a key of its own, and held by Northern under a random id until
+    // the receiver fetches it. The id and the key travel inside the seal of
+    // every part, so only the receivers can fetch and open it.
+
+    const MEDIA = /^(image|video)\/[a-z0-9.+-]{1,40}$/;
+    const FILE_ID = /^[A-Za-z0-9_-]{43}$/;
+
+    /** A file's name as a message carries it: no path, no control characters, 60 characters at most. */
+    api.fileName = function (name) {
+        const base = String(name === undefined || name === null ? '' : name).split(/[\\/]/).pop();
+        return Array.from(base.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim())
+            .slice(0, api.FILE_NAME_MAX).join('') || 'attachment';
+    };
+
+    /** What the user picked, checked: a photo or a video of at most 50 MB. Throws what is wrong. */
+    api.attachment = function (name, type, size) {
+        const kind = String(type || '').toLowerCase();
+        if (!MEDIA.test(kind)) {
+            throw new Error('only a photo or a video can go with a message');
+        }
+        if (!(Number(size) > 0)) {
+            throw new Error('that file is empty');
+        }
+        if (Number(size) > api.MAX_FILE) {
+            throw new Error('that file is too large to send: 50 MB at most');
+        }
+        return { name: api.fileName(name), type: kind, size: Number(size), id: '', key: '' };
+    };
+
+    /** What goes in the seal of every part: where the file is held, and the key that opens it. */
+    api.wireAttachment = function (att) {
+        return { id: att.id, key: att.key, type: att.type, name: att.name, size: att.size };
+    };
+
+    /** An attachment as it came in a seal, checked - or null when there is none worth fetching. */
+    api.receivedAttachment = function (att) {
+        if (!att || typeof att !== 'object' || !FILE_ID.test(att.id) || !FILE_ID.test(att.key) || !MEDIA.test(String(att.type))) {
+            return null;
+        }
+        const size = Number(att.size);
+        return { name: api.fileName(att.name), type: String(att.type), size: size > 0 ? size : 0,
+                 id: att.id, key: att.key, saved: false, lost: false, error: '' };
+    };
+
+    /**
+     * How many bytes the attachment takes in each part's seal: `,"att":`
+     * and its JSON, an id and a key of 43 characters each. The text of each
+     * part is cut that much shorter.
+     */
+    api.attachmentCost = function (att) {
+        if (!att) {
+            return 0;
+        }
+        const filled = Object.assign(api.wireAttachment(att), { id: 'x'.repeat(43), key: 'x'.repeat(43) });
+        return bytesOf(',"att":' + JSON.stringify(filled));
+    };
 
     /**
      * A text cut into pieces that fit one push each, `reserve` characters and
-     * bytes short of the limit (for the group prefix). Cuts fall between whole
-     * characters, never inside an emoji.
+     * bytes short of the limit (for the group prefix), and `spare` bytes
+     * shorter still (for an attachment). Cuts fall between whole characters,
+     * never inside an emoji.
      */
-    api.split = function (text, reserve) {
+    api.split = function (text, reserve, spare) {
         const before = String(reserve || '');
-        const room = { chars: api.MAX_CHARS - Array.from(before).length, bytes: api.MAX_BYTES - costOf(before) };
+        const room = { chars: api.MAX_CHARS - Array.from(before).length, bytes: api.MAX_BYTES - costOf(before) - (spare || 0) };
         const parts = [];
         let part = '';
         let chars = 0;
@@ -403,9 +474,10 @@ const PalsModel = (function () {
      * `{kind: 'group', id: <group name>}`; the name is copied in, so the log
      * can still say where a message went after the pal or the group is gone.
      * `wire` is the id it travels under - random, so a pal never takes it for
-     * one they had before.
+     * one they had before. `attachment`, when there is one, is what
+     * `api.attachment` made of the file; the text may then be empty.
      */
-    api.compose = function (state, me, target, body, ts, wire) {
+    api.compose = function (state, me, target, body, ts, wire, attachment) {
         let name;
         let to;
         if (target && target.kind === 'pal' && api.pal(state, target.id)) {
@@ -419,19 +491,19 @@ const PalsModel = (function () {
             throw new Error('pick a pal or a group to write to');
         }
         const text = String(body || '');
-        if (!text.trim()) {
+        if (!text.trim() && !attachment) {
             throw new Error('there is nothing to send');
         }
         if (!to.length) {
             throw new Error('nobody is in ' + name + ' yet');
         }
         const reserve = target.kind === 'group' ? api.prefix(name) : '';
-        if (api.split(text, reserve).length > api.MAX_PARTS) {
+        if (api.split(text, reserve, api.attachmentCost(attachment)).length > api.MAX_PARTS) {
             throw new Error('that is too long to send');
         }
         const delivery = {};
         to.forEach(pub => { delivery[pub] = 'sending'; });
-        return file(state, {
+        const message = {
             ts: ts,
             out: true,
             wire: wire,
@@ -440,7 +512,11 @@ const PalsModel = (function () {
             to: { kind: target.kind, id: target.kind === 'group' ? name : target.id, name: name },
             body: text,
             delivery: delivery
-        });
+        };
+        if (attachment) {
+            message.attachment = attachment;
+        }
+        return file(state, message);
     };
 
     // The line between a message and the reply or correction sent with it (UPDATE_5).
@@ -492,15 +568,23 @@ const PalsModel = (function () {
     /**
      * The pushes a message makes: one per part, per receiver. A group message
      * goes to each member separately, every part starting with the prefix, so
-     * a part that arrives alone still says which group it belongs to.
+     * a part that arrives alone still says which group it belongs to. An
+     * attachment - uploaded by now - goes with every part too, as `att`.
      */
     api.pushes = function (message, pubs) {
         const group = message.to.kind === 'group' ? api.prefix(message.to.name) : '';
-        const parts = api.split(message.body, group);
+        const att = message.attachment ? api.wireAttachment(message.attachment) : null;
+        const cut = api.split(message.body, group, api.attachmentCost(att));
+        // A photo with no words is still one part.
+        const parts = cut.length ? cut : [''];
         const out = [];
         (pubs || Object.keys(message.delivery || {})).forEach(function (to) {
             parts.forEach(function (text, i) {
-                out.push({ to: to, id: message.wire, part: i + 1, parts: parts.length, message: group + text });
+                const push = { to: to, id: message.wire, part: i + 1, parts: parts.length, message: group + text };
+                if (att) {
+                    push.att = att;
+                }
+                out.push(push);
             });
         });
         return out;
@@ -531,7 +615,7 @@ const PalsModel = (function () {
 
     /**
      * An envelope PalsSeal.open returned: `{from, to, ts, id, part, parts,
-     * body}`. It opened with the key shared with `from` alone, so `from` is
+     * body, att?}`. It opened with the key shared with `from` alone, so `from` is
      * who wrote it.
      *
      * Parts of one message share an `id`, and come in any order or not at all:
@@ -576,6 +660,11 @@ const PalsModel = (function () {
                 parts: Array.from({ length: parts }, () => null),
                 body: ''
             });
+        }
+        // Every part carries the attachment; the first that arrives files it.
+        const att = !m.attachment && api.receivedAttachment(e.att);
+        if (att) {
+            m.attachment = att;
         }
         m.parts[part - 1] = read.text;
         m.body = joined(m.parts);
@@ -622,6 +711,19 @@ const PalsModel = (function () {
 
     api.message = function (state, id) {
         return state.messages.find(m => m.id === id) || null;
+    };
+
+    /**
+     * Received attachments not yet fetched and kept on this device: the ones
+     * that failed for now included, the ones Northern no longer has not.
+     */
+    api.unfetched = function (state) {
+        return state.messages.filter(m => !m.out && m.attachment && !m.attachment.saved && !m.attachment.lost);
+    };
+
+    /** Where a message's file is kept on this device (PalsStore 'files'). */
+    api.fileKey = function (me, message) {
+        return me.pub + ' ' + message.id;
     };
 
     // ---- keeping it ----------------------------------------------------

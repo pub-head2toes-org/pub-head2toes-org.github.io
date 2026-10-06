@@ -7,6 +7,8 @@
  *   state   one record per user, by public key: pals, groups, messages
  *   setup   one record per user: the subscription welcome.html filed
  *   inbox   what the service worker took in, waiting for the page
+ *   files   the photos and videos that go with messages, by user and message:
+ *           `{name, type, bytes}`, apart from `state` so a save stays small
  *
  * The page alone writes `state`; the service worker only adds to `inbox`.
  * That way the two never overwrite each other's work.
@@ -14,8 +16,9 @@
 const PalsStore = (function () {
 
     const NAME = 'pals';
-    const VERSION = 1;
-    const STORES = { state: {}, setup: {}, inbox: { autoIncrement: true } };
+    // 2 added `files`.
+    const VERSION = 2;
+    const STORES = { state: {}, setup: {}, inbox: { autoIncrement: true }, files: {} };
 
     let opening = null;
 
@@ -36,7 +39,16 @@ const PalsStore = (function () {
                         }
                     });
                 };
-                request.onsuccess = () => resolve(request.result);
+                request.onsuccess = function () {
+                    const handle = request.result;
+                    // A newer version of Pals, in another tab or the worker,
+                    // wants to upgrade: step aside, and open afresh next time.
+                    handle.onversionchange = function () {
+                        handle.close();
+                        opening = null;
+                    };
+                    resolve(handle);
+                };
                 request.onerror = () => reject(request.error);
             });
             opening.catch(() => { opening = null; });
