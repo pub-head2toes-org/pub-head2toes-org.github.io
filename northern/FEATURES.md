@@ -128,6 +128,7 @@ for exactly that reason.
 | I6 | Diagnostics page | `fs/diagnostics/tests.html` |
 | I7 | Undo/redo in all three buffers of the keyboard page. Every write goes through one choke point (`textedit.setText`), because assigning `textarea.value` — which this page does for every on-screen key, every `get` and every `search` — wipes the browser's own undo stack. Each buffer keeps its own list of `{value, selection}` states: a typed run folds into one step (by ~500ms and by word boundary), a run of deletes is its own step, and every programmatic write is one step, so a `get` that replaces unsaved edits can be taken back. On Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and on two on-screen keys, for a device with no Ctrl | `fs/js/history.js`, `fs/js/textedit.js`, `fs/keyboard.html` | `textHistory.test.js`, `textedit.test.js` |
 | I8 | Bandage: a 25 key piano (two octaves, C to C) over a vendored `webaudio-tinysynth`. Polyphonic touch with glissando, computer-keyboard playing, 12 GM voices, octave shift, sustain and volume; the upper third of the screen is left empty by design. The layout arithmetic is a DOM-free script, so it is tested as numbers; the synth is vendored (Apache-2.0) and everything is cached, so it plays offline | `fs/pwa/bandage/keys.js`, `fs/pwa/bandage/bandage.js`, `fs/pwa/bandage/*` | `bandage.test.js` |
+| I9 | Rama: audio notes to remember and be reminded of, for whoever is signed in to Northern (anybody else goes to `Reg.html` and back). One centred Record button (MediaRecorder; Opus in WebM/Ogg, AAC in MP4 on Safari); the page's top right corner peels it off to reveal a search-as-you-type field over two scrolling lists, reminders (still to come soonest first, then those passed) above every recording (last first). A recording opens in an overlay to play, pause and seek, and to set its Buzz, Type (suggested from TODO, Recipe, HOWTO and every type the user added), Reminder and Essay. Everything stays in the browser's IndexedDB, by user. Reminders are notifications: from the open page on a timer, and from the service worker when Chrome wakes an installed app (periodic background sync) — each shown once | `fs/pwa/rama/model.js`, `fs/pwa/rama/rama.js`, `fs/pwa/rama/*` | `rama.test.js` |
 
 ---
 
@@ -186,6 +187,7 @@ the database      {pub, pub_name} at /id/<ts>/<pub>.json
 | `tests/textHistory.test.js` | I7: the undo history in isolation, no DOM |
 | `tests/textedit.test.js` | I7: the choke point, the key bindings and the on-screen keyboard path, in a DOM stub |
 | `tests/bandage.test.js` | I8: the key layout as numbers, the PWA shell, and the app itself in a DOM stub |
+| `tests/rama.test.js` | I9: the model and views as data, the PWA shell and its service worker, and the app itself in a DOM stub with a fake microphone and clock |
 | `tests/Example.test.js` | pre-existing placeholder, tests a function defined inside itself |
 
 The two remaining `todo` tests describe behaviour the code is meant to have but
