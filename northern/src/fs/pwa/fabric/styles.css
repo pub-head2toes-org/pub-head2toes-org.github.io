@@ -1,0 +1,351 @@
+:root {
+  --theme: #005e7a;
+  --theme-dark: #004557;
+  /* The two pages are two papers: the corner of one shows the other. */
+  --paper-draw: #ffffff;
+  --paper-controls: #e8f0f2;
+  --fold-light: #ffffff;
+  --fold-dark: #cfd8db;
+  --panel: #ffffff;
+  --border: #c9d5d9;
+  --text: #1c2a2f;
+  --muted: #5c6c72;
+  --danger: #a8322a;
+  --on-theme: #ffffff;
+  /* As long as PEEL_MS in fabric.js. */
+  --peel: 650ms;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --theme: #6cc4dc;
+    --theme-dark: #9bd8e8;
+    /* The drawing stays on white paper: it is what Download PNG shows. */
+    --paper-controls: #172126;
+    --fold-light: #2e3b40;
+    --fold-dark: #1f292d;
+    --panel: #222e33;
+    --border: #34444a;
+    --text: #e3ecef;
+    --muted: #9fb0b6;
+    --danger: #ff9d94;
+    --on-theme: #10262d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overflow: clip;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper-controls);
+  color: var(--text);
+}
+
+h1, h2 { margin: 0; }
+
+h1 {
+  color: var(--theme);
+  font-size: 1.5rem;
+  letter-spacing: 0.5px;
+}
+
+h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--theme);
+  outline-offset: 1px;
+}
+
+/* ---- the two pages ---- */
+
+.page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  /* Not even the browser may scroll a page: bringing a focused input into view
+     would take the header and its corner off the top, with no way back. */
+  overflow: clip;
+}
+
+.page.front { z-index: 2; }
+.page:not(.front) { z-index: 1; }
+
+.page.draw {
+  background: var(--paper-draw);
+  --under: var(--paper-controls);
+}
+
+/* fabric wraps the canvas in a div of its own: both sit in the page's top left. */
+.page.draw .canvas-container { position: absolute !important; top: 0; left: 0; }
+
+.page.controls {
+  background: var(--paper-controls);
+  --under: var(--paper-draw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-bottom: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  /* Out of the corner's way. */
+  padding-right: 72px;
+  min-height: 2rem;
+}
+
+.selected {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* ---- the corner: lifted, it shows the page under it ---- */
+
+.peel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  /* Where the corner was, the page under it shows. */
+  background: linear-gradient(225deg, var(--under) 0 50%, transparent 50%);
+  transition: width 0.2s ease, height 0.2s ease;
+}
+
+/* The back of the corner, folded down over the page. */
+.peel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(45deg, var(--fold-light) 0%, var(--fold-dark) 50%, transparent 50%);
+  filter: drop-shadow(-3px 3px 3px rgba(0, 0, 0, 0.28));
+}
+
+.peel:hover, .peel:focus-visible {
+  width: 84px;
+  height: 84px;
+}
+
+.peel:focus-visible { outline-offset: -4px; }
+
+/* The top page comes away from its top right corner, turning on the bottom left. */
+.page.peeling {
+  transform-origin: 0 100%;
+  animation: peel var(--peel) cubic-bezier(0.55, 0, 0.75, 0.2) forwards;
+  box-shadow: -14px 14px 40px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+@keyframes peel {
+  0% { transform: none; }
+  25% { transform: rotate(2deg); }
+  100% { transform: translate(20%, -120%) rotate(30deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page.peeling { animation: none; }
+  .peel { transition: none; }
+}
+
+/* ---- the controls ---- */
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
+}
+
+.group {
+  /* What is absolute in it - the file inputs - scrolls with the list. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Only the controls' buttons: the corner is a button of its own. */
+.group button, .group .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid var(--theme);
+  border-radius: 8px;
+  background: var(--theme);
+  color: var(--on-theme);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.buttons > button, .buttons > .button { flex: 1 1 auto; }
+
+.group button:hover:not(:disabled), .group .button:hover { background: var(--theme-dark); border-color: var(--theme-dark); }
+
+.group button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.group button.danger {
+  align-self: flex-start;
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.group button.danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: var(--on-theme); }
+
+/* Drawing mode: filled when on, outlined when off. */
+.group button.toggle[aria-pressed="false"] {
+  background: transparent;
+  color: var(--theme);
+}
+
+button.toggle::after { content: ": on"; font-weight: 400; }
+button.toggle[aria-pressed="false"]::after { content: ": off"; }
+
+/* The file inputs hide behind their labels, which look like the buttons. */
+input.file {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+input[type="text"], input[type="number"], select {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+input[type="text"] { width: 100%; }
+
+.pixels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pixels input[type="number"] { width: 7em; }
+
+.pixels button { flex: 1 1 auto; }
+
+label { color: var(--muted); font-size: 0.9rem; }
+
+/* A slider takes the whole width of the page: the finer it can be set. */
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slider input[type="range"] {
+  width: 100%;
+  margin: 0;
+  min-height: 36px;
+  accent-color: var(--theme);
+}
+
+.slider output {
+  display: inline-block;
+  min-width: 2.5em;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.colors label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.colors label.check input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--theme);
+}
+
+input[type="color"] {
+  width: 56px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+/* ---- what just happened ---- */
+
+.status {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 4;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--paper-controls);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.status:empty { display: none; }

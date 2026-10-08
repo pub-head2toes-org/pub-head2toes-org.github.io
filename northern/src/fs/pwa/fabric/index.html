@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#005E7A">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="description" content="Notebook drawing, powered by Fabric.js.">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=11">
+  <title>Fabric Draw</title>
+</head>
+<body>
+
+<!-- Two pages, one on top of the other. The corner of the top one peels it off. -->
+
+<!-- The drawing: the canvas, and nothing else. -->
+<section class="page draw front" id="page_draw" aria-label="Drawing">
+  <canvas id="c"></canvas>
+  <button type="button" class="peel" id="peel_top" aria-label="Peel off to the controls"></button>
+</section>
+
+<!-- Under it: the controls. Peeling leaves the selection on the canvas as it was,
+     so Copy and Remove act on what was picked there. Every button names its
+     command in data-command: the same names a remote device can send later. -->
+<section class="page controls" id="page_controls" aria-label="Controls" inert>
+  <header class="bar">
+    <h1>Fabric Draw</h1>
+    <p class="selected" id="selected"></p>
+  </header>
+  <button type="button" class="peel" id="peel_back" aria-label="Peel back to the drawing"></button>
+
+  <div class="scroll">
+    <section class="group">
+      <h2>Selection</h2>
+      <div class="buttons">
+        <button type="button" id="copy-el" data-command="copy">Copy</button>
+        <button type="button" id="paste-el" data-command="paste">Paste</button>
+        <button type="button" id="remove-el" data-command="remove">Remove</button>
+      </div>
+      <!-- A drag over the drawing copies all that is under it, as one image for Paste. -->
+      <div class="buttons">
+        <button type="button" id="area-el" data-command="area">Select area</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Brush</h2>
+      <button type="button" class="toggle" id="drawing-mode" data-command="drawing" aria-pressed="true">Drawing mode</button>
+
+      <label for="drawing-mode-selector">Mode</label>
+      <select id="drawing-mode-selector">
+        <optgroup label="Brushes">
+          <option value="Pencil">Pencil</option>
+          <option value="Circle">Dots</option>
+          <option value="Spray">Spray</option>
+          <option value="Pattern">Pattern</option>
+          <option value="hline">Horizontal stripes</option>
+          <option value="vline">Vertical stripes</option>
+          <option value="square">Squares</option>
+          <option value="diamond">Diamonds</option>
+          <option value="texture">Texture</option>
+        </optgroup>
+        <!-- Drawn by dragging: in the brush's color, width and shadow. -->
+        <optgroup label="Shapes">
+          <option value="straight">Straight line</option>
+          <option value="rectangle">Rectangle</option>
+          <option value="circle">Circle</option>
+        </optgroup>
+      </select>
+
+      <div class="slider">
+        <label for="drawing-line-width">Line width <output for="drawing-line-width" id="drawing-line-width-value">3</output></label>
+        <input type="range" value="3" min="0" max="150" id="drawing-line-width">
+      </div>
+
+      <div class="colors">
+        <label>Line color <input type="color" value="#005E7A" id="drawing-color"></label>
+        <label>Shadow color <input type="color" value="#005E7A" id="drawing-shadow-color"></label>
+      </div>
+
+      <!-- Inside the outline of a rectangle or a circle: for new ones, and the ones selected. -->
+      <div class="colors">
+        <label class="check"><input type="checkbox" id="shape-fill"> Fill shapes</label>
+        <label>Fill color <input type="color" value="#9fd3e0" id="shape-fill-color"></label>
+      </div>
+
+      <div class="slider">
+        <label for="drawing-shadow-width">Shadow width <output for="drawing-shadow-width" id="drawing-shadow-width-value">0</output></label>
+        <input type="range" value="0" min="0" max="50" id="drawing-shadow-width">
+      </div>
+
+      <div class="slider">
+        <label for="drawing-shadow-offset">Shadow offset <output for="drawing-shadow-offset" id="drawing-shadow-offset-value">0</output></label>
+        <input type="range" value="0" min="0" max="50" id="drawing-shadow-offset">
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Size</h2>
+      <!-- For each selected object, its proportions kept. Fitted, an image still downloads
+           at its own resolution; set in pixels, Download selected saves it that size. -->
+      <div class="buttons">
+        <button type="button" id="fit-width" data-command="fit-width">Fit canvas width</button>
+        <button type="button" id="fit-height" data-command="fit-height">Fit canvas height</button>
+      </div>
+      <div class="pixels">
+        <label for="size-px">Pixels</label>
+        <input type="number" id="size-px" value="1024" min="1" max="20000" step="1" inputmode="numeric">
+        <button type="button" id="set-width" data-command="width">Set width</button>
+        <button type="button" id="set-height" data-command="height">Set height</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Text</h2>
+      <input type="text" id="textblob" placeholder="Text to add" autocomplete="off" aria-label="Text to add">
+
+      <!-- Each font with the ones to fall back on: a phone has only some of them.
+           For new text, and for the text that is selected. -->
+      <label for="font-selector">Font</label>
+      <select id="font-selector">
+        <option value="'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', cursive" style="font-family: 'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', cursive">Comic Sans</option>
+        <option value="Arial, Helvetica, sans-serif" style="font-family: Arial, Helvetica, sans-serif">Sans-serif</option>
+        <option value="'Times New Roman', Times, serif" style="font-family: 'Times New Roman', Times, serif">Serif</option>
+        <option value="Georgia, 'Times New Roman', serif" style="font-family: Georgia, 'Times New Roman', serif">Georgia</option>
+        <option value="Verdana, Geneva, sans-serif" style="font-family: Verdana, Geneva, sans-serif">Verdana</option>
+        <option value="'Trebuchet MS', Helvetica, sans-serif" style="font-family: 'Trebuchet MS', Helvetica, sans-serif">Trebuchet</option>
+        <option value="'Courier New', Courier, monospace" style="font-family: 'Courier New', Courier, monospace">Monospace</option>
+        <option value="Impact, 'Arial Black', sans-serif" style="font-family: Impact, 'Arial Black', sans-serif">Impact</option>
+      </select>
+      <!-- A bubble is a picture of the text; a textbox stays text, to edit and wrap on the canvas. -->
+      <div class="buttons">
+        <button type="button" id="add-text" data-command="text">Add bubble</button>
+        <button type="button" id="add-textbox" data-command="textbox">Add textbox</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Files</h2>
+      <div class="buttons">
+        <label for="fileinput" class="button">Load image</label>
+        <input class="file" type="file" id="fileinput" accept="image/*">
+        <label for="jsoninput" class="button">Load JSON</label>
+        <input class="file" type="file" id="jsoninput" accept=".json,application/json">
+        <a href="#" class="button" id="down-png" download="draw.png">Download PNG</a>
+        <a href="#" class="button" id="down-json" download="draw.json">Download JSON</a>
+        <!-- Only what is selected, cut to it: an image at its own resolution. -->
+        <button type="button" id="down-selected" data-command="download-selected">Download selected</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Canvas</h2>
+      <button type="button" class="danger" id="clear-canvas" data-command="clear">Clear</button>
+    </section>
+  </div>
+</section>
+
+<p class="status" id="status" role="status"></p>
+
+<!-- Every script and the stylesheet carry ?v=<the version in sw.js's CACHE_NAME>:
+     a cache between here and the browser (Cloudflare keeps .js for 4 hours) can
+     then never hand this page the files of another version. Bump them all with it. -->
+<script src="./lib/fabric.js?v=11"></script>
+<script src="./fabric.js?v=11"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(() => console.log('Service Worker registered'))
+      .catch(() => console.log('Service Worker registration failed'));
+  }
+</script>
+</body>
+</html>
