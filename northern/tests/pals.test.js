@@ -181,6 +181,29 @@ describe('Pals model - pals and groups', () => {
         assert.deepStrictEqual(plain(state.groups), []);
     });
 
+    // UPDATE_6: a dot by whoever wrote something not opened yet.
+    it('marks a sender unread until their messages are opened, and lists who wrote without being a pal', () => {
+        const state = Model.empty();
+        Model.addPal(state, bob.pub, 'bob', me);
+        Model.receive(state, me, envelope(bob, 'hi'));
+        Model.receive(state, me, envelope(dave, 'who is this', { id: 'd1' }));
+
+        assert.strictEqual(Model.isUnread(state, bob.pub), true);
+        assert.strictEqual(Model.isUnread(state, dave.pub), true);
+        assert.strictEqual(Model.isUnread(state, carol.pub), false);
+        assert.deepStrictEqual(plain(Model.others(state)), [dave.pub], 'bob is a pal; dave only wrote');
+
+        Model.markUnread(state, bob.pub, false);
+        assert.strictEqual(Model.isUnread(state, bob.pub), false);
+        assert.deepStrictEqual(plain(Model.load(plain(state)).unread), [dave.pub], 'and it is kept');
+
+        Model.addPal(state, dave.pub, 'dave', me);
+        assert.deepStrictEqual(plain(Model.others(state)), [], 'once added, dave is a pal like any other');
+        Model.removePal(state, dave.pub);
+        assert.deepStrictEqual(plain(state.unread), [], 'removed, nothing is left marked');
+        assert.deepStrictEqual(plain(Model.load({ unread: ['nope', bob.pub] }).unread), [bob.pub]);
+    });
+
     it('writes a group into a message as a prefix, and reads it back out', () => {
         assert.strictEqual(Model.prefix('Family'), '[Family] ');
         assert.deepStrictEqual(plain(Model.unprefix('[Family] dinner at 8')), { group: 'Family', text: 'dinner at 8' });
@@ -503,6 +526,20 @@ describe('Pals views', () => {
         assert.ok(Views.pals(verified).includes(`bob (${tag(bob.pub)}) <span class="verified"`), 'a verified pal carries a tick');
     });
 
+    it('puts a dot by a pal with new messages, and lists who wrote without being a pal, set apart', () => {
+        const s = Model.load(plain(state));
+        assert.ok(!Views.pals(s, null, me).includes('class="dot"'));
+        Model.receive(s, me, envelope(bob, 'hi'));
+        Model.receive(s, me, envelope(dave, 'hello', { id: 'd1' }), 'dave');
+        const html = Views.pals(s, null, me);
+
+        assert.ok(html.includes(`>bob (${tag(bob.pub)})<span class="dot"`));
+        assert.ok(html.includes(`data-pub="${dave.pub}" title="Not a pal: add them with + to answer"><span class="other">dave (${tag(dave.pub)})</span><span class="dot"`));
+        assert.ok(html.indexOf(dave.pub) > html.indexOf(carol.pub), 'after the pals');
+        Model.markUnread(s, bob.pub, false);
+        assert.ok(!Views.pals(s, null, me).includes(`>bob (${tag(bob.pub)})<span class="dot"`));
+    });
+
     it('lists groups by name, the selected one marked whatever its case', () => {
         const html = Views.groups(state, 'FAMILY');
         assert.ok(html.includes('aria-selected="true" data-group="Family">Family</button>'));
@@ -562,7 +599,7 @@ describe('Pals views', () => {
         assert.strictEqual(Views.context(state, { kind: 'all' }, me), '');
         const none = Model.empty();
         assert.ok(Views.pals(none).includes('Add a pal with +'));
-        assert.ok(Views.incoming(none, me).includes('Nothing new'));
+        assert.strictEqual(Views.groups(none), '<p class="empty">No groups</p>');
     });
 });
 
@@ -710,17 +747,30 @@ describe('Pals shell', () => {
     const scriptsOf = html => [...html.matchAll(/<script[^>]*src=["']([^"'?]+)(\?[^"']*)?["']/g)].map(m => m[1]);
     const cached = [...sw.matchAll(/'(\.{1,2}\/[^']+)'/g)].map(m => m[1]);
 
-    it('has the three panels side by side and the incoming list under them, and no invite link', () => {
-        const order = ['id="user"', 'class="panels"', 'id="panel_pals"', 'id="panel_log"',
-            'id="panel_groups"', 'id="panel_members"', 'id="panel_incoming"'].map(mark => index.indexOf(mark));
+    // UPDATE_6: the main screen has the gear, Pals and Groups; the rest is a layer above it.
+    it('has the gear, then Pals and Groups side by side; messages, members and settings are layers', () => {
+        const main = index.slice(index.indexOf('<main>'), index.indexOf('</main>'));
+        const order = ['id="settings_open"', 'class="panels"', 'id="panel_pals"', 'id="panel_groups"'].map(mark => main.indexOf(mark));
 
         assert.ok(order.every(at => at !== -1), 'every section is on the page');
-        assert.deepStrictEqual(order, [...order].sort((a, b) => a - b), 'in the order the prompt gives');
+        assert.deepStrictEqual(order, [...order].sort((a, b) => a - b));
+        assert.ok(!/<h1|id="user"|setup_again|id="version"|Incoming|id="messages"|id="members"|show all/.test(main),
+            'no app name, nobody signed in, no version, no incoming list, no messages and no members on the page');
         assert.ok(!/invite/i.test(index), 'UPDATE_1 takes the invite link out');
-        for (const id of ['pal_add', 'pal_remove', 'message_add', 'group_add', 'group_remove', 'member_add', 'member_remove', 'pal_pick', 'message_retry', 'message_answer', 'message_answer_body']) {
+
+        const layer = name => {
+            const at = index.indexOf(`<dialog class="layer" id="dlg_${name}"`);
+            assert.ok(at > index.indexOf('</main>'), name);
+            return index.slice(at, index.indexOf('</dialog>', at));
+        };
+        assert.match(layer('messages'), /<h2 id="messages_title">Messages /);
+        for (const id of ['messages', 'message_add']) assert.ok(layer('messages').includes(`id="${id}"`), id);
+        for (const id of ['members', 'member_add', 'member_remove', 'group_messages']) assert.ok(layer('members').includes(`id="${id}"`), id);
+        for (const id of ['user', 'setup_again', 'version']) assert.ok(layer('settings').includes(`id="${id}"`), id);
+        for (const id of ['pal_add', 'pal_remove', 'group_add', 'group_remove', 'pal_pick', 'message_retry', 'message_answer', 'message_answer_body']) {
             assert.ok(index.includes(`id="${id}"`), id);
         }
-        assert.match(read('styles.css'), /\.panels\s*{[^}]*grid-template-columns:(\s*minmax\([^)]*fr\)){3};/);
+        assert.match(read('styles.css'), /\.panels\s*{[^}]*grid-template-columns:(\s*minmax\([^)]*fr\)){2};/);
     });
 
     it('has a welcome screen: one centred panel with a title, a line and Go', () => {
@@ -847,12 +897,12 @@ describe('Pals shell', () => {
     });
 
     // UPDATE_4: the page shows the version the service worker's cache is named after.
-    it('shows the app version at the foot of the page, the one the cache is named after', async () => {
+    it('shows the app version in the settings, the one the cache is named after', async () => {
         const { did } = worker();
         const version = did.global('PALS_VERSION');
         assert.ok(Number.isInteger(version) && version >= 6);
         assert.strictEqual(did.global('CACHE_NAME'), `pals-v${version}`);
-        assert.ok(index.indexOf('id="version"') > index.indexOf('id="panel_incoming"'), 'below everything else');
+        assert.ok(index.indexOf('id="version"') > index.indexOf('id="dlg_settings"'), 'in the settings');
 
         const page = mountPals({ localStorage: { pub: alice.pub, pub_name: 'alice' }, cookie: `ssid=${alice.pub}.${Date.now()}.sig`,
             idb: { keys: kept(alice) } });
@@ -1091,15 +1141,19 @@ describe('Pals page', () => {
         await page.settle();
 
         assert.strictEqual(page.location.replaced, './welcome.html');
-        assert.strictEqual(page.html('log'), '');
+        assert.strictEqual(page.html('messages'), '');
         assert.deepStrictEqual(page.worker.registered, []);
     });
 
-    it('shows who is signed in, and starts empty', async () => {
+    it('shows who is signed in under the gear, and starts empty', async () => {
         const page = await open();
 
         assert.strictEqual(page.location.replaced, null);
+        assert.strictEqual(page.element('dlg_settings').open, false);
+        page.click('settings_open');
+        assert.strictEqual(page.element('dlg_settings').open, true);
         assert.ok(page.html('user').includes(`>alice (${tag(alice.pub)})<`));
+        assert.ok(page.html('groups').includes('No groups'));
         assert.deepStrictEqual(page.rows('pals'), []);
         assert.ok(page.html('pals').includes('Nobody yet'));
         assert.deepStrictEqual(page.worker.registered, ['./sw.js']);
@@ -1146,13 +1200,24 @@ describe('Pals page', () => {
         assert.match(page.element('pal_error').textContent, /out of reach/);
     });
 
-    it('loads a group\'s members below it and its messages into the log; a member narrows it', async () => {
+    it('opens a group\'s members in a layer; Messages there opens what was said in it, a member narrows it', async () => {
         const page = await populated();
 
         assert.deepStrictEqual(page.rows('groups'), ['Family']);
+        assert.strictEqual(page.element('dlg_members').open, true, 'a new group opens its members, to add some');
         assert.deepStrictEqual(page.rows('members'), [`bob (${tag(bob.pub)})`, `carol (${tag(carol.pub)})`]);
-        assert.strictEqual(page.element('log_context').textContent, 'Family');
+        assert.strictEqual(page.element('members_context').textContent, 'Family');
         assert.deepStrictEqual(page.stored().groups, [{ name: 'Family', members: [bob.pub, carol.pub] }]);
+
+        page.element('dlg_members').close();
+        page.pick('groups', 'data-group', 'Family');
+        assert.strictEqual(page.element('dlg_members').open, true, 'and so does a click on its name');
+        assert.strictEqual(page.element('dlg_messages').open, false);
+        page.click('group_messages');
+        assert.strictEqual(page.element('dlg_messages').open, true);
+        assert.strictEqual(page.element('messages_context').textContent, 'Family');
+        page.pick('members', 'data-pub', bob.pub);
+        assert.strictEqual(page.element('messages_context').textContent, `Family, from bob (${tag(bob.pub)})`);
 
         page.click('group_add');
         type(page, 'group_name', 'family');
@@ -1178,7 +1243,7 @@ describe('Pals page', () => {
         const call = page.fetch.calls.find(c => c.url === '/push/api/send');
         assert.strictEqual(call.headers['Content-Type'], 'application/json');
 
-        assert.deepStrictEqual(page.rows('log'), [`hello bob\nalice (${tag(alice.pub)})\nto bob (${tag(bob.pub)})`]);
+        assert.deepStrictEqual(page.rows('messages'), [`hello bob\nalice (${tag(alice.pub)})\nto bob (${tag(bob.pub)})`]);
         assert.strictEqual(page.stored().messages[0].delivery[bob.pub], 'sent');
         assert.strictEqual(page.element('status').textContent, 'Sent.');
     });
@@ -1210,7 +1275,7 @@ describe('Pals page', () => {
         assert.strictEqual(pushes.length, 4);
         assert.ok(bodies.every(b => b.body.startsWith('[Family] ')), 'the group\'s name is inside the seal');
         assert.strictEqual(new Set(pushes.map(p => p.id)).size, 1, 'one message, one id');
-        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n').slice(1)), [[`alice (${tag(alice.pub)})`, 'in Family']]);
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n').slice(1)), [[`alice (${tag(alice.pub)})`, 'in Family']]);
     });
 
     it('marks who a message did not reach and why, and sends it again to them alone', async () => {
@@ -1222,10 +1287,10 @@ describe('Pals page', () => {
         } });
         await write(page, 'hi all');
 
-        assert.ok(page.html('log').includes('not delivered'));
+        assert.ok(page.html('messages').includes('not delivered'));
         assert.match(page.element('status').textContent, /Not delivered to everybody/);
         const id = page.stored().messages[0].id;
-        page.pick('log', 'data-message', id);
+        page.pick('messages', 'data-message', id);
         assert.strictEqual(page.element('message_status').textContent,
             `Not delivered to carol (${tag(carol.pub)}): the pal's device is no longer subscribed; they need to open Pals again`);
         assert.strictEqual(page.element('message_retry').hidden, false);
@@ -1235,7 +1300,7 @@ describe('Pals page', () => {
         page.element('message_retry').onclick();
         await page.settle();
         assert.deepStrictEqual(sent(page).slice(before).map(p => p.to), [carol.pub]);
-        assert.ok(!page.html('log').includes('not delivered'));
+        assert.ok(!page.html('messages').includes('not delivered'));
     });
 
     it('goes to Reg.html instead of sending again, once the cookie has expired', async () => {
@@ -1243,7 +1308,7 @@ describe('Pals page', () => {
         await addPal(page, bob);
         await write(page, 'hi');
         const before = sent(page).length;
-        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.pick('messages', 'data-message', page.stored().messages[0].id);
         page.document.cookie = '';
 
         page.element('message_retry').onclick();
@@ -1303,7 +1368,7 @@ describe('Pals page', () => {
         await addPal(page, bob);
         await page.settle();
         const id = page.stored().messages[0].id;
-        page.pick('log', 'data-message', id);
+        page.pick('messages', 'data-message', id);
 
         const button = page.element('message_answer');
         assert.strictEqual(button.textContent, 'Reply');
@@ -1329,7 +1394,7 @@ describe('Pals page', () => {
         assert.strictEqual(page.element('status').textContent, 'Sent.');
 
         // Opened again, the overlay starts closed up, as Reply.
-        page.pick('log', 'data-message', id);
+        page.pick('messages', 'data-message', id);
         assert.strictEqual(button.textContent, 'Reply');
         assert.strictEqual(page.element('message_answer_box').hidden, true);
     });
@@ -1337,7 +1402,7 @@ describe('Pals page', () => {
     it('corrects an outgoing message: Correction opens a copy to edit and turns into Correct', async () => {
         const page = await populated();
         await write(page, 'dinner at 8');
-        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.pick('messages', 'data-message', page.stored().messages[0].id);
 
         const button = page.element('message_answer');
         assert.strictEqual(button.textContent, 'Correction');
@@ -1358,7 +1423,7 @@ describe('Pals page', () => {
 
     it('says why a message from somebody who is not a pal cannot be answered, and opens nothing', async () => {
         const page = await open({ idb: { inbox: { 1: await sealedItem(dave, 'hi') } } });
-        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.pick('messages', 'data-message', page.stored().messages[0].id);
         page.element('message_answer').onclick();
 
         assert.strictEqual(page.element('message_status').textContent, `dave (${tag(dave.pub)}) is not a pal - add them first`);
@@ -1370,7 +1435,7 @@ describe('Pals page', () => {
         const page = await open({ idb: { inbox: { 1: openedItem(bob, 'hi') } } });
         await addPal(page, bob);
         await page.settle();
-        page.pick('log', 'data-message', page.stored().messages[0].id);
+        page.pick('messages', 'data-message', page.stored().messages[0].id);
         page.element('message_answer').onclick();
         type(page, 'message_answer_body', 'hello');
         page.document.cookie = '';
@@ -1405,16 +1470,55 @@ describe('Pals page', () => {
         });
 
         assert.deepStrictEqual(inbox(page), [], 'the inbox is emptied');
-        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n')), [
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')), [
             ['opened by the worker', `bob (${tag(bob.pub)})`],
             ['opened by the page', `dave (${tag(dave.pub)})`]
         ]);
-        assert.deepStrictEqual(page.rows('incoming'), [`dave (${tag(dave.pub)})`, `bob (${tag(bob.pub)})`]);
+        // UPDATE_6: no incoming list - a dot by whoever wrote; who is not a pal comes after the pals.
+        assert.deepStrictEqual(page.rows('pals'), [`dave (${tag(dave.pub)})`, `bob (${tag(bob.pub)})`]);
+        assert.strictEqual((page.html('pals').match(/class="dot"/g) || []).length, 2);
         assert.ok(page.fetch.calls.some(c => `GET ${c.url}` === search('%/' + urlKeyOf(dave.pub))), 'dave was looked up by key');
         assert.ok(!page.fetch.calls.some(c => c.url.startsWith('/push/api/')), 'and nothing was sent to the server to open');
 
-        page.pick('incoming', 'data-pub', dave.pub);
-        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n')[0]), ['opened by the page']);
+        page.pick('pals', 'data-pub', dave.pub);
+        assert.strictEqual(page.element('dlg_messages').open, true);
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')[0]), ['opened by the page']);
+        assert.strictEqual((page.html('pals').match(/class="dot"/g) || []).length, 1, 'opened, dave\'s dot goes');
+        await page.settle();
+        assert.deepStrictEqual(page.stored().unread, [bob.pub]);
+    });
+
+    it('puts a dot by a pal who wrote, but not while their messages are open; Key is for pals only', async () => {
+        const page = await open();
+        await addPal(page, bob);
+        await page.settle();
+        page.indexedDB.stores.inbox.set(1, openedItem(bob, 'first', { id: 'm1' }));
+        page.push();
+        await page.settle();
+        assert.ok(page.html('pals').includes('class="dot"'));
+
+        page.pick('pals', 'data-pub', bob.pub);
+        assert.strictEqual(page.element('dlg_messages').open, true);
+        assert.strictEqual(page.element('pal_verify').disabled, false);
+        page.indexedDB.stores.inbox.set(2, openedItem(bob, 'second', { id: 'm2' }));
+        page.push();
+        await page.settle();
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')[0]), ['first', 'second']);
+        assert.ok(!page.html('pals').includes('class="dot"'), 'read as it comes');
+        assert.deepStrictEqual(page.stored().unread, []);
+
+        page.element('dlg_messages').close();
+        page.indexedDB.stores.inbox.set(3, openedItem(dave, 'hello', { id: 'm3' }));
+        page.push();
+        await page.settle();
+        page.pick('pals', 'data-pub', dave.pub);
+        assert.strictEqual(page.element('pal_verify').disabled, true, 'dave is not a pal');
+        page.element('dlg_messages').close();
+        page.click('pal_remove');
+        await page.settle();
+        assert.match(page.confirms[0], /^Remove dave .* from the list\? What they wrote stays\./);
+        assert.deepStrictEqual(page.rows('pals'), [`bob (${tag(bob.pub)})`]);
+        assert.strictEqual(page.stored().messages.length, 3);
     });
 
     it('files a group message under its group, making it when there is none', async () => {
@@ -1426,7 +1530,7 @@ describe('Pals page', () => {
 
         assert.deepStrictEqual(page.rows('groups'), ['Family', 'Climbing']);
         page.pick('groups', 'data-group', 'Family');
-        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n')[0]), ['dinner']);
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')[0]), ['dinner']);
         page.pick('groups', 'data-group', 'Climbing');
         assert.deepStrictEqual(page.rows('members'), [`carol (${tag(carol.pub)})`]);
     });
@@ -1434,12 +1538,12 @@ describe('Pals page', () => {
     it('puts parts back together as they come, and shows a message still missing some', async () => {
         const part = (n, text) => sealedItem(bob, text, { id: 'long', part: n, parts: 2 });
         const page = await open({ idb: { inbox: { 1: await part(2, 'world') } } });
-        assert.ok(page.html('log').includes('1 of 2 parts'));
+        assert.ok(page.html('messages').includes('1 of 2 parts'));
 
         page.indexedDB.stores.inbox.set(5, await part(1, 'hello '));
         page.push();
         await page.settle();
-        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n')[0]), ['hello world']);
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')[0]), ['hello world']);
         assert.strictEqual(page.stored().messages.length, 1);
     });
 
@@ -1460,7 +1564,7 @@ describe('Pals page', () => {
         } } });
 
         assert.deepStrictEqual(inbox(page).map(i => [i.payload.to, i.at > 1]), [[carol.pub, false], [alice.pub, true]]);
-        assert.deepStrictEqual(page.rows('log'), []);
+        assert.deepStrictEqual(page.rows('messages'), []);
     });
 
     it('removes a pal and a group only when the user says so', async () => {
@@ -1489,13 +1593,13 @@ describe('Pals page', () => {
         const again = mountPals({ ...signedIn(), routes: northern(), indexedDB: page.indexedDB });
         await again.settle();
         assert.deepStrictEqual(again.rows('groups'), ['Family']);
-        assert.strictEqual(again.rows('log').length, 1);
+        assert.strictEqual(again.rows('messages').length, 1);
 
         page.indexedDB.stores.setup.set(bob.pub, { endpoint: 'https://fcm.googleapis.com/fcm/send/device' });
         const other = mountPals({ ...signedIn(bob), routes: northern(), indexedDB: page.indexedDB });
         await other.settle();
         assert.deepStrictEqual(other.rows('groups'), []);
-        assert.deepStrictEqual(other.rows('log'), []);
+        assert.deepStrictEqual(other.rows('messages'), []);
     });
 
     it('says so when this device no longer gets pushes', async () => {
@@ -1544,9 +1648,9 @@ describe('Pals page', () => {
         assert.deepStrictEqual([m.attachment.id, m.attachment.key], [FILE_ID, att.key]);
         assert.deepStrictEqual(Buffer.from(page.file(m.id).bytes), photo, 'the photo stays on this device');
         assert.strictEqual(page.element('status').textContent, 'Sent.');
-        assert.match(page.html('log'), /class="clip"/);
+        assert.match(page.html('messages'), /class="clip"/);
 
-        page.pick('log', 'data-message', m.id);
+        page.pick('messages', 'data-message', m.id);
         await page.settle();
         assert.strictEqual(page.element('message_attachment').hidden, false);
         assert.match(page.html('message_attachment'), /^<img src="blob:1" alt="beach\.jpg">/);
@@ -1566,7 +1670,7 @@ describe('Pals page', () => {
         assert.deepStrictEqual(sent(page), [], 'no message without its photo');
         const [m] = page.stored().messages;
         assert.strictEqual(m.delivery[bob.pub], 'the photo could not be sent: the temp space is full; try again later');
-        page.pick('log', 'data-message', m.id);
+        page.pick('messages', 'data-message', m.id);
         await page.settle();
         assert.match(page.html('message_attachment'), /^<img src="blob:1"/, 'the sender still sees it');
 
@@ -1614,10 +1718,10 @@ describe('Pals page', () => {
             [`GET /temp/api/download/${FILE_ID}`]);
         assert.strictEqual(m.attachment.saved, true);
         assert.deepStrictEqual(Buffer.from(page.file(m.id).bytes), photo);
-        assert.deepStrictEqual(page.rows('log').map(r => r.split('\n').slice(0, 2)), [['&#128206;', 'cat.png']],
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n').slice(0, 2)), [['&#128206;', 'cat.png']],
             'a paperclip, and for a photo with no words, its name');
 
-        page.pick('log', 'data-message', m.id);
+        page.pick('messages', 'data-message', m.id);
         await page.settle();
         assert.match(page.html('message_attachment'), /^<img src="blob:1" alt="cat\.png"><a class="link" href="blob:1" download="cat\.png">/);
 
@@ -1648,7 +1752,7 @@ describe('Pals page', () => {
             [false, true, 'Northern no longer has it'],
             [false, true, 'it does not open with the key it came with']
         ]);
-        page.pick('log', 'data-message', page.stored().messages[1].id);
+        page.pick('messages', 'data-message', page.stored().messages[1].id);
         await page.settle();
         assert.match(page.html('message_attachment'), /It could not be fetched: Northern no longer has it/);
 

@@ -11,7 +11,9 @@
   --more-bg: #e4e7e4;
   --pill-bg: 60% 86%;
   --pill-text: 45% 22%;
-  /* How tall a list is. The right hand column stacks two in the same height. */
+  /* By a pal who wrote something not opened yet: bright, in either scheme. */
+  --dot: #22d65a;
+  /* How tall a list is. */
   --box: 22rem;
   color-scheme: light dark;
 }
@@ -95,34 +97,30 @@ textarea { resize: vertical; }
   outline-offset: 1px;
 }
 
-/* ---- who ---- */
+/* ---- the first row: the gear, on the right ---- */
 
-.who {
+.top {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  justify-content: flex-end;
 }
 
-.who p {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  margin: 0;
+button.icon {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border-radius: 999px;
   color: var(--muted);
 }
+
+button.icon:hover:not(:disabled) { color: var(--theme); }
 
 a.link {
   color: var(--theme);
   font-size: 0.85rem;
 }
 
-/* The app's version, at the foot of the page. */
+/* The app's version, in the settings. */
 .version {
-  margin-top: 16px;
-  text-align: center;
   color: var(--muted);
   font-size: 0.75rem;
 }
@@ -131,7 +129,7 @@ a.link {
 
 .panels {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -139,12 +137,6 @@ a.link {
 .panel {
   display: grid;
   gap: 8px;
-  min-width: 0;
-}
-
-.stack {
-  display: grid;
-  gap: 16px;
   min-width: 0;
 }
 
@@ -157,11 +149,6 @@ a.link {
   border-radius: 8px;
   padding: 4px;
 }
-
-/* Two panels, two titles, two rows of buttons - and still the height of one. */
-.stack .box { height: calc((var(--box) - 5.7rem) / 2); }
-
-#panel_incoming .box { height: 7rem; }
 
 .row {
   display: block;
@@ -225,6 +212,21 @@ a.link {
 /* A pal whose key was compared in person. */
 .verified { color: var(--theme); font-weight: bold; }
 
+/* Somebody who wrote without being a pal. */
+.other { color: var(--muted); font-style: italic; }
+
+/* New messages from them, not opened yet. */
+.dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--dot);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot) 25%, transparent);
+  vertical-align: middle;
+}
+
 .fingerprint {
   display: block;
   padding: 8px 10px;
@@ -248,7 +250,7 @@ a.link {
 .state { flex: none; font-style: italic; }
 .state.failed { color: var(--error); font-style: normal; }
 
-#log .row + .row { border-top: 1px solid var(--border); border-radius: 0; }
+#messages .row + .row { border-top: 1px solid var(--border); border-radius: 0; }
 
 .pill {
   display: inline-block;
@@ -263,8 +265,6 @@ a.link {
   background: hsl(var(--hue, 150) var(--pill-bg));
   color: hsl(var(--hue, 150) var(--pill-text));
 }
-
-.who .pill { font-size: 0.95rem; padding: 2px 12px; }
 
 .empty {
   margin: 0;
@@ -359,6 +359,15 @@ dialog .buttons {
 
 dialog .meta { margin: 0; }
 
+/* The layers above the page: Messages, Group members, Settings. Close sits
+   on the right, the list's own buttons on the left. */
+dialog.layer { width: min(44rem, calc(100vw - 32px)); }
+dialog.layer p { margin: 0; }
+dialog.layer .buttons { justify-content: flex-start; }
+dialog.layer .close { margin-left: auto; }
+#messages { height: min(var(--box), 60vh); }
+#members { height: min(14rem, 50vh); }
+
 /* A photo or a video that goes with a message. */
 .clip { margin-right: 4px; }
 
@@ -427,6 +436,12 @@ select[size] { padding: 4px; }
 
 @media (max-width: 760px) {
   .panels { grid-template-columns: minmax(0, 1fr); }
-  .box, .stack .box { height: 12rem; }
-  #log { height: 18rem; }
+  .box { height: 12rem; }
+  /* A layer takes the screen, and its list what the rest leaves. */
+  dialog.layer {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 16px;
+  }
+  #messages { height: calc(100dvh - 11rem); }
 }

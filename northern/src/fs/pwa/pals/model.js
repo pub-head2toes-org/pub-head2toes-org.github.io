@@ -48,7 +48,7 @@ const PalsModel = (function () {
     api.DIRECTORY = '/pals/';
 
     api.empty = function () {
-        return { v: api.VERSION, seq: 0, pals: [], groups: [], messages: [], incoming: [] };
+        return { v: api.VERSION, seq: 0, pals: [], groups: [], messages: [], incoming: [], unread: [] };
     };
 
     // ---- keys ----------------------------------------------------------
@@ -217,11 +217,23 @@ const PalsModel = (function () {
         return pal;
     };
 
-    /** A pal who leaves, leaves every group too. What they said stays in the log. */
+    /**
+     * A pal who leaves, leaves every group too, and the Pals list - as does
+     * somebody who wrote without being a pal. What they said stays.
+     */
     api.removePal = function (state, pub) {
         state.pals = state.pals.filter(p => p.pub !== pub);
         state.groups.forEach(g => { g.members = g.members.filter(m => m !== pub); });
         state.incoming = state.incoming.filter(p => p !== pub);
+        state.unread = state.unread.filter(p => p !== pub);
+    };
+
+    /**
+     * Who wrote without being a pal, latest first. They are listed under the
+     * pals so what they said can be read; adding them with + makes them pals.
+     */
+    api.others = function (state) {
+        return state.incoming.filter(pub => !api.pal(state, pub));
     };
 
     /** The directory, less the user and the pals they have already. */
@@ -670,6 +682,7 @@ const PalsModel = (function () {
         m.body = joined(m.parts);
         m.complete = m.parts.every(p => p !== null);
         api.noteIncoming(state, e.from);
+        api.markUnread(state, e.from, true);
         return m;
     };
 
@@ -683,7 +696,23 @@ const PalsModel = (function () {
     };
 
     /**
-     * What the Log panel shows, oldest first.
+     * Whether somebody wrote something the user has not opened yet: a dot by
+     * their name in the Pals list (UPDATE_6). Opening their messages clears it.
+     */
+    api.markUnread = function (state, pub, unread) {
+        state.unread = state.unread.filter(p => p !== pub);
+        if (unread && pub) {
+            state.unread.push(pub);
+        }
+        return state.unread;
+    };
+
+    api.isUnread = function (state, pub) {
+        return state.unread.indexOf(pub) !== -1;
+    };
+
+    /**
+     * What the Messages layer shows, oldest first.
      *
      *   {kind: 'all'}                     everything
      *   {kind: 'pal', pub}                what was said with one pal: direct
@@ -754,6 +783,7 @@ const PalsModel = (function () {
         state.messages = list(stored.messages)
             .filter(m => m && m.id && m.to && typeof m.body === 'string' && typeof m.from === 'string');
         state.incoming = list(stored.incoming).filter(p => typeof p === 'string');
+        state.unread = list(stored.unread).filter(api.isPub);
         state.seq = Math.max(Number(stored.seq) || 0, state.messages.length);
         return state;
     };

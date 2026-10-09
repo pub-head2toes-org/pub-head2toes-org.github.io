@@ -533,6 +533,33 @@ anyway, and got *Not delivered*. So the notice is gone, and:
   - Files are kept on the device for good; nothing deletes them yet.
 - `PALS_VERSION` is 9.
 
+## UPDATE_6.md — less on the main screen
+
+(The section above was built before `UPDATE_6.md` was written, under the
+same number.)
+
+- **The main screen** is a row with a gear, then *Pals* and *Groups* side by
+  side (stacked on a phone), then the status line. The app name, *Signed in
+  as*, *set up this device again* and the version moved to **Settings**,
+  which the gear opens.
+- **Layers** are `<dialog class="layer">` above the page, full screen on a
+  phone:
+  - **Messages** (the old Log; *show all* is gone) opens on a click on a pal,
+    with `+` to write. The message overlay and *New message* open on top of it.
+  - **Group members** opens on a click on a group, and right after a group is
+    added. Its *Messages* button opens the group's messages, or only the
+    picked member's.
+  - The selection stays when a layer closes, so `−` and *Key* work on it.
+- **No Incoming panel.** A message puts a bright green dot by its sender in
+  the Pals list (`state.unread`, kept); opening their messages clears it, and
+  what comes in while they are open is read as it comes. Somebody who wrote
+  without being a pal is listed after the pals, in grey italics, with the dot:
+  they are **not** made a pal, so the Update 2 pinning and the Update 5 rule
+  (no answering a key the user did not choose) hold. `+` adds them; `−` takes
+  them off the list, keeping what they wrote.
+- *Groups* says *No groups* when there are none.
+- `PALS_VERSION` is 10.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**

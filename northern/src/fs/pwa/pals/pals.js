@@ -43,11 +43,13 @@
         return false;
     }
 
-    // What is selected in each list, and what the log is showing.
+    // What is selected in each list, and what the Messages layer is showing.
     const ui = { pal: null, group: null, member: null, filter: { kind: 'all' } };
 
+    // On the page, and in the Messages layer, which covers it while it is open.
     function say(text) {
         $('status').textContent = text || '';
+        $('messages_status').textContent = text || '';
     }
 
     function save() {
@@ -157,22 +159,36 @@
     // ---- the page ------------------------------------------------------
 
     function render() {
-        $('pals').innerHTML = PalsViews.pals(state, ui.pal);
+        $('pals').innerHTML = PalsViews.pals(state, ui.pal, me);
         $('groups').innerHTML = PalsViews.groups(state, ui.group);
         $('members').innerHTML = PalsViews.members(state, ui.group, ui.member);
-        $('incoming').innerHTML = PalsViews.incoming(state, me);
+        $('members_context').textContent = ui.group || '';
 
-        const log = $('log');
-        log.innerHTML = PalsViews.log(PalsModel.log(state, ui.filter), state, me);
-        log.scrollTop = log.scrollHeight;
+        const messages = $('messages');
+        messages.innerHTML = PalsViews.log(PalsModel.log(state, ui.filter), state, me);
+        messages.scrollTop = messages.scrollHeight;
 
-        $('log_context').textContent = PalsViews.context(state, ui.filter, me);
-        $('log_all').hidden = ui.filter.kind === 'all';
+        $('messages_context').textContent = PalsViews.context(state, ui.filter, me);
         $('pal_remove').disabled = !ui.pal;
-        $('pal_verify').disabled = !ui.pal;
+        $('pal_verify').disabled = !PalsModel.pal(state, ui.pal);
         $('group_remove').disabled = !ui.group;
         $('member_add').disabled = !ui.group;
         $('member_remove').disabled = !ui.member;
+    }
+
+    /**
+     * Opens a layer above the page (UPDATE_6): a pal's or a group's messages,
+     * a group's members, or the settings. It stays open as the page renders
+     * under it; showModal on an open dialog would throw.
+     */
+    function layer(name) {
+        const dialog = $('dlg_' + name);
+        if (!dialog.open) {
+            dialog.showModal();
+        }
+        if (name === 'messages') {
+            $('messages').scrollTop = $('messages').scrollHeight;
+        }
     }
 
     function show(filter) {
@@ -187,24 +203,44 @@
         show({ kind: 'all' });
     }
 
+    /** A pal - or somebody who wrote - opens what was said with them, and the dot by their name goes. */
     function selectPal(pub) {
-        ui.pal = PalsModel.pal(state, pub) ? pub : null;
+        ui.pal = PalsModel.pal(state, pub) || PalsModel.others(state).indexOf(pub) !== -1 ? pub : null;
         ui.group = null;
         ui.member = null;
+        if (PalsModel.isUnread(state, pub)) {
+            PalsModel.markUnread(state, pub, false);
+            save();
+        }
         show({ kind: 'pal', pub: pub });
+        layer('messages');
     }
 
+    /** A group opens its members. */
     function selectGroup(name) {
         const group = PalsModel.group(state, name);
         ui.pal = null;
         ui.group = group ? group.name : null;
         ui.member = null;
         show({ kind: 'group', id: ui.group });
+        if (ui.group) {
+            layer('members');
+        }
     }
 
+    /** A member is picked to be removed, or for only what they said in the group. */
     function selectMember(pub) {
         ui.member = pub;
         show({ kind: 'member', id: ui.group, pub: pub });
+    }
+
+    /** The group's messages - only the picked member's, when one is picked. */
+    function groupMessages() {
+        if (!ui.group) {
+            return;
+        }
+        show(ui.member ? { kind: 'member', id: ui.group, pub: ui.member } : { kind: 'group', id: ui.group });
+        layer('messages');
     }
 
     // A click anywhere in a list lands on the row that holds it.
@@ -610,6 +646,11 @@
         draining = PalsStore.all('inbox')
             .then(items => items.reduce((done, item) => done.then(counts => take(item).then(n => counts.concat(n))), Promise.resolve([])))
             .then(function (counts) {
+                // What comes in while somebody's messages are open is read as it comes.
+                if ($('dlg_messages').open && ui.filter.kind === 'pal' && PalsModel.isUnread(state, ui.filter.pub)) {
+                    PalsModel.markUnread(state, ui.filter.pub, false);
+                    save();
+                }
                 render();
                 const waiting = counts.filter(n => n === -1).length;
                 if (waiting) {
@@ -662,10 +703,12 @@
 
     function removePal() {
         const pal = PalsModel.pal(state, ui.pal);
-        if (!pal || !window.confirm('Remove ' + PalsModel.label(pal.name, pal.pub) + ' from your pals?')) {
+        const question = pal ? 'Remove ' + PalsModel.label(pal.name, pal.pub) + ' from your pals?'
+            : 'Remove ' + PalsModel.label(PalsModel.nameOf(state, ui.pal, me), ui.pal) + ' from the list? What they wrote stays.';
+        if (!ui.pal || !window.confirm(question)) {
             return;
         }
-        PalsModel.removePal(state, pal.pub);
+        PalsModel.removePal(state, ui.pal);
         save();
         showAll();
     }
@@ -678,6 +721,8 @@
             ui.group = group.name;
             ui.member = null;
             ui.filter = { kind: 'group', id: group.name };
+            // Next, who is in it.
+            return () => layer('members');
         });
         $('group_name').focus();
     }
@@ -753,10 +798,10 @@
     onRow('pals', 'data-pub', selectPal);
     onRow('groups', 'data-group', selectGroup);
     onRow('members', 'data-pub', selectMember);
-    onRow('incoming', 'data-pub', selectPal);
-    onRow('log', 'data-message', openMessage);
+    onRow('messages', 'data-message', openMessage);
 
-    $('log_all').addEventListener('click', showAll);
+    $('settings_open').addEventListener('click', () => layer('settings'));
+    $('group_messages').addEventListener('click', groupMessages);
     $('pal_add').addEventListener('click', addPal);
     $('pal_remove').addEventListener('click', removePal);
     $('pal_verify').addEventListener('click', verifyPal);
@@ -775,7 +820,7 @@
             .then(registration => registration.pushManager.getSubscription())
             .then(function (subscription) {
                 if (!subscription || subscription.endpoint !== setup.endpoint) {
-                    say('This device no longer gets messages. Set it up again with the link at the top.');
+                    say('This device no longer gets messages. Set it up again under Settings (the gear, top right).');
                 }
             })
             .catch(() => {});

@@ -9,18 +9,22 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=9">
+  <link rel="stylesheet" href="./styles.css?v=10">
   <title>Pals</title>
 </head>
 <body>
 
 <main>
 
-  <!-- Who is signed in to Northern. -->
-  <header class="who">
-    <h1>Pals</h1>
-    <p>Signed in as <span id="user"></span>
-      <a class="link" href="./welcome.html" id="setup_again">set up this device again</a></p>
+  <!-- The first row: only the way to the settings. -->
+  <header class="top">
+    <button type="button" class="icon" id="settings_open" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </header>
 
   <!-- Messages are sealed and opened with the ID Card's key, kept on this device once it is loaded here. -->
@@ -29,6 +33,7 @@
 
   <section class="panels">
 
+    <!-- A pal opens their messages; a dot by the name says there are new ones. -->
     <section class="panel" id="panel_pals">
       <h2>Pals</h2>
       <div class="box" id="pals" role="listbox" aria-label="Pals"></div>
@@ -39,48 +44,61 @@
       </div>
     </section>
 
-    <section class="panel" id="panel_log">
-      <h2>Log <span class="context" id="log_context"></span>
-        <button type="button" class="link" id="log_all" hidden>show all</button></h2>
-      <div class="box" id="log" role="listbox" aria-label="Messages"></div>
+    <!-- A group opens its members. -->
+    <section class="panel" id="panel_groups">
+      <h2>Groups</h2>
+      <div class="box" id="groups" role="listbox" aria-label="Groups"></div>
       <div class="buttons">
-        <button type="button" id="message_add" aria-label="Write a message">+</button>
+        <button type="button" id="group_add" aria-label="Add a group">+</button>
+        <button type="button" id="group_remove" aria-label="Remove the selected group">&minus;</button>
       </div>
     </section>
 
-    <div class="stack">
-      <section class="panel" id="panel_groups">
-        <h2>Groups</h2>
-        <div class="box" id="groups" role="listbox" aria-label="Groups"></div>
-        <div class="buttons">
-          <button type="button" id="group_add" aria-label="Add a group">+</button>
-          <button type="button" id="group_remove" aria-label="Remove the selected group">&minus;</button>
-        </div>
-      </section>
-
-      <section class="panel" id="panel_members">
-        <h2>Group members</h2>
-        <div class="box" id="members" role="listbox" aria-label="Group members"></div>
-        <div class="buttons">
-          <button type="button" id="member_add" aria-label="Add a member to the group">+</button>
-          <button type="button" id="member_remove" aria-label="Remove the selected member">&minus;</button>
-        </div>
-      </section>
-    </div>
-
-  </section>
-
-  <section class="panel" id="panel_incoming">
-    <h2>Incoming messages</h2>
-    <div class="box" id="incoming" role="listbox" aria-label="Incoming messages"></div>
   </section>
 
   <p class="status" id="status" role="status"></p>
 
-  <!-- The version of the app: the one its service worker's cache is named after. -->
-  <footer class="version">Pals <span id="version"></span></footer>
-
 </main>
+
+<!-- The layers above the page: what was said with a pal or in a group, a
+     group's members, and the settings. -->
+<dialog class="layer" id="dlg_messages" aria-labelledby="messages_title">
+  <form method="dialog">
+    <h2 id="messages_title">Messages <span class="context" id="messages_context"></span></h2>
+    <div class="box" id="messages" role="listbox" aria-label="Messages"></div>
+    <p class="status" id="messages_status" role="status"></p>
+    <div class="buttons">
+      <button type="button" id="message_add" aria-label="Write a message">+</button>
+      <button type="submit" class="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="layer" id="dlg_members" aria-labelledby="members_title">
+  <form method="dialog">
+    <h2 id="members_title">Group members <span class="context" id="members_context"></span></h2>
+    <div class="box" id="members" role="listbox" aria-label="Group members"></div>
+    <div class="buttons">
+      <button type="button" id="member_add" aria-label="Add a member to the group">+</button>
+      <button type="button" id="member_remove" aria-label="Remove the selected member">&minus;</button>
+      <button type="button" id="group_messages">Messages</button>
+      <button type="submit" class="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="layer" id="dlg_settings" aria-labelledby="settings_title">
+  <form method="dialog">
+    <h2 id="settings_title">Settings</h2>
+    <p>Signed in as <span id="user"></span></p>
+    <p><a class="link" href="./welcome.html" id="setup_again">Set up this device again</a></p>
+    <!-- The version of the app: the one its service worker's cache is named after. -->
+    <p class="version">Pals <span id="version"></span></p>
+    <div class="buttons">
+      <button type="submit" class="close">Close</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- The whole message, when its row in the log is clicked. -->
 <dialog id="dlg_message" aria-labelledby="message_from">
@@ -183,18 +201,18 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=9"></script>
-<script src="../../reg/cookies.js?v=9"></script>
-<script src="../../reg/oo.js?v=9"></script>
-<script src="../../reg/idcard.js?v=9"></script>
-<script src="../../reg/keystore.js?v=9"></script>
-<script src="../../reg/session.js?v=9"></script>
+<script src="../../reg/sjcl.js?v=10"></script>
+<script src="../../reg/cookies.js?v=10"></script>
+<script src="../../reg/oo.js?v=10"></script>
+<script src="../../reg/idcard.js?v=10"></script>
+<script src="../../reg/keystore.js?v=10"></script>
+<script src="../../reg/session.js?v=10"></script>
 
-<script src="./version.js?v=9"></script>
-<script src="./model.js?v=9"></script>
-<script src="./store.js?v=9"></script>
-<script src="./seal.js?v=9"></script>
-<script src="./views.js?v=9"></script>
-<script src="./pals.js?v=9"></script>
+<script src="./version.js?v=10"></script>
+<script src="./model.js?v=10"></script>
+<script src="./store.js?v=10"></script>
+<script src="./seal.js?v=10"></script>
+<script src="./views.js?v=10"></script>
+<script src="./pals.js?v=10"></script>
 </body>
 </html>

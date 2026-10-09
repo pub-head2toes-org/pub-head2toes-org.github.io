@@ -49,14 +49,27 @@ const PalsViews = (function () {
     const time = PalsModel.time;
     api.time = time;
 
-    api.pals = function (state, selected) {
-        if (!state.pals.length) {
+    /** By a name: there are messages from them the user has not opened yet (UPDATE_6). */
+    const dot = function (state, pub) {
+        return PalsModel.isUnread(state, pub) ? '<span class="dot" role="img" aria-label="new messages" title="New messages"></span>' : '';
+    };
+
+    /**
+     * The pals, then whoever wrote without being one - set apart, as they
+     * cannot be answered until they are added.
+     */
+    api.pals = function (state, selected, me) {
+        const others = PalsModel.others(state);
+        if (!state.pals.length && !others.length) {
             return api.empty('Nobody yet. Add a pal with +.');
         }
         return state.pals.map(p =>
             row('data-pub="' + esc(p.pub) + '"', p.pub === selected, esc(PalsModel.label(p.name, p.pub)) +
-                (p.verified ? ' <span class="verified" title="Key compared in person">&#10003;</span>' : ''))
-        ).join('');
+                (p.verified ? ' <span class="verified" title="Key compared in person">&#10003;</span>' : '') + dot(state, p.pub))
+        ).concat(others.map(pub =>
+            row('data-pub="' + esc(pub) + '" title="Not a pal: add them with + to answer"', pub === selected,
+                '<span class="other">' + esc(PalsModel.label(PalsModel.nameOf(state, pub, me), pub)) + '</span>' + dot(state, pub))
+        )).join('');
     };
 
     /**
@@ -147,7 +160,7 @@ const PalsViews = (function () {
 
     api.groups = function (state, selected) {
         if (!state.groups.length) {
-            return api.empty('No groups yet.');
+            return api.empty('No groups');
         }
         const chosen = String(selected || '').toLowerCase();
         return state.groups.map(g =>
@@ -165,15 +178,6 @@ const PalsViews = (function () {
         }
         return members.map(p =>
             row('data-pub="' + esc(p.pub) + '"', p.pub === selected, esc(PalsModel.label(p.name, p.pub)))
-        ).join('');
-    };
-
-    api.incoming = function (state, me) {
-        if (!state.incoming.length) {
-            return api.empty('Nothing new.');
-        }
-        return state.incoming.map(pub =>
-            row('data-pub="' + esc(pub) + '"', false, esc(PalsModel.label(PalsModel.nameOf(state, pub, me), pub)))
         ).join('');
     };
 
@@ -209,7 +213,7 @@ const PalsViews = (function () {
         ).join('');
     };
 
-    /** What the Log panel is showing, in words. '' when it is showing everything. */
+    /** What the Messages layer is showing, in words. '' when it is showing everything. */
     api.context = function (state, filter, me) {
         const f = filter || { kind: 'all' };
         const who = pub => PalsModel.label(PalsModel.nameOf(state, pub, me), pub);
