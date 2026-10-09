@@ -1,6 +1,6 @@
 // Bump it whenever a cached file changes, so every device fetches the new set -
 // and with it the ?v= on every script and stylesheet in index.html.
-const CACHE_NAME = 'fabric-draw-v11';
+const CACHE_NAME = 'fabric-draw-v12';
 const urlsToCache = [
   './index.html',
   './styles.css',

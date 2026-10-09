@@ -130,7 +130,7 @@ function stubElements(html) {
             const options = select ? [...select[1].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)]
                 .map(m => ({ value: m[1].replace(/&#39;/g, "'"), textContent: m[2] })) : null;
             elements[id] = {
-                id, attributes, listeners: {}, focused: 0, textContent: '', files: [],
+                id, tagName: /^<([a-z]+)/.exec(tag)[1].toUpperCase(), attributes, listeners: {}, focused: 0, clicked: 0, textContent: '', files: [],
                 value: attributes.value || (options ? options[0].value : ''), options, style: {},
                 get selectedIndex() { return this.options.findIndex(o => o.value === this.value); },
                 inert: /\sinert[\s>]/.test(tag), checked: /\schecked[\s>]/.test(tag), disabled: false,
@@ -143,7 +143,9 @@ function stubElements(html) {
                 fire(event, data = {}) { (this.listeners[event] || []).forEach(fn => fn.call(this, data)); },
                 setAttribute(name, value) { this.attributes[name] = String(value); },
                 getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; },
-                focus() { this.focused += 1; }
+                focus() { this.focused += 1; },
+                // As a script clicks it: the click event, then what the element does - a picker, a download - which a test sees counted.
+                click() { this.clicked += 1; this.fire('click'); }
             };
         }
         return elements[id];
@@ -173,6 +175,8 @@ function mountFabric({ width = 800, height = 600, confirm = true, retina = 1 } =
             return link;
         },
         body: { appendChild(link) { link.attached = true; } },
+        listeners: {},
+        addEventListener(event, fn) { this.listeners[event] = fn; },
         getElementById: element,
         querySelectorAll: selector => { assert.strictEqual(selector, '[data-command]'); return element.withCommand(); }
     };
@@ -215,6 +219,12 @@ function mountFabric({ width = 800, height = 600, confirm = true, retina = 1 } =
         slide: (id, value) => { element(id).value = String(value); element(id).fire('input'); },
         load: (id, text) => { element(id).files = [{ text }]; element(id).fire('change'); },
         status: () => element('status').textContent,
+        /** Keys pressed one by one, `in` the element that has focus - the corner of the drawing, as it comes - and those the page took. */
+        type: (keys, { in: target = element('peel_top') } = {}) => (Array.isArray(keys) ? keys : [...keys]).filter(key => {
+            const event = { key, target, prevented: false, preventDefault() { this.prevented = true; } };
+            document.listeners.keydown(event);
+            return event.prevented;
+        }),
         /** A drag on the drawing, from one point to another, by way of the ones between. */
         drag: (...points) => {
             canvas.fire('mouse:down', { e: points[0] });
@@ -1129,5 +1139,198 @@ describe('Fabric: versions', () => {
         const tags = [...read('index.html').matchAll(/\?v=(\d+)/g)].map(m => m[1]);
         assert.ok(tags.length >= 3);
         assert.deepStrictEqual([...new Set(tags)], [version]);
+    });
+});
+
+describe('Fabric: commands typed on the drawing', () => {
+    const cmd = name => '{"cmd":"' + name + '"}';
+
+    it('copies, pastes and removes what is selected, as the controls do', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.select(a);
+        page.type(cmd('copy'));
+        assert.strictEqual(page.status(), 'Copied 1 object.');
+        page.type(cmd('paste'));
+        assert.strictEqual(page.canvas.objects.length, 2);
+        assert.strictEqual(page.status(), 'Pasted.');
+        page.type(cmd('remove'));
+        assert.deepStrictEqual(page.names(), ['a']);
+        assert.strictEqual(page.front(), 'draw', 'the drawing stays on top');
+    });
+
+    it('knows every command of the list, and none else', () => {
+        const page = mountFabric();
+        ['escape', 'copy', 'paste', 'remove', 'select', 'turn-on', 'turn-off', 'pencil', 'line', 'rectangle', 'circle',
+            'text-box', 'bubble', 'load-image', 'load-json', 'download-image', 'download-json', 'download-selected-image',
+            'fit-width', 'fit-height'].forEach(function (name) {
+            page.type(cmd(name));
+            assert.doesNotMatch(page.status(), /No such command/, name);
+        });
+        page.type(cmd('clear'));
+        assert.strictEqual(page.status(), 'No such command: {"cmd":"clear"}');
+        assert.deepStrictEqual(page.asked, [], 'Clear is for the controls only');
+        page.type('{"cmd":copy}');
+        assert.strictEqual(page.status(), 'No such command: {"cmd":copy}');
+        page.type('{"cmd":"constructor"}');
+        assert.match(page.status(), /No such command/);
+    });
+
+    it('turns drawing mode on and off', () => {
+        const page = mountFabric();
+        page.type(cmd('turn-off'));
+        assert.strictEqual(page.canvas.isDrawingMode, false);
+        page.type(cmd('turn-off'));
+        assert.strictEqual(page.canvas.isDrawingMode, false, 'off stays off');
+        assert.strictEqual(page.element('drawing-mode').getAttribute('aria-pressed'), 'false');
+        page.type(cmd('turn-on'));
+        assert.strictEqual(page.canvas.isDrawingMode, true);
+        assert.strictEqual(page.status(), 'Drawing mode on.');
+    });
+
+    it('picks the pencil, the straight line, the rectangle and the circle, with drawing mode on', () => {
+        const page = mountFabric();
+        const mode = page.element('drawing-mode-selector');
+        page.type(cmd('turn-off'));
+        page.type(cmd('line'));
+        assert.strictEqual(mode.value, 'straight');
+        assert.strictEqual(page.status(), 'Drawing: Straight line.');
+        assert.strictEqual(page.element('drawing-mode').getAttribute('aria-pressed'), 'true');
+        page.drag({ x: 0, y: 0 }, { x: 50, y: 0 });
+        assert.strictEqual(page.canvas.objects[0].type, 'line');
+
+        page.type(cmd('rectangle'));
+        page.drag({ x: 0, y: 0 }, { x: 50, y: 40 });
+        page.type(cmd('circle'));
+        page.drag({ x: 0, y: 0 }, { x: 50, y: 40 });
+        assert.deepStrictEqual(page.canvas.objects.map(o => o.type), ['line', 'rect', 'circle']);
+
+        page.type(cmd('pencil'));
+        assert.strictEqual(mode.value, 'Pencil');
+        assert.strictEqual(page.canvas.isDrawingMode, true);
+        assert.strictEqual(page.canvas.freeDrawingBrush.kind, 'PencilBrush');
+    });
+
+    it('selects an area to copy, and Escape lets it and the selection go', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.type(cmd('select'));
+        assert.strictEqual(page.canvas.skipTargetFind, true);
+        page.type(cmd('escape'));
+        assert.strictEqual(page.canvas.isDrawingMode, true, 'the drawing as it was');
+        page.drag({ x: 10, y: 10 }, { x: 110, y: 60 });
+        assert.strictEqual(page.canvas.snapshots.length, 0, 'no area copied');
+
+        page.select(a);
+        page.type(cmd('escape'));
+        assert.strictEqual(page.canvas.getActiveObject(), null);
+        assert.strictEqual(page.status(), 'Nothing selected.');
+    });
+
+    it('lets an area not dragged go when another command comes', () => {
+        const page = mountFabric();
+        page.type(cmd('select'));
+        page.type(cmd('line'));
+        page.drag({ x: 0, y: 0 }, { x: 50, y: 0 });
+        assert.strictEqual(page.canvas.snapshots.length, 0);
+        assert.strictEqual(page.canvas.objects[0].type, 'line');
+    });
+
+    it('adds a textbox and a bubble of the text typed on the controls', () => {
+        const page = mountFabric();
+        page.type(cmd('text-box'));
+        assert.strictEqual(page.canvas.objects[0].text, 'Text');
+        page.element('textblob').value = 'Hi';
+        page.type(cmd('bubble'));
+        assert.strictEqual(page.canvas.objects[1].type, 'group');
+        assert.strictEqual(page.canvas.objects[1].objects[1].text, 'Hi');
+    });
+
+    it('opens the file pickers, and downloads as the links and buttons do', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.type(cmd('load-image'));
+        page.type(cmd('load-json'));
+        assert.deepStrictEqual([page.element('fileinput').clicked, page.element('jsoninput').clicked], [1, 1]);
+
+        page.type(cmd('download-image'));
+        assert.strictEqual(page.element('down-png').href, 'data:image/png;base64,AAAA');
+        page.type(cmd('download-json'));
+        assert.match(page.element('down-json').download, /\.json$/);
+
+        a.set({ type: 'image', width: 100, height: 50 });
+        page.select(a);
+        page.type(cmd('download-selected-image'));
+        assert.match(page.saved[0].download, /_selected\.png$/);
+    });
+
+    it('fits what is selected to the canvas width and height', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        a.set({ width: 100, height: 50 });
+        page.select(a);
+        page.type(cmd('fit-width'));
+        assert.strictEqual(a.scaleX, 8);
+        page.type(cmd('fit-height'));
+        assert.strictEqual(a.scaleY, 12);
+    });
+
+    it('takes the keys of a command, and no other', () => {
+        const page = mountFabric();
+        assert.deepStrictEqual(page.type('ab '), [], 'keys outside a command are the page\'s');
+        const keys = ['{', '"', 'c', 'm', 'd', '"', ':', ' ', 'Enter', '"', 'e', 's', 'c', 'a', 'p', 'e', '"', '}'];
+        assert.deepStrictEqual(page.type(keys), keys, 'not Space nor Enter presses the corner then');
+        assert.strictEqual(page.status(), 'Nothing selected.');
+        assert.deepStrictEqual(page.type(' '), []);
+    });
+
+    it('lets a command go with Escape, and starts over at a {', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.select(a);
+        page.type(['{', '"', 'Escape']);
+        page.type('"cmd":"copy"}');
+        assert.strictEqual(page.status(), '', 'no command after Escape');
+        page.type('{"cmd"{"cmd":"copy"}');
+        assert.strictEqual(page.status(), 'Copied 1 object.');
+    });
+
+    it('skips Shift and the like, and lets a command too long go', () => {
+        const page = mountFabric();
+        page.type(['Shift', '{', 'Shift', '"', 'c', 'm', 'd', 'Shift', '"', ':', '"', 'turn-off'].flatMap(k => k.length > 1 && k !== 'Shift' ? [...k] : [k]));
+        page.type(['"', 'Shift', '}']);
+        assert.strictEqual(page.canvas.isDrawingMode, false);
+
+        page.type('{' + 'x'.repeat(200));
+        assert.strictEqual(page.status(), 'That is too long for a command.');
+        assert.deepStrictEqual(page.type('a}'), [], 'nothing left of it');
+    });
+
+    it('listens on the drawing only, and not in text being written', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.select(a);
+        page.peel();
+        assert.deepStrictEqual(page.type(cmd('copy'), { in: page.element('textblob') }), []);
+        page.type(cmd('copy'), { in: page.element('peel_back') });
+        assert.strictEqual(page.status(), '');
+
+        page.peel();
+        // A textbox edited on the canvas: fabric's textarea has the keys.
+        assert.deepStrictEqual(page.type(cmd('copy'), { in: { tagName: 'TEXTAREA' } }), []);
+        page.type(cmd('copy'), { in: { tagName: 'DIV', isContentEditable: true } });
+        assert.strictEqual(page.status(), '');
+        page.type(cmd('copy'));
+        assert.strictEqual(page.status(), 'Copied 1 object.');
+    });
+
+    it('lets a command half typed go when the controls come to the front', () => {
+        const page = mountFabric();
+        page.type('{"cmd":"turn');
+        page.peel();
+        page.type('x');
+        page.peel();
+        page.type('-off"}');
+        assert.strictEqual(page.canvas.isDrawingMode, true);
     });
 });

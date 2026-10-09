@@ -185,6 +185,15 @@
         }, KEPT);
     }
 
+    /** Lets go of what is selected: the drawing as it is, with nothing picked on it. */
+    function escape() {
+        endArea();
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        refresh();
+        say('Nothing selected.');
+    }
+
     /** Removes every selected object, not only one. */
     function remove() {
         const chosen = canvas.getActiveObjects();
@@ -437,8 +446,9 @@
         say('Cleared.');
     }
 
-    function toggleDrawing() {
-        tools.drawing = !tools.drawing;
+    /** Drawing mode on or off, as `on` says: with nothing said, the other way round. */
+    function setDrawing(on) {
+        tools.drawing = on === undefined ? !tools.drawing : !!on;
         applyDrawing();
         refresh();
         say(tools.drawing ? 'Drawing mode on.' : 'Drawing mode off: objects can be selected.');
@@ -774,14 +784,16 @@
 
     // ---- the commands: what a button runs, by the name in its data-command ----
 
-    // A remote device can send these names later, as text.
+    // A remote device can send these names later, as text; a keyboard types them already: see below.
     const commands = {
         copy: copy,
         paste: paste,
         remove: remove,
+        escape: escape,
         area: selectArea,
         clear: clear,
-        drawing: toggleDrawing,
+        drawing: setDrawing,
+        mode: setMode,
         text: addText,
         textbox: addTextbox,
         font: setFont,
@@ -790,10 +802,18 @@
         'fit-width': () => fitCanvas('width'),
         'fit-height': () => fitCanvas('height'),
         width: pixels => setSize('width', pixels),
-        height: pixels => setSize('height', pixels)
+        height: pixels => setSize('height', pixels),
+        // As their buttons and links on the controls do: the file picker opens, the download starts.
+        'load-image': () => $('fileinput').click(),
+        'load-json': () => $('jsoninput').click(),
+        'download-image': () => $('down-png').click(),
+        'download-json': () => $('down-json').click()
     };
 
-    /** Runs a command by its name, with its value when it takes one: `font` takes the font, `fill` a color or 'none', `width` and `height` the pixels. */
+    /**
+     * Runs a command by its name, with its value when it takes one: `font` takes the font, `fill` a color or 'none',
+     * `width` and `height` the pixels, `drawing` true or false - or nothing, to turn it the other way - and `mode` a value of the Mode list.
+     */
     function run(name, value) {
         if (commands.hasOwnProperty(name)) {
             commands[name](value);
@@ -802,6 +822,90 @@
 
     document.querySelectorAll('[data-command]').forEach(function (button) {
         button.addEventListener('click', () => run(button.getAttribute('data-command')));
+    });
+
+    // ---- commands typed on a keyboard, on the drawing: {"cmd":"copy"} -------
+
+    // What each "cmd" runs: the command of a control, and its value. A keyboard - a smart
+    // one such as HIDRA, or any - reaches them without peeling the drawing off.
+    const TYPED = {
+        'escape': ['escape'],
+        'copy': ['copy'],
+        'paste': ['paste'],
+        'remove': ['remove'],
+        'select': ['area'],
+        'turn-on': ['drawing', true],
+        'turn-off': ['drawing', false],
+        'pencil': ['mode', 'Pencil'],
+        'line': ['mode', 'straight'],
+        'rectangle': ['mode', 'rectangle'],
+        'circle': ['mode', 'circle'],
+        'text-box': ['textbox'],
+        'bubble': ['text'],
+        'load-image': ['load-image'],
+        'load-json': ['load-json'],
+        'download-image': ['download-image'],
+        'download-json': ['download-json'],
+        'download-selected-image': ['download-selected'],
+        'fit-width': ['fit-width'],
+        'fit-height': ['fit-height']
+    };
+
+    // Longer than this, what came after a `{` is no command: it is let go.
+    const TYPED_MAX = 200;
+    // What was typed from the `{` that starts a command, or null outside one.
+    let typed = null;
+
+    /** Whether keys pressed in `target` are text for it: a textbox edited on the canvas has a textarea of fabric's. */
+    function writing(target) {
+        return !!target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || !!target.isContentEditable);
+    }
+
+    /** Runs what `text` - from `{` to `}` - says, as its control does. An area not dragged yet is let go first, as when the controls come back. */
+    function runTyped(text) {
+        let cmd;
+        try {
+            cmd = JSON.parse(text).cmd;
+        } catch (e) {
+            cmd = undefined;
+        }
+        if (typeof cmd !== 'string' || !TYPED.hasOwnProperty(cmd)) {
+            say('No such command: ' + text);
+            return;
+        }
+        endArea();
+        run(TYPED[cmd][0], TYPED[cmd][1]);
+    }
+
+    // On the drawing only, and not in text being written. A `{` starts a command, and
+    // starts it over; Escape lets it go. Its keys are its own: none presses the corner.
+    document.addEventListener('keydown', function (event) {
+        if (ui.front !== 'draw' || ui.peeling || writing(event.target) || event.isComposing) {
+            typed = null;
+            return;
+        }
+        const key = event.key;
+        if (key === '{') {
+            typed = '';
+        } else if (typed === null) {
+            return;
+        }
+        event.preventDefault();
+        if (key === 'Escape') {
+            typed = null;
+            return;
+        }
+        // Shift and the like: only the keys that type something.
+        if (typeof key !== 'string' || key.length !== 1) return;
+        typed += key;
+        if (key === '}') {
+            const text = typed;
+            typed = null;
+            runTyped(text);
+        } else if (typed.length > TYPED_MAX) {
+            typed = null;
+            say('That is too long for a command.');
+        }
     });
 
     // ---- the brush --------------------------------------------------------
@@ -877,14 +981,32 @@
         brush.shadow = brushShadow();
     }
 
-    // A shape is a tool of its own: the brush stays as it was, for when another mode is picked.
-    $('drawing-mode-selector').addEventListener('change', function () {
-        tools.shape = shapes.hasOwnProperty(this.value) ? this.value : null;
+    /** The mode picked in the list. A shape is a tool of its own: the brush stays as it was, for when another mode is picked. */
+    function pickMode() {
+        const value = $('drawing-mode-selector').value;
+        tools.shape = shapes.hasOwnProperty(value) ? value : null;
         if (!tools.shape) {
-            setBrush(patterns[this.value] || new fabric[this.value + 'Brush'](canvas));
+            setBrush(patterns[value] || new fabric[value + 'Brush'](canvas));
         }
         applyDrawing();
-    });
+    }
+
+    $('drawing-mode-selector').addEventListener('change', pickMode);
+
+    /** Draws in `mode` - a value of the Mode list - with drawing mode on: as if picked in the list. */
+    function setMode(mode) {
+        const select = $('drawing-mode-selector');
+        const option = [...select.options].find(o => o.value === mode);
+        if (!option) {
+            say('No such mode.');
+            return;
+        }
+        select.value = mode;
+        tools.drawing = true;
+        pickMode();
+        refresh();
+        say('Drawing: ' + option.textContent + '.');
+    }
 
     // A slider shows its value as it moves, and the brush takes it at once.
     function slider(input, apply) {

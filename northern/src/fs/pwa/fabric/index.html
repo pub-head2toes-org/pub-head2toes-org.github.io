@@ -9,14 +9,15 @@
   <meta name="description" content="Notebook drawing, powered by Fabric.js.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=11">
+  <link rel="stylesheet" href="./styles.css?v=12">
   <title>Fabric Draw</title>
 </head>
 <body>
 
 <!-- Two pages, one on top of the other. The corner of the top one peels it off. -->
 
-<!-- The drawing: the canvas, and nothing else. -->
+<!-- The drawing: the canvas, and nothing else. A keyboard reaches the controls from it:
+     typed as {"cmd":"copy"}, a command runs as its control does (see TYPED in fabric.js). -->
 <section class="page draw front" id="page_draw" aria-label="Drawing">
   <canvas id="c"></canvas>
   <button type="button" class="peel" id="peel_top" aria-label="Peel off to the controls"></button>
@@ -164,8 +165,8 @@
 <!-- Every script and the stylesheet carry ?v=<the version in sw.js's CACHE_NAME>:
      a cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
-<script src="./lib/fabric.js?v=11"></script>
-<script src="./fabric.js?v=11"></script>
+<script src="./lib/fabric.js?v=12"></script>
+<script src="./fabric.js?v=12"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
