@@ -185,7 +185,7 @@ function stubElements(ids) {
             const form = { onsubmit: null };
             elements[id] = {
                 id, value: '', innerHTML: '', textContent: '', hidden: false, disabled: false, open: false,
-                scrollTop: 0, scrollHeight: 0, listeners: {}, onclick: null,
+                scrollTop: 0, scrollHeight: 0, listeners: {}, onclick: null, style: {},
                 addEventListener(event, fn) { this.listeners[event] = fn; },
                 querySelector: () => form,
                 showModal() { this.open = true; },
@@ -320,7 +320,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
         location: sandbox.location,
         html: id => element(id).innerHTML,
         /** The text of every row in a list, markup and the bubble of dots stripped. */
-        rows: id => [...element(id).innerHTML.matchAll(/<button[^>]*class="row"[^>]*>(.*?)<\/button>/g)]
+        rows: id => [...element(id).innerHTML.matchAll(/<button[^>]*class="row"[^>]*>(.*?)<\/button>/gs)]
             .map(m => m[1].replace(/<time>.*?<\/time>/, '').replace(/<span class="more"[^>]*>.*?<\/span>/, '').replace(/<\/span>/g, '\n').replace(/<[^>]+>/g, '').trim()),
         click: id => element(id).listeners.click({}),
         /** A click on the row of a list that carries this attribute value. */

@@ -73,9 +73,10 @@ const PalsViews = (function () {
     };
 
     /**
-     * A message takes two rows: how it starts, then who sent it - with a
-     * bubble of three dots by the name, as there is more to do once it is
-     * opened: reply, or send a correction (UPDATE_5).
+     * A message takes two rows: the whole of it, line breaks kept (UPDATE_8),
+     * then who sent it - with a bubble of three dots by the name, as there is
+     * more to do once it is opened: reply, or send a correction (UPDATE_5). A
+     * reply starts with Re: (UPDATE_7).
      */
     api.log = function (messages, state, me) {
         if (!messages.length) {
@@ -83,8 +84,7 @@ const PalsViews = (function () {
         }
         return messages.map(m => {
             // A photo with no words shows its file name instead.
-            const text = PalsModel.excerpt(m.body) || (m.attachment ? m.attachment.name : '');
-            const more = Array.from(m.body.replace(/\s+/g, ' ').trim()).length > PalsModel.EXCERPT;
+            const text = m.body.trim() || (m.attachment ? m.attachment.name : '');
             const clip = m.attachment ? '<span class="clip" title="' + esc(api.kind(m.attachment) + ': ' + m.attachment.name) + '">&#128206;</span>' : '';
             // The name a pal has now, or the one they had when the message was filed.
             const known = PalsModel.nameOf(state, m.from, me);
@@ -92,8 +92,9 @@ const PalsViews = (function () {
             const where = m.to.kind === 'group' ? 'in ' + m.to.name
                 : m.out ? 'to ' + PalsModel.label(m.to.name, m.to.id) : '';
             const status = api.status(m);
+            const re = PalsModel.isReply(m.body) ? '<span class="re">Re:</span> ' : '';
             return row('data-message="' + esc(m.id) + '"', false,
-                '<span class="line">' + clip + esc(text) + (more ? '&hellip;' : '') + '</span>' +
+                '<span class="text">' + re + clip + esc(text) + '</span>' +
                 '<span class="line meta">' + api.pill(name, m.from) +
                 '<span class="more" title="' + (m.out ? 'Open to send a correction' : 'Open to reply') + '">...</span>' +
                 (where ? '<span class="where">' + esc(where) + '</span>' : '') +
@@ -179,25 +180,6 @@ const PalsViews = (function () {
         return members.map(p =>
             row('data-pub="' + esc(p.pub) + '"', p.pub === selected, esc(PalsModel.label(p.name, p.pub)))
         ).join('');
-    };
-
-    /** The <option>s of the "To" list: every group, then every pal. */
-    api.targets = function (state, filter) {
-        const f = filter || {};
-        const group = (f.kind === 'group' || f.kind === 'member') ? PalsModel.group(state, f.id) : null;
-        const chosen = f.kind === 'pal' ? 'pal:' + f.pub : group ? 'group:' + group.name : '';
-        const option = (value, text) => '<option value="' + esc(value) + '"' +
-            (value === chosen ? ' selected' : '') + '>' + esc(text) + '</option>';
-        return state.groups.map(g => option('group:' + g.name, 'Group: ' + g.name))
-            .concat(state.pals.map(p => option('pal:' + p.pub, PalsModel.label(p.name, p.pub))))
-            .join('');
-    };
-
-    /** Reads a "To" value back into what `PalsModel.compose` takes. */
-    api.target = function (value) {
-        // Only the first colon splits: a group name may have one of its own.
-        const at = String(value || '').indexOf(':');
-        return at === -1 ? null : { kind: value.slice(0, at), id: value.slice(at + 1) };
     };
 
     api.candidates = function (state, groupName) {

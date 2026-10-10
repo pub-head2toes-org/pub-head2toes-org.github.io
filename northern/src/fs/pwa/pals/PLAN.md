@@ -560,6 +560,49 @@ same number.)
 - *Groups* says *No groups* when there are none.
 - `PALS_VERSION` is 10.
 
+## UPDATE_7.md — writing in the Messages layer
+
+- **No *New message* overlay.** Under the messages is the *New message*
+  panel: a text area two rows high, then *Photo or video (50 MB at most)* and
+  the file picker. *Add* (in place of `+`) sends it.
+- **No *To* list.** A message goes to whoever the layer shows: the pal, or
+  the group - the whole group, also when only one member's messages are
+  shown (`PalsModel.writeTo`). Somebody who is not a pal cannot be written to
+  until they are added; it says so under the text.
+- What is wrong (nothing written, a file too large...) is said under the
+  text, which stays to be put right. Once a message is on its way, the panel
+  is emptied. What was written stays while the layer is closed and opened
+  again on the same pal or group, and is dropped for another one.
+- The layer is a fixed height (full screen on a phone); the list takes what
+  the panel leaves.
+- **A reply's row starts with *Re:*** - any message with the
+  `--- Reply ---` line, sent or received (`PalsModel.isReply`).
+- **The message overlay's text area** is only as tall as the message, up to
+  12 rows (6 with Reply or Correction open), measured once the overlay is
+  open.
+- `PALS_VERSION` is 11.
+
+## UPDATE_8.md — small details in the Messages layer
+
+- **On a phone, Messages takes the whole screen**, edge to edge, padded
+  clear of the notch and the home bar. Its list never scrolls sideways:
+  the row under a message (sender, where, state, time) wraps instead.
+- **The panel's button is *Send*** (it was *Add*).
+- **A message's row shows all of it**, line breaks kept and long words
+  broken, instead of its first 128 characters on one line
+  (`PalsModel.excerpt` is gone).
+- **The message overlay's *Correction* is *Edit***; once open it still
+  turns into *Correct*, which sends it.
+- **Still too wide on an iPhone 12 Pro (390 px) and SE (375 px)**, fine on
+  an XR (414 px): an overlay's form was a grid with an `auto` column, as
+  wide as its widest line that cannot break - the title with a long pal or
+  group name in it, which as a flex item did not shrink. The column is now
+  `minmax(0, 1fr)` in every overlay, and the name is cut with an ellipsis.
+  The New message panel's own grid gets the same column, and a text area is
+  never wider than what holds it (`min-width: 0; max-width: 100%`), so the
+  text area's own width - 20 columns in Safari - cannot push it out either.
+- `PALS_VERSION` is 14.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**

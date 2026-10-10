@@ -21,8 +21,6 @@ const PalsModel = (function () {
     api.VERSION = 1;
     // How much of a public key is shown next to a name.
     api.TAG = 5;
-    // How much of a message its row in the log shows.
-    api.EXCERPT = 128;
     api.NAME_MAX = 40;
     // What one push may carry (UPDATE_1); /push/api/send holds to it as well.
     api.MAX_CHARS = 1000;
@@ -361,11 +359,6 @@ const PalsModel = (function () {
             ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
     };
 
-    /** One line of a message: its first 128 characters, line breaks flattened. */
-    api.excerpt = function (body) {
-        return Array.from(String(body || '').replace(/\s+/g, ' ').trim()).slice(0, api.EXCERPT).join('');
-    };
-
     // What a character costs inside the JSON a push carries: its UTF-8 bytes,
     // or more where JSON escapes it.
     const cost = function (ch) {
@@ -531,8 +524,36 @@ const PalsModel = (function () {
         return file(state, message);
     };
 
+    /**
+     * Where a message written in the Messages layer goes (UPDATE_7): to the
+     * pal it is showing, or to the group - all of it, when it shows only one
+     * member. Throws when there is nobody there to write to.
+     */
+    api.writeTo = function (state, filter, me) {
+        const f = filter || { kind: 'all' };
+        if (f.kind === 'pal') {
+            if (!api.pal(state, f.pub)) {
+                throw new Error(api.label(api.nameOf(state, f.pub, me), f.pub) + ' is not a pal - add them first');
+            }
+            return { kind: 'pal', id: f.pub };
+        }
+        if (f.kind === 'group' || f.kind === 'member') {
+            const group = api.group(state, f.id);
+            if (!group) {
+                throw new Error('there is no group ' + f.id + ' any more');
+            }
+            return { kind: 'group', id: group.name };
+        }
+        throw new Error('pick a pal or a group to write to');
+    };
+
     // The line between a message and the reply or correction sent with it (UPDATE_5).
     api.SEPARATORS = { reply: '--- Reply ---', correction: '--- Correction ---' };
+
+    /** Whether a message is a reply - to it, or to a message it answers: it has the reply line (UPDATE_7). */
+    api.isReply = function (body) {
+        return String(body || '').split('\n').indexOf(api.SEPARATORS.reply) !== -1;
+    };
 
     /**
      * Where an answer to a message goes: a reply to where an incoming one

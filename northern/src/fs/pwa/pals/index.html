@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=10">
+  <link rel="stylesheet" href="./styles.css?v=14">
   <title>Pals</title>
 </head>
 <body>
@@ -67,8 +67,17 @@
     <h2 id="messages_title">Messages <span class="context" id="messages_context"></span></h2>
     <div class="box" id="messages" role="listbox" aria-label="Messages"></div>
     <p class="status" id="messages_status" role="status"></p>
+    <!-- A new message, to whoever the layer is showing: the pal, or the group (UPDATE_7). -->
+    <div class="compose" id="compose">
+      <textarea id="compose_body" rows="2" aria-label="New message"></textarea>
+      <div class="pick">
+        <label for="compose_file">Photo or video (50 MB at most)</label>
+        <input type="file" id="compose_file" accept="image/*,video/*">
+      </div>
+      <p class="error" id="compose_error"></p>
+    </div>
     <div class="buttons">
-      <button type="button" id="message_add" aria-label="Write a message">+</button>
+      <button type="button" class="primary" id="message_add">Send</button>
       <button type="submit" class="close">Close</button>
     </div>
   </form>
@@ -107,7 +116,7 @@
     <textarea id="message_body" readonly rows="12"></textarea>
     <!-- The photo or video that goes with it, once it is on this device. -->
     <div class="attachment" id="message_attachment" hidden></div>
-    <!-- Reply to an incoming message, or correct an outgoing one: opens under it. -->
+    <!-- Reply to an incoming message, or edit an outgoing one: opens under it. -->
     <div class="answer" id="message_answer_box" hidden>
       <label for="message_answer_body" id="message_answer_label"></label>
       <textarea id="message_answer_body" rows="6"></textarea>
@@ -117,23 +126,6 @@
       <button type="button" id="message_answer">Reply</button>
       <button type="button" id="message_retry" hidden>Send again</button>
       <button type="submit">Close</button>
-    </div>
-  </form>
-</dialog>
-
-<dialog id="dlg_compose" aria-labelledby="compose_title">
-  <form method="dialog">
-    <h2 id="compose_title">New message</h2>
-    <label for="compose_to">To</label>
-    <select id="compose_to"></select>
-    <label for="compose_body">Message</label>
-    <textarea id="compose_body" rows="10"></textarea>
-    <label for="compose_file">Photo or video (50 MB at most)</label>
-    <input type="file" id="compose_file" accept="image/*,video/*">
-    <p class="error" id="compose_error"></p>
-    <div class="buttons">
-      <button type="button" data-close>Cancel</button>
-      <button type="submit" class="primary">Add</button>
     </div>
   </form>
 </dialog>
@@ -201,18 +193,18 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=10"></script>
-<script src="../../reg/cookies.js?v=10"></script>
-<script src="../../reg/oo.js?v=10"></script>
-<script src="../../reg/idcard.js?v=10"></script>
-<script src="../../reg/keystore.js?v=10"></script>
-<script src="../../reg/session.js?v=10"></script>
+<script src="../../reg/sjcl.js?v=14"></script>
+<script src="../../reg/cookies.js?v=14"></script>
+<script src="../../reg/oo.js?v=14"></script>
+<script src="../../reg/idcard.js?v=14"></script>
+<script src="../../reg/keystore.js?v=14"></script>
+<script src="../../reg/session.js?v=14"></script>
 
-<script src="./version.js?v=10"></script>
-<script src="./model.js?v=10"></script>
-<script src="./store.js?v=10"></script>
-<script src="./seal.js?v=10"></script>
-<script src="./views.js?v=10"></script>
-<script src="./pals.js?v=10"></script>
+<script src="./version.js?v=14"></script>
+<script src="./model.js?v=14"></script>
+<script src="./store.js?v=14"></script>
+<script src="./seal.js?v=14"></script>
+<script src="./views.js?v=14"></script>
+<script src="./pals.js?v=14"></script>
 </body>
 </html>

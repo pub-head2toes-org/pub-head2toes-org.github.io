@@ -3,4 +3,4 @@
 
 // Bump it whenever a cached file changes, so every device fetches the new set -
 // and with it the ?v= on every script and stylesheet in index.html and welcome.html.
-const PALS_VERSION = 10;
+const PALS_VERSION = 14;

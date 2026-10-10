@@ -188,7 +188,26 @@
         }
         if (name === 'messages') {
             $('messages').scrollTop = $('messages').scrollHeight;
+            draft();
         }
+    }
+
+    // Whom the text in the New message panel was written to.
+    let draftFor = '';
+
+    /**
+     * The New message panel under the messages (UPDATE_7) keeps what was
+     * written while the layer shows the same pal or group, and starts empty
+     * for another - so nothing meant for one goes to the next.
+     */
+    function draft() {
+        const now = JSON.stringify(ui.filter);
+        if (now !== draftFor) {
+            draftFor = now;
+            $('compose_body').value = '';
+            $('compose_file').value = '';
+        }
+        $('compose_error').textContent = '';
     }
 
     function show(filter) {
@@ -317,6 +336,29 @@
         };
         answer(m);
         $('dlg_message').showModal();
+        fit($('message_body'), 12);
+    }
+
+    /**
+     * A text area only as tall as what it holds, up to `most` rows - so a
+     * message of a line or two leaves no empty box under it (UPDATE_7). It
+     * measures the layout, so it runs once the overlay is open; without one
+     * the text area keeps `most` rows.
+     */
+    function fit(textarea, most) {
+        textarea.style.height = '';
+        textarea.rows = most;
+        const tallest = textarea.offsetHeight;
+        if (!tallest) {
+            return;
+        }
+        // Measured one row high, with no scroll bar to narrow the lines.
+        textarea.style.overflowY = 'hidden';
+        textarea.rows = 1;
+        const needed = textarea.scrollHeight + textarea.offsetHeight - textarea.clientHeight;
+        textarea.rows = most;
+        textarea.style.overflowY = '';
+        textarea.style.height = Math.min(needed, tallest) + 'px';
     }
 
     // The message the overlay shows, and the object URL of its photo or video.
@@ -366,10 +408,9 @@
         const button = $('message_answer');
         const body = $('message_answer_body');
         let writing = false;
-        button.textContent = m.out ? 'Correction' : 'Reply';
+        button.textContent = m.out ? 'Edit' : 'Reply';
         button.className = '';
         $('message_answer_box').hidden = true;
-        $('message_body').rows = 12;
         button.onclick = function () {
             if (!checkSession()) {
                 $('dlg_message').close();
@@ -390,7 +431,7 @@
                 $('message_answer_label').textContent = m.out ? 'The message, corrected' : 'Your reply';
                 body.value = m.out ? m.body : '';
                 $('message_answer_box').hidden = false;
-                $('message_body').rows = 6;
+                fit($('message_body'), 6);
                 $('message_retry').hidden = true;
                 $('message_status').textContent = '';
                 button.textContent = m.out ? 'Correct' : 'Send';
@@ -503,6 +544,11 @@
         }));
     }
 
+    /**
+     * Sends what is in the New message panel (UPDATE_7) to whoever the
+     * Messages layer is showing. What is wrong with it is said under it, and
+     * it stays there to be put right.
+     */
     function addMessage() {
         if (!checkSession()) {
             return;
@@ -511,24 +557,27 @@
             say('Load your ID Card on this device first - messages are sealed with its key.');
             return;
         }
-        if (!state.pals.length) {
-            say('Add a pal first - there is nobody to write to yet.');
+        const error = $('compose_error');
+        let message;
+        let picked;
+        try {
+            const target = PalsModel.writeTo(state, ui.filter, me);
+            const files = $('compose_file').files;
+            picked = files && files.length ? files[0] : null;
+            const attachment = picked ? PalsModel.attachment(picked.name, picked.type, picked.size) : null;
+            message = PalsModel.compose(state, me, target, $('compose_body').value, Date.now(), wireId(), attachment);
+        } catch (e) {
+            error.textContent = e.message;
             return;
         }
-        $('compose_to').innerHTML = PalsViews.targets(state, ui.filter);
+        error.textContent = '';
         $('compose_body').value = '';
         $('compose_file').value = '';
-        ask('compose', function () {
-            const target = PalsViews.target($('compose_to').value);
-            const files = $('compose_file').files;
-            const picked = files && files.length ? files[0] : null;
-            const attachment = picked ? PalsModel.attachment(picked.name, picked.type, picked.size) : null;
-            const message = PalsModel.compose(state, me, target, $('compose_body').value, Date.now(), wireId(), attachment);
-            say('Sending…');
-            // A file that cannot be read is not kept; uploading it then says so.
-            return () => (picked ? keepFile(message, picked).catch(() => {}) : Promise.resolve()).then(() => deliver(message));
-        });
-        $('compose_body').focus();
+        save();
+        render();
+        say('Sending…');
+        // A file that cannot be read is not kept; uploading it then says so.
+        return (picked ? keepFile(message, picked).catch(() => {}) : Promise.resolve()).then(() => deliver(message));
     }
 
     // ---- receiving -----------------------------------------------------

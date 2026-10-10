@@ -225,11 +225,6 @@ describe('Pals model - messages', () => {
         return state;
     };
 
-    it('cuts a message to its first 128 characters on one line', () => {
-        assert.strictEqual(Model.excerpt('a\n b\t c'), 'a b c');
-        assert.strictEqual(Array.from(Model.excerpt('🍉'.repeat(200))).length, 128, 'whole characters, not halves of one');
-    });
-
     it('splits a message into pushes of at most 1000 characters', () => {
         const parts = Model.split('x'.repeat(2500));
         assert.deepStrictEqual(plain(parts.map(p => p.length)), [1000, 1000, 500]);
@@ -547,14 +542,18 @@ describe('Pals views', () => {
         assert.ok(Views.members(state, 'Nope', null).includes('Pick a group'));
     });
 
-    it('gives a message two rows: how it starts, then who sent it on an oval', () => {
+    // UPDATE_8: the whole message, not its first 128 characters on one line.
+    it('gives a message two rows: all of it, then who sent it on an oval', () => {
         const s = Model.load(plain(state));
-        Model.receive(s, me, envelope(bob, 'x'.repeat(200)));
+        const long = 'x'.repeat(200) + '\n\n  <second> line';
+        Model.receive(s, me, envelope(bob, '\n' + long + '\n'));
         const html = Views.log(Model.log(s), s, me);
         const [first, second] = html.split('</span>');
 
-        assert.ok(first.endsWith('x'.repeat(128) + '&hellip;'));
+        assert.ok(first.endsWith('<span class="text">' + 'x'.repeat(200) + '\n\n  &lt;second&gt; line'), 'line breaks kept, the ends trimmed');
+        assert.ok(!html.includes('&hellip;'));
         assert.ok(second.includes(`class="pill" style="--hue:${Views.hue(bob.pub)}">bob (${tag(bob.pub)})`));
+        assert.match(read('styles.css'), /\.text\s*{[^}]*white-space:\s*pre-wrap;[^}]*overflow-wrap:\s*anywhere;/);
     });
 
     it('puts a bubble of three dots by the sender, as a message opens to more', () => {
@@ -582,11 +581,27 @@ describe('Pals views', () => {
         assert.ok(Views.log([partial], s, me).includes('1 of 3 parts'));
     });
 
-    it('offers every group and pal as a target, preselecting what the log shows', () => {
-        assert.ok(Views.targets(state, { kind: 'member', id: 'family', pub: bob.pub }).includes('value="group:Family" selected'));
-        assert.ok(Views.targets(state, { kind: 'pal', pub: bob.pub }).includes(`value="pal:${bob.pub}" selected`));
-        assert.deepStrictEqual(plain(Views.target('group:Me: and you')), { kind: 'group', id: 'Me: and you' });
-        assert.strictEqual(Views.target(''), null);
+    // UPDATE_7: no "To" list - a message goes to whoever the Messages layer shows.
+    it('writes to the pal the messages are with, or to the whole group, a member picked or not', () => {
+        assert.deepStrictEqual(plain(Model.writeTo(state, { kind: 'pal', pub: bob.pub }, me)), { kind: 'pal', id: bob.pub });
+        assert.deepStrictEqual(plain(Model.writeTo(state, { kind: 'group', id: 'family' }, me)), { kind: 'group', id: 'Family' });
+        assert.deepStrictEqual(plain(Model.writeTo(state, { kind: 'member', id: 'Family', pub: bob.pub }, me)), { kind: 'group', id: 'Family' });
+        assert.throws(() => Model.writeTo(state, { kind: 'pal', pub: dave.pub }, me), new RegExp(`\\(${tag(dave.pub)}\\) is not a pal - add them first`));
+        assert.throws(() => Model.writeTo(state, { kind: 'group', id: 'Nope' }, me), /no group Nope any more/);
+        assert.throws(() => Model.writeTo(state, { kind: 'all' }, me), /pick a pal or a group/);
+    });
+
+    it('starts a reply\'s row with Re:, and only a reply\'s', () => {
+        const s = Model.load(plain(state));
+        const asked = Model.receive(s, me, envelope(bob, 'are you in?'));
+        const reply = Model.answer(s, me, asked, 'reply', 'yes', 2, 'w1');
+        const fixed = Model.answer(s, me, Model.compose(s, me, { kind: 'pal', id: bob.pub }, 'at 8', 3, 'w2'), 'correction', 'at 9', 4, 'w3');
+
+        assert.ok(Views.log([reply], s, me).startsWith('<button type="button" role="option" class="row" aria-selected="false" data-message="' +
+            reply.id + '"><span class="text"><span class="re">Re:</span> are you in?'));
+        assert.ok(!Views.log([asked, fixed], s, me).includes('Re:'), 'not the message replied to, nor a correction');
+        assert.strictEqual(Model.isReply('a line\n--- Reply --- and more'), false, 'only the line itself');
+        assert.match(read('styles.css'), /\.re\s*{/);
     });
 
     it('offers whom to add from the directory', () => {
@@ -726,7 +741,7 @@ describe('Pals attachments - model, seal and views', () => {
     it('shows a paperclip in the log, and the photo or video in the overlay - names never markup', () => {
         const state = withPals();
         const m = Model.compose(state, me, { kind: 'pal', id: bob.pub }, '', 1, 'w', Model.attachment('<b>"x\'.png', 'image/png', 2500000));
-        assert.match(Views.log([m], state, me), /<span class="line"><span class="clip" title="Photo: &lt;b&gt;&quot;x&#39;\.png">&#128206;<\/span>&lt;b&gt;&quot;x&#39;\.png<\/span>/);
+        assert.match(Views.log([m], state, me), /<span class="text"><span class="clip" title="Photo: &lt;b&gt;&quot;x&#39;\.png">&#128206;<\/span>&lt;b&gt;&quot;x&#39;\.png<\/span>/);
 
         assert.strictEqual(Views.attachment(m, 'blob:1'),
             '<img src="blob:1" alt="&lt;b&gt;&quot;x&#39;.png"><a class="link" href="blob:1" download="&lt;b&gt;&quot;x&#39;.png">Save Photo: &lt;b&gt;&quot;x&#39;.png, 2.4 MB</a>');
@@ -764,13 +779,32 @@ describe('Pals shell', () => {
             return index.slice(at, index.indexOf('</dialog>', at));
         };
         assert.match(layer('messages'), /<h2 id="messages_title">Messages /);
-        for (const id of ['messages', 'message_add']) assert.ok(layer('messages').includes(`id="${id}"`), id);
+        // UPDATE_7: the New message panel is under the messages, and Send (UPDATE_8) sends it.
+        const messages = layer('messages');
+        const panel = ['id="messages"', 'id="compose_body" rows="2"', '<label for="compose_file">Photo or video (50 MB at most)</label>',
+            '<input type="file" id="compose_file"', 'id="message_add">Send</button>'].map(mark => messages.indexOf(mark));
+        assert.ok(panel.every(at => at !== -1), 'the list, two rows to write in, the label, the file, Send');
+        assert.deepStrictEqual(panel, [...panel].sort((a, b) => a - b));
+        assert.ok(!/dlg_compose|compose_to|New message<\/h2>/.test(index), 'no New message overlay, and no To list');
+        assert.ok(!messages.includes('>+</button>'));
         for (const id of ['members', 'member_add', 'member_remove', 'group_messages']) assert.ok(layer('members').includes(`id="${id}"`), id);
         for (const id of ['user', 'setup_again', 'version']) assert.ok(layer('settings').includes(`id="${id}"`), id);
         for (const id of ['pal_add', 'pal_remove', 'group_add', 'group_remove', 'pal_pick', 'message_retry', 'message_answer', 'message_answer_body']) {
             assert.ok(index.includes(`id="${id}"`), id);
         }
         assert.match(read('styles.css'), /\.panels\s*{[^}]*grid-template-columns:(\s*minmax\([^)]*fr\)){2};/);
+
+        // UPDATE_8: on a phone, Messages is the whole screen, and its list never scrolls sideways.
+        const css = read('styles.css');
+        const phone = css.slice(css.indexOf('@media (max-width: 760px)'));
+        assert.match(phone, /#dlg_messages\s*{[^}]*width:\s*100%;\s*max-width:\s*none;[^}]*height:\s*100dvh;\s*max-height:\s*none;\s*margin:\s*0;/);
+        assert.match(css, /#messages\s*{[^}]*overflow-x:\s*hidden;/);
+        assert.match(css, /\.meta\s*{[^}]*flex-wrap:\s*wrap;/);
+        // Nothing in an overlay - a long name in the title - makes it wider than the screen.
+        assert.match(css, /dialog form\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/);
+        assert.match(css, /\.context\s*{[^}]*min-width:\s*0;/);
+        assert.match(css, /\.compose\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/);
+        assert.match(css, /\ntextarea\s*{[^}]*min-width:\s*0;\s*max-width:\s*100%;/);
     });
 
     it('has a welcome screen: one centred panel with a title, a line and Go', () => {
@@ -1048,17 +1082,10 @@ describe('Pals page', () => {
         await page.settle();
         return page;
     };
-    // A <select> shows its selected option, or its first: the stub is told so.
-    const choose = (page, id) => {
-        const html = page.html(id);
-        const option = html.match(/value="([^"]*)" selected/) || html.match(/value="([^"]*)"/);
-        type(page, id, option ? option[1].replace(/&amp;/g, '&') : '');
-    };
+    // The New message panel under the messages: written to, then Add.
     const write = async (page, body) => {
-        page.click('message_add');
-        choose(page, 'compose_to');
         type(page, 'compose_body', body);
-        page.submit('compose');
+        page.click('message_add');
         await page.settle();
     };
     const inbox = page => [...(page.indexedDB.stores.inbox || new Map()).values()];
@@ -1112,10 +1139,11 @@ describe('Pals page', () => {
         await addPal(page, bob);
         page.document.cookie = '';
 
+        type(page, 'compose_body', 'hi');
         page.click('message_add');
         await page.settle();
         assert.strictEqual(page.location.replaced, `/fs/get/reg/Reg.html#${PAGE}`);
-        assert.strictEqual(page.element('dlg_compose').open, false, 'nothing is written that could not be sent');
+        assert.deepStrictEqual(page.stored().messages, [], 'nothing is filed that could not be sent');
         assert.deepStrictEqual(sent(page), []);
     });
 
@@ -1255,6 +1283,7 @@ describe('Pals page', () => {
         // server, or a user, handing out another key. It changes nothing.
         const forged = { ...listed(dave), path: listed(bob).path };
         const again = await open({ indexedDB: page.indexedDB, routes: { [one(bob)]: [listed(bob), forged] } });
+        again.pick('pals', 'data-pub', bob.pub);
         await write(again, 'for bob only');
 
         const [push] = sent(again);
@@ -1333,9 +1362,12 @@ describe('Pals page', () => {
         assert.strictEqual(page.element('need_card_link').href, `/fs/get/reg/Reg.html#${PAGE}`);
 
         await addPal(page, bob);
+        type(page, 'compose_body', 'hi');
         page.click('message_add');
-        assert.match(page.element('status').textContent, /Load your ID Card on this device first/);
-        assert.strictEqual(page.element('dlg_compose').open, false);
+        assert.match(page.element('messages_status').textContent, /Load your ID Card on this device first/);
+        assert.strictEqual(page.element('compose_body').value, 'hi', 'what was written stays');
+        await page.settle();
+        assert.deepStrictEqual(page.stored().messages, []);
         assert.deepStrictEqual(sent(page), []);
 
         const ready = await open();
@@ -1362,7 +1394,7 @@ describe('Pals page', () => {
         assert.strictEqual(page.stored().pals[0].verified, false);
     });
 
-    // UPDATE_5: Reply on an incoming message, Correction on an outgoing one.
+    // UPDATE_5: Reply on an incoming message, Correction (Edit since UPDATE_8) on an outgoing one.
     it('replies to an incoming message: Reply opens a text area and turns into Send', async () => {
         const page = await open({ idb: { inbox: { 1: openedItem(bob, 'are you in?') } } });
         await addPal(page, bob);
@@ -1391,6 +1423,8 @@ describe('Pals page', () => {
         const replied = `are you in?\nSent by: bob (${tag(bob.pub)}) on ${Model.time(1000)}\n--- Reply ---\nyes, at 8`;
         assert.strictEqual((await opened(page))[0].body, replied);
         assert.deepStrictEqual(page.stored().messages.map(m => [m.out, m.body]), [[false, 'are you in?'], [true, replied]]);
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')[0]), ['are you in?', 'Re:']);
+        assert.ok(page.html('messages').includes('<span class="re">Re:</span> are you in?'), 'the reply\'s row starts with Re:');
         assert.strictEqual(page.element('status').textContent, 'Sent.');
 
         // Opened again, the overlay starts closed up, as Reply.
@@ -1399,13 +1433,13 @@ describe('Pals page', () => {
         assert.strictEqual(page.element('message_answer_box').hidden, true);
     });
 
-    it('corrects an outgoing message: Correction opens a copy to edit and turns into Correct', async () => {
+    it('corrects an outgoing message: Edit opens a copy to edit and turns into Correct', async () => {
         const page = await populated();
         await write(page, 'dinner at 8');
         page.pick('messages', 'data-message', page.stored().messages[0].id);
 
         const button = page.element('message_answer');
-        assert.strictEqual(button.textContent, 'Correction');
+        assert.strictEqual(button.textContent, 'Edit');
         button.onclick();
         assert.strictEqual(page.element('message_answer_body').value, 'dinner at 8');
         assert.strictEqual(button.textContent, 'Correct');
@@ -1447,18 +1481,44 @@ describe('Pals page', () => {
         assert.strictEqual(page.stored().messages.length, 1);
     });
 
-    it('refuses an empty message and has nobody to write to on a first visit', async () => {
-        const page = await open();
-        page.click('message_add');
-        assert.match(page.element('status').textContent, /Add a pal first/);
-
+    it('refuses an empty message, and one to somebody who is not a pal, saying why under it', async () => {
+        const page = await open({ idb: { inbox: { 1: openedItem(dave, 'hi') } } });
         await addPal(page, bob);
-        page.click('message_add');
-        choose(page, 'compose_to');
         type(page, 'compose_body', '   ');
-        page.submit('compose');
+        page.click('message_add');
         assert.strictEqual(page.element('compose_error').textContent, 'there is nothing to send');
-        assert.strictEqual(page.element('dlg_compose').open, true);
+        assert.strictEqual(page.element('compose_body').value, '   ', 'left to be put right');
+
+        page.pick('pals', 'data-pub', dave.pub);
+        type(page, 'compose_body', 'who are you?');
+        page.click('message_add');
+        assert.strictEqual(page.element('compose_error').textContent, `dave (${tag(dave.pub)}) is not a pal - add them first`);
+        await page.settle();
+        assert.strictEqual(page.stored().messages.length, 1, 'nothing was filed');
+        assert.deepStrictEqual(sent(page), []);
+    });
+
+    it('keeps what was written while the same pal\'s messages are open, and starts empty for another', async () => {
+        const page = await open();
+        await addPal(page, bob);
+        await addPal(page, carol);
+        page.pick('pals', 'data-pub', bob.pub);
+        assert.strictEqual(page.element('dlg_messages').open, true);
+        type(page, 'compose_body', 'half a thought');
+        page.element('compose_error').textContent = 'an old error';
+        page.element('dlg_messages').close();
+
+        page.pick('pals', 'data-pub', bob.pub);
+        assert.strictEqual(page.element('compose_body').value, 'half a thought');
+        assert.strictEqual(page.element('compose_error').textContent, '');
+        page.element('dlg_messages').close();
+
+        page.pick('pals', 'data-pub', carol.pub);
+        assert.strictEqual(page.element('compose_body').value, '', 'not meant for carol');
+        await write(page, 'hi carol');
+        assert.deepStrictEqual(sent(page).map(p => p.to), [carol.pub]);
+        assert.strictEqual(page.element('compose_body').value, '', 'emptied once it is on its way');
+        assert.deepStrictEqual(page.rows('messages').map(r => r.split('\n')[0]), ['hi carol']);
     });
 
     it('files what the service worker took in, opens here what it could not, and names somebody who is not a pal', async () => {
@@ -1613,11 +1673,9 @@ describe('Pals page', () => {
     const picked = (bytes, name = 'beach.jpg', type = 'image/jpeg') =>
         ({ name, type, size: bytes.length, arrayBuffer: () => Promise.resolve(Uint8Array.from(bytes).buffer) });
     const writeWith = async (page, body, file) => {
-        page.click('message_add');
-        choose(page, 'compose_to');
         type(page, 'compose_body', body);
         page.element('compose_file').files = file ? [file] : [];
-        page.submit('compose');
+        page.click('message_add');
         await page.settle();
         await page.settle();
     };
@@ -1684,7 +1742,7 @@ describe('Pals page', () => {
         assert.strictEqual(page.stored().messages[0].delivery[bob.pub], 'sent');
     });
 
-    it('keeps the overlay open, saying why, for a file that is not a photo or a video, or too large', async () => {
+    it('keeps the message, saying why, for a file that is not a photo or a video, or too large', async () => {
         const page = await open();
         await addPal(page, bob);
         for (const [file, why] of [
@@ -1693,7 +1751,7 @@ describe('Pals page', () => {
         ]) {
             await writeWith(page, 'x', file);
             assert.strictEqual(page.element('compose_error').textContent, why);
-            assert.strictEqual(page.element('dlg_compose').open, true);
+            assert.strictEqual(page.element('compose_body').value, 'x');
         }
         assert.deepStrictEqual(page.stored().messages, [], 'nothing was filed');
         assert.deepStrictEqual(uploads(page), []);

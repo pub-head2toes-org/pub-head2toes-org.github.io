@@ -90,7 +90,14 @@ input[type="text"], select, textarea {
   background: var(--panel);
 }
 
-textarea { resize: vertical; }
+/* Never wider than what holds it: Safari otherwise keeps a text area as wide
+   as its 20 columns, which pushed New message past the edge of an iPhone
+   12 Pro or SE (UPDATE_8). */
+textarea {
+  resize: vertical;
+  min-width: 0;
+  max-width: 100%;
+}
 
 :focus-visible {
   outline: 2px solid var(--theme);
@@ -171,7 +178,13 @@ a.link {
   box-shadow: inset 3px 0 0 var(--theme);
 }
 
-/* A message is two rows: how it starts, then who sent it. */
+/* A message is two rows: the whole of it, then who sent it. */
+.text {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .line {
   display: block;
   overflow: hidden;
@@ -181,6 +194,7 @@ a.link {
 
 .meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 3px;
@@ -190,7 +204,7 @@ a.link {
 
 .meta time { margin-left: auto; flex: none; }
 
-/* By the sender's name: a message opens to more - Reply, or Correction. */
+/* By the sender's name: a message opens to more - Reply, or Edit. */
 .more {
   flex: none;
   padding: 0 7px;
@@ -274,6 +288,7 @@ a.link {
 }
 
 .context {
+  min-width: 0;
   font-weight: normal;
   color: var(--muted);
   overflow: hidden;
@@ -345,8 +360,12 @@ dialog {
 
 dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 
+/* One column, as wide as the overlay and no wider: a long name or a line
+   that does not wrap is cut, rather than pushing the overlay past the edge
+   of a narrow phone (UPDATE_8: iPhone 12 Pro, SE). */
 dialog form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -365,9 +384,39 @@ dialog.layer { width: min(44rem, calc(100vw - 32px)); }
 dialog.layer p { margin: 0; }
 dialog.layer .buttons { justify-content: flex-start; }
 dialog.layer .close { margin-left: auto; }
-#messages { height: min(var(--box), 60vh); }
 #members { height: min(14rem, 50vh); }
 
+/* Messages: the list takes what the New message panel under it leaves. */
+#dlg_messages {
+  height: min(40rem, calc(100vh - 48px));
+  height: min(40rem, calc(100dvh - 48px));
+}
+#dlg_messages form {
+  height: 100%;
+  grid-template-rows: auto minmax(6rem, 1fr) auto auto auto;
+}
+/* Rows wrap, so nothing is ever cut at the right edge (UPDATE_8). */
+#messages { height: auto; overflow-x: hidden; }
+
+/* The New message panel: two rows to write in, then the photo or video. */
+.compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.compose .pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.compose .pick label { margin: 0; }
+.compose .error:empty { display: none; }
+
+/* A reply, at the start of its row. */
+.re { color: var(--theme); font-weight: bold; }
 /* A photo or a video that goes with a message. */
 .clip { margin-right: 4px; }
 
@@ -387,7 +436,7 @@ dialog.layer .close { margin-left: auto; }
 
 input[type="file"] { max-width: 100%; }
 
-/* Reply and Correction sit on the left, away from Close. */
+/* Reply and Edit sit on the left, away from Close. */
 #message_answer { margin-right: auto; }
 
 .answer label { margin: 4px 0; }
@@ -443,5 +492,18 @@ select[size] { padding: 4px; }
     max-height: calc(100dvh - 16px);
     padding: 16px;
   }
-  #messages { height: calc(100dvh - 11rem); }
+  /* Messages takes the whole screen, edge to edge (UPDATE_8), clear of
+     the notch and the home bar. */
+  #dlg_messages {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+             max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
 }
