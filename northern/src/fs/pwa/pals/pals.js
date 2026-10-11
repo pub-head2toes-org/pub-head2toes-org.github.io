@@ -187,9 +187,24 @@
             dialog.showModal();
         }
         if (name === 'messages') {
-            $('messages').scrollTop = $('messages').scrollHeight;
+            toEnd();
             draft();
         }
+    }
+
+    /**
+     * The messages layer opens on the newest message. iOS Safari drops a
+     * scroll set in the frame the dialog opens in - the list cannot scroll
+     * until it has been painted - so it is set again once it has.
+     */
+    function toEnd() {
+        const messages = $('messages');
+        const end = function () {
+            messages.scrollTop = messages.scrollHeight;
+        };
+        end();
+        requestAnimationFrame(() => requestAnimationFrame(end));
+        setTimeout(end, 300);
     }
 
     // Whom the text in the New message panel was written to.
