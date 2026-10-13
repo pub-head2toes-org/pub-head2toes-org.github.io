@@ -649,9 +649,9 @@ describe('Reg.html layout', () => {
         assert.match(HTML, /idcard\.toFile\(currentIdCard\(\), passphrase\)/, 'saving uses the other one');
     });
 
-    it('loads and saves through one button each, with no separate Continue', () => {
+    it('loads and saves through one button each, with no Continue before the card is saved', () => {
         assert.match(HTML, /Load Id Card &amp; Continue/);
-        assert.match(HTML, /Save Id Card &amp; Continue/);
+        assert.match(HTML, />Save Id Card</);
         assert.ok(!/id="next"/.test(HTML), 'the Continue link is gone from the Reg section');
     });
 
@@ -742,5 +742,78 @@ describe('Reg.html accordion', () => {
         page.closeOtherPanels(signin);
 
         assert.strictEqual(reg.open, true);
+    });
+});
+
+// The page's own download can be dropped on iPhone, and leaving the page closed
+// the "Download?" prompt before it was answered - so the page stays, and says.
+describe('Reg.html saving on a phone', () => {
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it('stays on the page after saving, offering the card again and Continue', async () => {
+        const page = loadRegPage({ hash: '#/fs/get/keyboard.html' });
+        await page.init();
+        page.element('username').value = 'alice';
+        await page.saveToNamedFile();
+        await settle();
+
+        assert.strictEqual(page.window.location.href, '', 'nothing navigated away');
+        assert.strictEqual(page.element('saved').hidden, false);
+        assert.strictEqual(page.element('download_again').href, page.downloads[0].href);
+        assert.strictEqual(page.element('download_again').download, page.downloads[0].name);
+        assert.strictEqual(page.element('saved_continue').href, '/fs/get/keyboard.html');
+        assert.match(page.element('msg').textContent, /Saving your ID Card as alice\./);
+        assert.match(page.element('msg').textContent, /Registered on the server/);
+    });
+
+    it('keeps the leave warning and points at the link when the download is refused', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.document.createElement = () => ({ click() { throw new Error('blocked'); } });
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.warnsOnLeave(), true);
+        assert.strictEqual(page.element('saved').hidden, false);
+        assert.match(page.element('msg').textContent, /download did not start: blocked/);
+        assert.strictEqual(page.requests.length, 0, 'not registered while unsaved');
+
+        page.savedByLink();
+        assert.strictEqual(page.warnsOnLeave(), false, 'the tap on the link saved it');
+        assert.strictEqual(page.requests.length, 1, 'and registered it');
+    });
+
+    it('reports a registration the server refused', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.window.fetch = async () => ({ status: 500, statusText: 'Internal Server Error' });
+        await page.saveToNamedFile();
+        await settle();
+
+        assert.match(page.element('msg').textContent, /Saving your ID Card/, 'the download advice stays');
+        assert.match(page.element('msg').textContent, /Registration on the server failed: the server answered 500/);
+    });
+
+    it('reports a registration that never reached the server', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.window.fetch = async () => { throw new Error('offline'); };
+        await page.saveToNamedFile();
+        await settle();
+
+        assert.match(page.element('msg').textContent, /Registration on the server failed: offline/);
+    });
+
+    it('reports a card that could not be built', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.idcard.toFile = async () => { throw new Error('no crypto'); };
+        await page.saveToNamedFile();
+
+        assert.match(page.element('msg').textContent, /ID Card not saved: no crypto/);
+        assert.strictEqual(page.downloads.length, 0);
+    });
+
+    it('gives the fields 16px text, so Safari does not zoom in on them', () => {
+        assert.match(CSS, /\ninput {[^}]*font-size: 16px/);
     });
 });

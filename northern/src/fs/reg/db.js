@@ -18,7 +18,8 @@ function getOperation(cb,ctx){
         }); 
   }
 
-  function insertOperation(cb,ctx){
+  // onError is optional: it hears about a request that never got an answer.
+  function insertOperation(cb,ctx,onError){
     let reqPath = ctx.reqPath;
     let reqInput = ctx.payload;
     const hdrs = new Headers({
@@ -38,6 +39,9 @@ function getOperation(cb,ctx){
         }).catch(function(error) {
         var err = JSON.stringify(error);
         console.log("insert failed: err=" + err);
+        if (onError) {
+          onError(error, ctx);
+        }
         }); 
   }
 

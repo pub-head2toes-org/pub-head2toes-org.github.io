@@ -10,7 +10,7 @@ const read = name => fs.readFileSync(path.join(REG_DIR, name), 'utf8');
 
 /** The functions a page may expose; each is optional, pages differ. */
 const EXPORTS = ['init', 'saveIdCard', 'saveToNamedFile', 'currentIdCard',
-    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels'];
+    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels', 'savedByLink'];
 
 /** The inline <script> of a page, in order; <script src=...> tags carry no body. */
 function inlineScripts(html) {

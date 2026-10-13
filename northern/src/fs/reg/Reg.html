@@ -6,12 +6,12 @@
     <title>Registration</title>
     <script type="text/javascript" src="sjcl.js"></script>
     <script type="text/javascript" src="cookies.js"></script>
-    <script type="text/javascript" src="db.js"></script>
+    <script type="text/javascript" src="db.js?v=2"></script>
     <script type="text/javascript" src="oo.js"></script>
     <script type="text/javascript" src="idcard.js"></script>
     <script type="text/javascript" src="keystore.js"></script>
     <script type="text/javascript" src="session.js"></script>
-    <link rel="stylesheet" media="screen" href="style.css">
+    <link rel="stylesheet" media="screen" href="style.css?v=2">
 </head>
 
 
@@ -81,7 +81,16 @@
           <input type="text" id="pubkey" name="pubkey" readonly hidden
                  placeholder="generated for you" />
 
-          <button class="menu-item" onclick="javascript:saveToNamedFile()">Save Id Card &amp; Continue</button>
+          <button class="menu-item" onclick="javascript:saveToNamedFile()">Save Id Card</button>
+
+          <!-- Shown once the card is saved. A tap on a real link is a download
+               every browser honours - the one the page starts by itself can be
+               dropped on iPhone - and the page no longer leaves on its own, which
+               closed the iPhone's "Download?" prompt before it was answered. -->
+          <div id="saved" hidden>
+            <a id="download_again" class="menu-item" href="#" download onclick="savedByLink()">Download Id Card again</a>
+            <a id="saved_continue" class="menu-item" href="#">Continue</a>
+          </div>
         </div>
       </details>
     </section>
@@ -91,13 +100,20 @@
 
 <script>
         document.getElementById('fileinput').addEventListener('change', function(){
-            var file = this.files[0];
+            var file = this.files && this.files[0];
+            if (!file){
+              return;   // the picker was cancelled
+            }
             console.log("name : " + file.name);
             console.log("size : " + file.size);
             console.log("type : " + file.type);
             console.log("date : " + file.lastModified);
 
             var reader = new FileReader();
+
+            reader.onerror = function () {
+              say(`ID Card not loaded: the file could not be read${reader.error ? ` (${reader.error.message})` : ''}.`);
+            };
 
             reader.onload = async function(e) {
             const text = reader.result;
@@ -126,7 +142,11 @@
 
             // "Load Id Card & Continue": there is nothing left to do on this
             // page, once the key-agreement copy is safely in IndexedDB.
-            await session.kept();
+            try {
+              await session.kept();
+            } catch (err) {
+              console.log(err);
+            }
             window.location.href = getNextURL();
 
             }
@@ -201,8 +221,20 @@ Already have an ID Card? Open Sign in and load it instead.`);
 
   } catch(e) {
    console.log(e);
+   say(`The page could not start: ${e.message}
+Reload the page to try again.`);
   }
 }
+
+// Anything that slips past the handlers below still reaches the Info board,
+// where a phone without a console can show it.
+window.addEventListener("error", function (event) {
+  say(`Something went wrong: ${event.message || event.error || "unknown error"}`);
+});
+window.addEventListener("unhandledrejection", function (event) {
+  const reason = event.reason;
+  say(`Something went wrong: ${(reason && reason.message) || reason || "unknown error"}`);
+});
 
 // A generated key that has not been downloaded yet cannot be recovered.
 window.addEventListener("beforeunload", function (event) {
@@ -216,6 +248,12 @@ window.addEventListener("beforeunload", function (event) {
 // The Info board: always showing the latest word, as text and never as markup.
 function say (text){
   document.getElementById("msg").textContent = text;
+}
+
+// One more line under the latest word, for news that must not replace it.
+function sayMore (text){
+  const msg = document.getElementById("msg");
+  msg.textContent = msg.textContent ? `${msg.textContent}\n${text}` : text;
 }
 
 /**
@@ -321,6 +359,7 @@ function currentIdCard (){
 }
 
 function saveIdCard (){
+  try {
       const ts = new Date().getTime();
       var ctx = {};
       // Only ever the public half: the private key must not reach the server.
@@ -328,7 +367,10 @@ function saveIdCard (){
       const payload = session.publicRecord();
       ctx.reqPath = `/id/${ts}/${payload.pub}.json?isPublic=true`;
       ctx.payload = JSON.stringify(payload);
-      insertOperation (confirmReg, ctx);
+      insertOperation (confirmReg, ctx, failedReg);
+  } catch (err) {
+      failedReg(err);
+  }
 }
 
 
@@ -336,13 +378,78 @@ function bakeCookie (val){
   setCookie ('ssid', val, 1);
 }
 
+// The server's answer to the registration. The page stays put either way: the
+// visitor leaves with Continue, once the ID Card is safely on their device.
 function confirmReg (ctx){
-    say(`New ID keys reistered! ID=${ctx.reqPath}`);
+    const res = ctx.insertResponse;
     console.log(JSON.stringify(ctx));
-    window.location.href = getNextURL();
+    if (res && res.status >= 400){
+      failedReg(new Error(`the server answered ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`));
+      return;
+    }
+    sayMore(`Registered on the server.`);
+}
+
+function failedReg (err){
+    console.log(err);
+    sayMore(`Registration on the server failed: ${(err && err.message) || err}.
+Your ID Card is still good. To register it, press Save Id Card again once you are back online.`);
+}
+
+/**
+ * Starts the download the way a click on a download link would. Returns false
+ * when the browser refused, so the visitor can be pointed at the real link.
+ */
+function startDownload (file){
+  try {
+    var downloadLink = document.createElement("a");
+    downloadLink.href = fileHref(file);
+    downloadLink.download = file.name;
+
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    return true;
+  } catch (err) {
+    console.log(err);
+    say(`The download did not start: ${err.message}
+Tap "Download Id Card again" below to save your ID Card.`);
+    return false;
+  }
+}
+
+// A tap on Download Id Card again, after the page's own download was refused:
+// the card is on its way now, so it can be registered as well.
+function savedByLink (){
+  if (unsavedIdentity){
+    unsavedIdentity = false;
+    saveIdCard();
+  }
+}
+
+function fileHref (file){
+  return "data:application/octet-stream," + encodeURIComponent(file.content);
+}
+
+// The saved card stays on offer as a real link, with Continue next to it.
+function showSaved (file){
+  const again = document.getElementById("download_again");
+  again.href = fileHref(file);
+  again.download = file.name;
+  document.getElementById("saved_continue").href = getNextURL();
+  document.getElementById("saved").hidden = false;
 }
 
 async function saveToNamedFile (){
+  try {
+    await saveCard();
+  } catch (err) {
+    console.log(err);
+    say(`ID Card not saved: ${err.message}`);
+  }
+}
+
+async function saveCard (){
   const passphrase = getPassphrase();
 
   if (passphrase && passphrase !== document.getElementById("passphrase2").value){
@@ -371,17 +478,20 @@ async function saveToNamedFile (){
     showContinue();
   }
 
-  // The identity now exists off this page, so leaving is safe again.
+  showSaved(file);
+
+  if (!startDownload(file)){
+    return;   // still unsaved: the warning on leaving stays on
+  }
+
+  // The identity now exists off this page, so leaving is safe again - as far
+  // as a page can tell: whether the file reached the disk, only the visitor sees.
   unsavedIdentity = false;
 
-  var uriContent = "data:application/octet-stream," + encodeURIComponent(file.content);
-  var downloadLink = document.createElement("a");
-  downloadLink.href = uriContent;
-  downloadLink.download = file.name;
-
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
+  say(`Saving your ID Card as ${file.name}
+It is the only copy of your key - keep it safe.
+iPhone: tap Download when asked; it goes to Files > Downloads.
+No file? Tap "Download Id Card again", then Continue.`);
 
   saveIdCard();
 }

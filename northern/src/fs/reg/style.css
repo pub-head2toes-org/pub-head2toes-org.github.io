@@ -76,6 +76,7 @@ textarea {
 .page-wrapper {
     width: 100%;
     max-width: 720px;
+    min-width: 0;                   /* a flex item of body: never wider than the screen */
     box-sizing: border-box;
     padding: 10px 10px 40px;
 }
@@ -149,6 +150,15 @@ input {
     box-sizing: border-box;
     padding: 10px;
     margin: 10px;
+    /* iPhone: Safari zooms into a field whose text is under 16px as soon as it
+       gets focus, and stays zoomed - the fields then look too wide for the
+       screen. 16px keeps the page as laid out. */
+    font-size: 16px;
+    max-width: calc(100% - 20px);
+    min-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0;
 }
 
 label {
@@ -162,6 +172,17 @@ input[type="password"] {
     display: block;
     width: calc(100% - 20px);
     border: 1px solid #0f0;
+}
+
+/* The buttons and links of the panels wrap their label rather than push the
+   page wider on a narrow phone. */
+details.panel .menu-item {
+    max-width: calc(100% - 20px);
+    box-sizing: border-box;
+    white-space: normal;
+    font-family: inherit;
+    font-size: 1em;
+    text-align: center;
 }
 
 .hint {
