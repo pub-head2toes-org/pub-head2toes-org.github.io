@@ -1,0 +1,382 @@
+:root {
+  --theme: #2f4f6f;
+  --theme-dark: #233c55;
+  --bg: #f3f5f7;
+  --panel: #ffffff;
+  --border: #d3dae1;
+  --text: #1c2630;
+  --muted: #5d6b78;
+  --selected: #e1eaf3;
+  --error: #a8322a;
+  --danger: #b3261e;
+  --video-bg: #0f151b;
+  --pill-bg: 60% 86%;
+  --pill-text: 45% 22%;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --theme: #8fb5da;
+    --theme-dark: #b3cde6;
+    --bg: #12171c;
+    --panel: #1a2128;
+    --border: #2e3a45;
+    --text: #e3e9ee;
+    --muted: #9aa7b3;
+    --selected: #253341;
+    --error: #ff9d94;
+    --danger: #e0645b;
+    --video-bg: #05080b;
+    --pill-bg: 35% 28%;
+    --pill-text: 60% 88%;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+h1, h2 { margin: 0; }
+
+h1 {
+  color: var(--theme);
+  font-size: 1.5rem;
+  letter-spacing: 0.5px;
+}
+
+h2 { font-size: 1rem; }
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* 16px at least: iOS zooms into a smaller field when it gets the focus. */
+button, input, select, textarea {
+  font: inherit;
+  font-size: max(16px, 1em);
+  color: inherit;
+}
+
+input[type="text"], input[type="password"] {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+:focus-visible {
+  outline: 2px solid var(--theme);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.5; cursor: default; }
+
+button.primary {
+  background: var(--theme);
+  border-color: var(--theme);
+  color: var(--panel);
+}
+
+button.primary:hover:not(:disabled) { background: var(--theme-dark); }
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+a.link {
+  color: var(--theme);
+  font-size: 0.85rem;
+}
+
+.status, .state, .report {
+  margin: 0;
+  min-height: 1.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.notice {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  color: var(--error);
+}
+
+.version {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* ---- the first row: the name, and the gear on the right ---- */
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+button.icon {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+}
+
+button.icon:hover:not(:disabled) { color: var(--theme); }
+
+/* ---- contacts beside the call; stacked on a phone ---- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.box {
+  height: 22rem;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row:hover { background: var(--selected); }
+
+.row[aria-selected="true"] {
+  background: var(--selected);
+  box-shadow: inset 3px 0 0 var(--theme);
+}
+
+/* Somebody who cannot be called yet. */
+.row.unreachable { color: var(--muted); font-style: italic; }
+.row.unreachable .pill { opacity: 0.6; }
+
+.away {
+  font-size: 0.75rem;
+  margin-left: 6px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 8px;
+  margin: 0;
+}
+
+/* A name on an oval in its key's colour - the same colour Pals gives it. */
+.pill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: hsl(var(--hue) var(--pill-bg));
+  color: hsl(var(--hue) var(--pill-text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* ---- the two videos: Contact large, Self small in its corner ---- */
+
+.videos {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.video {
+  margin: 0;
+  position: relative;
+  background: var(--video-bg);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video figcaption {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 0.8rem;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video.contact { aspect-ratio: 4 / 3; }
+
+.video.self {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28%;
+  min-width: 96px;
+  aspect-ratio: 3 / 4;
+  border: 2px solid var(--panel);
+}
+
+/* The own camera mirrored, as people expect to see themselves. */
+.video.self video { transform: scaleX(-1); }
+
+.callbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 2.5rem;
+}
+
+/* ---- dialogs ---- */
+
+dialog {
+  width: min(28rem, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 16px;
+}
+
+dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+dialog form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+dialog p { margin: 0; }
+dialog .buttons { justify-content: flex-end; }
+dialog.layer .close { margin-left: auto; }
+
+/* ---- the setup page ---- */
+
+.welcome { max-width: 36rem; }
+
+.welcome .panel { gap: 12px; }
+
+.welcome p { margin: 0; }
+
+.ice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.ice fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ice legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+label.choice {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--text);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.turn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.turn[hidden], label.choice[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  /* The call first on a phone: it is what the screen is for once it starts. */
+  .videos { order: -1; }
+  .box { height: 14rem; }
+}

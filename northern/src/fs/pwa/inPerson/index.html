@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f4f6f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="description" content="InPerson: video calls among friends.">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=2">
+  <title>InPerson</title>
+</head>
+<body>
+
+<main>
+
+  <header class="top">
+    <h1>InPerson</h1>
+    <button type="button" class="icon" id="settings_open" aria-label="Settings" title="Settings">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Calls are set up sealed with the ID Card's key, kept on this device once it is loaded here. -->
+  <p class="notice" id="need_card" hidden>Load your ID Card on this device to make and take calls:
+    <a id="need_card_link" href="/fs/get/reg/Reg.html">load it</a>.</p>
+
+  <section class="layout">
+
+    <!-- Whom to call: everybody Pals lists, and everybody set up for calls. -->
+    <section class="panel" id="panel_contacts">
+      <h2>Contacts</h2>
+      <div class="box" id="contacts" role="listbox" aria-label="Contacts"></div>
+      <div class="buttons">
+        <button type="button" class="primary" id="call">Call</button>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+    </section>
+
+    <!-- The two cameras: the other side's, and this device's own. -->
+    <section class="videos" aria-label="The call">
+      <figure class="video contact">
+        <video id="contact_video" autoplay playsinline></video>
+        <figcaption>Contact <span id="contact_name"></span></figcaption>
+      </figure>
+      <figure class="video self">
+        <video id="self_video" autoplay playsinline muted></video>
+        <figcaption>Self</figcaption>
+      </figure>
+      <div class="callbar">
+        <p class="state" id="call_state" role="status"></p>
+        <button type="button" class="danger" id="hang_up" hidden>Hang up</button>
+      </div>
+    </section>
+
+  </section>
+
+  <p class="status" id="status" role="status"></p>
+
+</main>
+
+<!-- Somebody is calling. -->
+<dialog id="dlg_incoming" aria-labelledby="incoming_title">
+  <form method="dialog">
+    <h2 id="incoming_title"><span id="incoming_from"></span> is calling</h2>
+    <div class="buttons">
+      <button type="button" class="danger" id="decline">Decline</button>
+      <button type="button" class="primary" id="answer">Answer</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="layer" id="dlg_settings" aria-labelledby="settings_title">
+  <form method="dialog">
+    <h2 id="settings_title">Settings</h2>
+    <p>Signed in as <span id="user"></span></p>
+    <p>Calls reach the other device through: <span id="ice_mode"></span></p>
+    <p><a class="link" href="./welcome.html" id="setup_again">Change STUN and TURN, or set up this device again</a></p>
+    <!-- The version of the app: the one its service worker's cache is named after. -->
+    <p class="version">InPerson <span id="version"></span></p>
+    <div class="buttons">
+      <button type="submit" class="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Every script and the stylesheet carry ?v=<the version in version.js>: a
+     cache between here and the browser (Cloudflare keeps .js for 4 hours) can
+     then never hand this page the files of another version. Bump them all with it. -->
+<!-- The Northern identity: who is signed in, and whether the cookie is live. -->
+<script src="../../reg/sjcl.js?v=2"></script>
+<script src="../../reg/cookies.js?v=2"></script>
+<script src="../../reg/oo.js?v=2"></script>
+<script src="../../reg/idcard.js?v=2"></script>
+<script src="../../reg/keystore.js?v=2"></script>
+<script src="../../reg/session.js?v=2"></script>
+
+<script src="../pals/seal.js?v=2"></script>
+<script src="./version.js?v=2"></script>
+<script src="./model.js?v=2"></script>
+<script src="./store.js?v=2"></script>
+<script src="./views.js?v=2"></script>
+<script src="./call.js?v=2"></script>
+<script src="./inperson.js?v=2"></script>
+</body>
+</html>

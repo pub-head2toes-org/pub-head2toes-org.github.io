@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f4f6f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="description" content="InPerson: set this device up for calls.">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=2">
+  <title>Welcome to InPerson</title>
+</head>
+<body>
+
+<!-- Once per device: subscribe to push, list the device under /inperson/, and
+     say how calls reach the other device. -->
+<main class="welcome">
+  <section class="panel">
+    <h1>Welcome to InPerson</h1>
+    <p>Video calls with the people you know from Pals.</p>
+
+    <form id="ice" class="ice" autocomplete="off">
+      <fieldset>
+        <legend>How calls reach the other device</legend>
+        <label class="choice"><input type="radio" name="mode" value="stun" id="mode_stun" checked>
+          A STUN server only - enough on most home networks</label>
+        <label class="choice"><input type="radio" name="mode" value="turn" id="mode_turn">
+          My own TURN server, such as coturn</label>
+        <label class="choice"><input type="radio" name="mode" value="northern" id="mode_northern">
+          TURN credentials from Northern (coturn or Cloudflare, set up on the server)</label>
+      </fieldset>
+
+      <label for="stun">STUN servers</label>
+      <input type="text" id="stun" inputmode="url" spellcheck="false" placeholder="stun:stun.cloudflare.com:3478">
+
+      <div class="turn" id="turn_fields" hidden>
+        <label for="turn_urls">TURN servers</label>
+        <input type="text" id="turn_urls" inputmode="url" spellcheck="false"
+               placeholder="turn:turn.example.org:3478, turns:turn.example.org:5349">
+        <label for="turn_user">User name</label>
+        <input type="text" id="turn_user" spellcheck="false">
+        <label for="turn_password">Password</label>
+        <input type="password" id="turn_password">
+      </div>
+
+      <label class="choice" id="relay_only_row" hidden><input type="checkbox" id="relay_only">
+        Only through TURN - to try the TURN server out</label>
+
+      <p class="report" id="check_report" role="status"></p>
+      <div class="buttons">
+        <button type="button" id="check">Check</button>
+        <button type="button" id="save">Save</button>
+      </div>
+    </form>
+
+    <button type="button" id="go" class="primary">Go</button>
+    <p class="status" id="status" role="status"></p>
+    <a class="link" id="load_card" href="/fs/get/reg/Reg.html" hidden>Load my ID Card</a>
+    <a class="link" id="open_app" href="./index.html" hidden>Open InPerson</a>
+  </section>
+</main>
+
+<!-- The Northern identity: who is signed in, and whether the cookie is live. -->
+<script src="../../reg/sjcl.js?v=2"></script>
+<script src="../../reg/cookies.js?v=2"></script>
+<script src="../../reg/oo.js?v=2"></script>
+<script src="../../reg/idcard.js?v=2"></script>
+<script src="../../reg/keystore.js?v=2"></script>
+<script src="../../reg/session.js?v=2"></script>
+
+<script src="./model.js?v=2"></script>
+<script src="./store.js?v=2"></script>
+<script src="./welcome.js?v=2"></script>
+</body>
+</html>

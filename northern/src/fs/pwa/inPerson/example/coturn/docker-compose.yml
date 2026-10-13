@@ -1,0 +1,16 @@
+# coturn next to Northern - see ../../PLAN.md, "Spike: coturn".
+#
+#   docker compose up -d
+#
+# Host networking: the relay range is 40 UDP ports, and coturn must see the
+# addresses packets really come from. The image runs on arm64 (Raspberry Pi).
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      # The certificate for turns:, renewed by certbot on the host.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]

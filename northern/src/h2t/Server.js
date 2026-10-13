@@ -15,19 +15,27 @@ import SezamApi from './SezamApi.js';
 import SezamDB from './SezamDB.js';
 import PushApi from './PushApi.js';
 import TempApi from './TempApi.js';
+import TurnApi from './TurnApi.js';
 import { posix, join, dirname } from 'node:path';
 const sub = {};
 
-// The host name Pals is served under (UPDATE_1). An origin is only Pals' own
-// if nobody else's page can run on it, and here every user can write a page:
-// a database row with no extension is served as HTML. So on this host only the
-// app and the sign-in pages run as themselves; every other document is served
-// sandboxed, in an origin of its own, with no script.
-const PALS_HOST = /^pals\./i;
-const PALS_HOME = '/fs/get/pwa/pals/index.html';
-const runsOnPalsHost = function (path) {
+// The host names an app is served under (Pals: UPDATE_1; InPerson the same
+// way). An origin is only an app's own if nobody else's page can run on it,
+// and here every user can write a page: a database row with no extension is
+// served as HTML. So on such a host only the app and the sign-in pages run as
+// themselves; every other document is served sandboxed, in an origin of its
+// own, with no script. A script another page loads is not a document, and a
+// sandbox on it changes nothing: InPerson loads Pals' seal.js that way.
+const APP_HOSTS = [
+    { host: /^pals\./i, home: '/fs/get/pwa/pals/index.html', app: '/fs/get/pwa/pals/' },
+    { host: /^inperson\./i, home: '/fs/get/pwa/inPerson/index.html', app: '/fs/get/pwa/inPerson/' }
+];
+const appHost = function (host) {
+    return APP_HOSTS.find(entry => entry.host.test(host || '')) || null;
+};
+const runsOnAppHost = function (entry, path) {
     const clean = posix.normalize(path);
-    return (clean.startsWith('/fs/get/pwa/pals/') && !clean.startsWith('/fs/get/pwa/pals/example/'))
+    return (clean.startsWith(entry.app) && !clean.startsWith(entry.app + 'example/'))
         || clean.startsWith('/fs/get/reg/');
 };
 
@@ -47,6 +55,9 @@ export default class Server{
         // Temp files are kept in UPLOAD, next to the database file (UPDATE_8).
         const temp = new TempApi(join(import.meta.dirname, dirname(dbFilePath), 'UPLOAD'),
             { render, verifySsid: ssid => crypto.verifySsid(ssid) });
+        // TURN credentials for InPerson's calls, from coturn or Cloudflare, as
+        // the environment says (NORTHERN_TURN...).
+        const turn = new TurnApi({ render, verifySsid: ssid => crypto.verifySsid(ssid) });
 
         const privateKey = fs.readFileSync('server.key').toString();
         const certificate = fs.readFileSync('server.crt').toString();
@@ -127,14 +138,14 @@ export default class Server{
             var q = input.query;
             const path = input.pathname;
             input.type = render.getType(path);
-            const palsHost = PALS_HOST.test(req.headers.host || '');
+            const hostApp = appHost(req.headers.host);
             if (path==="/" && !q.search){
-                redirect(palsHost ? PALS_HOME : '/fs/get/home.html', res);
+                redirect(hostApp ? hostApp.home : '/fs/get/home.html', res);
                 return;
             }
-            if (palsHost){
+            if (hostApp){
                 res.setHeader('X-Content-Type-Options', 'nosniff');
-                if (!runsOnPalsHost(path || '')){
+                if (!runsOnAppHost(hostApp, path || '')){
                     res.setHeader('Content-Security-Policy', 'sandbox');
                 }
             }
@@ -146,6 +157,10 @@ export default class Server{
             }
             if (path && TempApi.owns(path)) {
                 temp.handle(req, res, ssid);
+                return;
+            }
+            if (path && TurnApi.owns(path)) {
+                turn.handle(req, res, ssid);
                 return;
             }
             if (ssid === '' && !path.startsWith("/fs/get/reg") && req.method !== 'GET'){
@@ -200,6 +215,7 @@ export default class Server{
         this.sezam = sezam;
         this.push = push;
         this.temp = temp;
+        this.turn = turn;
         this.httpServer = server;
         this.sslServer = ssl;
     }
