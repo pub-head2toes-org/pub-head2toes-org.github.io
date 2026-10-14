@@ -603,6 +603,48 @@ same number.)
   text area's own width - 20 columns in Safari - cannot push it out either.
 - `PALS_VERSION` is 14.
 
+## Video calls with a pal (version 16; a switch since 17)
+
+Brought over from InPerson, where calls were tried live first (2026-10-13,
+through Cloudflare's TURN and directly): `../inPerson/PLAN.md` has the design,
+the TURN spike and the step-by-step of a call. What it is in Pals:
+
+- **Call** in a pal's Messages layer (not a group's). The call layer shows the
+  pal's camera large and this device's small, how the call stands - *Calling*,
+  *Ringing* once the push is out, *In a call* - and **Hang up**. **Key** opens
+  *Compare keys* in the middle of the call, the moment two people can read
+  their numbers to each other.
+- **Only pals, only to the pinned key.** The ring and every signal are sealed
+  to the key stored with the pal; the directory only says where to push. A
+  ring from somebody who is not a pal never rings: it is a *Missed video call*
+  in the log, and they are listed under the pals, to be added.
+- **The ring is a push to the pal's Pals device**, by `/push/api/send` with
+  the send proof, as a message is: one subscription, one worker, no second
+  setup. The rest goes over Northern's `/sub/pals-call-<random id>`, sealed.
+- **A signal is not a message.** It travels as the seal's `signal`
+  (`seal.js`), beside a text that a Pals too old to know calls files instead:
+  *Video call - this Pals needs updating to answer it*, or *Missed video
+  call*. The worker shows *alice is calling* (it stays until it is dealt with)
+  or *Missed call from alice*; the page hands signals to the call and never
+  to `PalsModel.receive`.
+- **Missed calls** - rung out, given up by the caller, or from somebody who
+  is not a pal - are filed in the log once per call (`PalsModel.missedCall`),
+  with the dot by the name.
+- **One switch in Settings, *Video calls with my pals*, off until turned
+  on** - kept on the device (the setup store, under `calls <key>`). Turning it
+  on asks for the camera and microphone at once, and lets them go; refused,
+  it stays off and says why. Off, there is no **Call**, and a pal's ring is a
+  missed call - in the worker's notification and in the log.
+- **Nothing to configure.** Every call takes TURN credentials from Northern
+  (`/turn/api/ice`) and Cloudflare's STUN server; a call goes direct when the
+  devices can reach each other, through TURN when not. Without TURN on the
+  server, a call tries with STUN alone and says so. InPerson keeps the full
+  STUN/TURN form and *Check*, for trying a TURN server out.
+- **The session** never sends the page to `Reg.html` in the middle of a call.
+- Files: `calls.js` (`PalsCalls`: STUN/TURN, the signals), `call.js`
+  (`PalsCall`: WebRTC), the wiring in `pals.js`. Tests:
+  `tests/palsCalls.test.js`.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**

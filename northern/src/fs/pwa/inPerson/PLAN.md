@@ -11,8 +11,10 @@ Amazon Lightsail, Cloudflare's TURN service),
 and how to bring calls into Pals.
 
 Everything stated as a fact about the code is pinned by a test
-(`tests/inPerson.test.js`, `tests/TurnApi.test.js`), except what needs a real
-browser, a real push or a real TURN server: see *Not verified*.
+(`tests/inPerson.test.js`, `tests/TurnApi.test.js`). What needs a real
+browser, a real push or a real TURN server was tried on two devices on
+2026-10-13 - see *Live check* - and what that did not cover is under *Not
+verified*.
 
 ---
 
@@ -27,7 +29,7 @@ browser, a real push or a real TURN server: see *Not verified*.
 | `views.js` | The contact rows and the call bar, as HTML text, everything escaped |
 | `store.js` | `InPersonStore`: IndexedDB `inperson`, for the page and the worker |
 | `sw.js` | The offline shell; opens a ring with the kept key and shows *alice is calling* |
-| `version.js` | `INPERSON_VERSION` (1): the cache name, the `?v=` on every script |
+| `version.js` | `INPERSON_VERSION` (2): the cache name, the `?v=` on every script |
 | `styles.css`, `manifest.json`, `icon-*.png` | Look, install, icons |
 | `../pals/seal.js` | **Pals' seal, loaded as it is**: every signal is sealed the way Pals seals a message |
 | `example/` | The spike: `coturn/turnserver.conf`, `coturn/docker-compose.yml`, `lightsail/firewall.sh`, `lightsail/setup.sh`, `cloudflare/ice-servers.sh`, `northern.env.example` |
@@ -357,6 +359,14 @@ restart with other environment variables.
 
 ## Porting calls to Pals
 
+**Done, in Pals version 16** (`../pals/PLAN.md`, *Video calls with a pal*):
+steps 1-7 as below, with these differences - the signal travels as the
+seal's `signal` beside a text an old Pals files instead (*Video call - this
+Pals needs updating*), so `v: 2` stays; the Key button is in the call layer
+itself; and since version 17 Pals has no STUN/TURN form - one switch in
+Settings turns calls on, and every call takes TURN from Northern. Step 8 is still open:
+InPerson stays as it is for now (decision I6).
+
 Pals has what InPerson lacks: **pinned keys and fingerprints**. Calls belong
 there. The port, in order:
 
@@ -423,8 +433,13 @@ the ring arriving only as fast as the push service delivers.
    (`Cluster.js`); with several behind a balancer, both ends of a call would
    have to reach the same one.
 6. **The `/turn/api/ice` credentials are per request**, for any signed-in
-   user, with no rate limit. Cloudflare bills per GB relayed, so a signed-in
-   abuser could cost money; a limit per user is a small change in `TurnApi`.
+   user, **at most `NORTHERN_TURN_RATE` a minute each** (default 6; a call
+   asks once at each end). Past it Northern answers `429` with `Retry-After`,
+   logs the key's head once a minute, and the page tries the call without
+   TURN. The count is in the process's memory: Northern runs one. It limits
+   how many credentials one user collects - each lasts
+   `NORTHERN_TURN_TTL` - not the gigabytes a credential relays; Cloudflare's
+   dashboard shows those.
 7. **No reconnect.** When the line drops, WebRTC tries for a while
    (*reconnecting…*); a failed connection ends the call. ICE restarts would
    need the channel kept open for the whole call.
@@ -438,40 +453,57 @@ The full suite has 1241 tests; 110 fail, all of them before this change too
 (checked by running the same files without it): 98 in `bandage.test.js`, one
 flaky in `grinder.test.js`, `Crypto.test.js`'s RSA branch (REFACTORING.md #8),
 two in `browserIdentity.test.js` (Pals' `example/OpenChannel/msg.html`, and
-`Reg.html` asking for `db.js?v=2`), and 7–9 in `pals.test.js` — Pals' page now
-calls `requestAnimationFrame`, which `tests/helpers/palsPage.js` does not
-stub, and two regexes that break when a random test key has a `+` in it.
+`Reg.html` asking for `db.js?v=2`), and 7–9 in `pals.test.js`. Of those, the
+ones from `requestAnimationFrame` are fixed with the port (`palsPage.js` stubs
+it now); two regexes still break now and then, when a random test key has a
+`+` in it.
+
+## Live check, 2026-10-13
+
+Two devices - N.P. on a Chromebook, Mr. No on Chrome - through the Cloudflare
+tunnel on `inperson.<domain>`, with Northern on Cloudflare TURN
+(`NORTHERN_TURN=cloudflare`, *TURN credentials from Northern*).
+
+**Works:**
+- setup on both devices: the ID Card's key, push, the `/inperson/` row;
+- the ring: a real push, the *is calling* notification, Answer;
+- `/sub/` through the tunnel: the signals set the call up;
+- `/turn/api/ice` with a real Cloudflare key, and **a call through
+  Cloudflare's relay** with *Only through TURN* (the active candidate pair in
+  `chrome://webrtc-internals` was `relay`);
+- **the same call directly** with *Only through TURN* cleared - TURN then is
+  only the fallback, and costs nothing;
+- the camera and both videos.
+
+**Found, and fixed (version 2):** `call.js` kept `setTimeout` and
+`clearTimeout` on a plain object and called them as its methods. Chrome throws
+*Illegal invocation* for that, so a call stopped at *Calling bob…*: the
+answer timer never started, the undo hit the same error, and the ring was never
+pushed - with no message. The vm tests passed because their fake timers do not
+care what `this` is. They are called through arrow functions now, and a test
+with timers as strict as Chrome's fails on the old line.
 
 ## Not verified
 
-Headless Chromium cannot load pages here (see memory). Untested until
-somebody runs it on real devices:
+Headless Chromium cannot load pages here (see memory), and the live check did
+not cover:
 
-- the layout, the videos, `getUserMedia` and the `<dialog>`s;
-- a real `RTCPeerConnection` between two browsers — through STUN, coturn and
-  Cloudflare's TURN;
-- a real push ringing a device with the app closed, and the notification
-  opening the call (Android Chrome, desktop, iOS Home Screen);
-- `/sub/` through the Cloudflare tunnel (streaming, the 100 s reconnect);
-- coturn on the Pi with the example config, `example/lightsail/*.sh` on a real
-  Lightsail instance, and Cloudflare's API with a real key.
-
-**First live check:**
-1. Point `inperson.<domain>` at Northern (DNS, tunnel ingress); restart
-   Northern with one of the `NORTHERN_TURN` blocks.
-2. On two devices: open `https://inperson.<domain>/`, load the ID Card through
-   the link, choose STUN/TURN, *Check* (with *Only through TURN* for TURN), *Go*.
-3. Call from one to the other with the app open, then with it closed (the
-   notification), then decline, then let it ring out.
-4. Call between a phone on mobile data and a laptop at home, with *Only
-   through TURN* on one side: the relay works.
+- iOS (Home Screen app), Android, and a desktop browser other than Chrome;
+- a ring with the app closed on a sleeping phone, and how long it takes;
+- Decline, a ring left to run out (*no answer*, *Missed call*), and busy;
+- a call between different networks - a phone on mobile data and a laptop at
+  home - with and without TURN;
+- `/sub/`'s 100 s idle reconnect through the tunnel during a long ring;
+- coturn on the Pi with the example config, and `example/lightsail/*.sh` on a
+  real Lightsail instance.
 
 ## Decisions that are yours
 
 | | Decision | Recommended |
 | --- | --- | --- |
 | **I1** | InPerson on its own host (built), or under `pals.` | Its own host now; the Pals port makes it moot |
-| **I2** | TURN: coturn at home, coturn on Lightsail, or Cloudflare | Cloudflare first — no server to keep, cents per relayed hour. Lightsail when the TURN server should be your own: a flat $5, nothing opened at home. coturn at home only with a public address and no wish to hide it |
-| **I3** | Port calls to Pals | Yes, once a live check has passed: pinned keys and fingerprints close InPerson's weak point |
+| **I2** | TURN: coturn at home, coturn on Lightsail, or Cloudflare | Cloudflare first — no server to keep, cents per relayed hour, and tried live. Lightsail when the TURN server should be your own: a flat $5, nothing opened at home. coturn at home only with a public address and no wish to hide it |
+| **I3** | Port calls to Pals | Done - Pals version 16: pinned keys and fingerprints close InPerson's weak point |
 | **I4** | Contacts: everybody listed (built, as the prompt asks), or pals only | Everybody now; pals only in Pals |
-| **I5** | A rate limit on `/turn/api/ice` | Yes, with Cloudflare: a few per user per minute |
+| **I5** | A rate limit on `/turn/api/ice` | Done: 6 per user per minute (`NORTHERN_TURN_RATE`) |
+| **I6** | Retire InPerson now that Pals calls (port step 8) | Not yet: once calls in Pals have been tried on real devices |

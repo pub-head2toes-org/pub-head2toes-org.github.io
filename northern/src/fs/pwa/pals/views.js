@@ -86,6 +86,7 @@ const PalsViews = (function () {
             // A photo with no words shows its file name instead.
             const text = m.body.trim() || (m.attachment ? m.attachment.name : '');
             const clip = m.attachment ? '<span class="clip" title="' + esc(api.kind(m.attachment) + ': ' + m.attachment.name) + '">&#128206;</span>' : '';
+            const phone = m.call ? '<span class="clip" title="Video call">&#128222;</span>' : '';
             // The name a pal has now, or the one they had when the message was filed.
             const known = PalsModel.nameOf(state, m.from, me);
             const name = known === '?' && m.fromName ? m.fromName : known;
@@ -94,7 +95,7 @@ const PalsViews = (function () {
             const status = api.status(m);
             const re = PalsModel.isReply(m.body) ? '<span class="re">Re:</span> ' : '';
             return row('data-message="' + esc(m.id) + '"', false,
-                '<span class="text">' + re + clip + esc(text) + '</span>' +
+                '<span class="text">' + re + phone + clip + esc(text) + '</span>' +
                 '<span class="line meta">' + api.pill(name, m.from) +
                 '<span class="more" title="' + (m.out ? 'Open to send a correction' : 'Open to reply') + '">...</span>' +
                 (where ? '<span class="where">' + esc(where) + '</span>' : '') +

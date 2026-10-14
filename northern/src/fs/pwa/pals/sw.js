@@ -1,6 +1,7 @@
 // What a push needs: the key the ID Card left on this device, the seal to
-// open with it, the model to name a sender, and the store to keep what came.
-importScripts('./version.js', '../../reg/keystore.js', './model.js', './store.js', './seal.js');
+// open with it, the model to name a sender, the store to keep what came, and
+// the calls' signals to tell a ring from a message.
+importScripts('./version.js', '../../reg/keystore.js', './model.js', './store.js', './seal.js', './calls.js');
 
 // Named after the app's version, which index.html shows: bump it in version.js.
 const CACHE_NAME = 'pals-v' + PALS_VERSION;
@@ -13,6 +14,8 @@ const urlsToCache = [
   './store.js',
   './seal.js',
   './views.js',
+  './calls.js',
+  './call.js',
   './pals.js',
   './welcome.js',
   './manifest.json',
@@ -75,15 +78,39 @@ function open(outer) {
     .catch(() => null);
 }
 
-/** Who a message is from, in words: the receiver's own name for them, if any. */
+/**
+ * Who a message is from: the receiver's own name for them, if any, whether
+ * they are a pal, and whether the receiver has video calls switched on.
+ */
 function sender(envelope) {
-  if (!envelope) return Promise.resolve('');
-  return PalsStore.get('state', envelope.to)
-    .then((stored) => {
-      const name = PalsModel.nameOf(PalsModel.load(stored), envelope.from);
-      return name === '?' ? PalsModel.label('A new pal', envelope.from) : name;
+  if (!envelope) return Promise.resolve({ name: '', pal: false, calls: false });
+  return Promise.all([PalsStore.get('state', envelope.to), PalsStore.get('setup', 'calls ' + envelope.to).catch(() => null)])
+    .then(([stored, calls]) => {
+      const state = PalsModel.load(stored);
+      const name = PalsModel.nameOf(state, envelope.from);
+      return { name: name === '?' ? PalsModel.label('A new pal', envelope.from) : name, pal: !!PalsModel.pal(state, envelope.from),
+               calls: PalsCalls.enabled(calls) };
     })
-    .catch(() => '');
+    .catch(() => ({ name: '', pal: false, calls: false }));
+}
+
+/**
+ * What the user is told of a push. A video call's ring says who is calling,
+ * and stays until it is dealt with; a ring from somebody who is not a pal,
+ * with calls switched off, too old to answer, or cancelled is a missed call.
+ * Anything else is a message.
+ */
+function notice(envelope, from) {
+  const signal = envelope && typeof envelope.signal === 'string' ? PalsCalls.readSignal(envelope.signal) : null;
+  if (!signal) {
+    return { body: from.name ? 'New message from ' + from.name : 'New message', icon: './icon-192.png', tag: 'pals' };
+  }
+  const tag = 'pals-call-' + signal.call;
+  const name = from.name || PalsModel.label('A new pal', envelope.from);
+  if (signal.t === 'ring' && from.pal && from.calls && Date.now() - signal.ts < PalsCalls.RING_MS) {
+    return { body: name + ' is calling', icon: './icon-192.png', tag, requireInteraction: true, renotify: true, data: { call: signal.call } };
+  }
+  return { body: 'Missed call from ' + name, icon: './icon-192.png', tag };
 }
 
 /** The push payload: `{v, from, to, id, part, parts, sealed}`, as JSON text. */
@@ -111,17 +138,13 @@ self.addEventListener('push', (event) => {
       const item = { payload, at: Date.now() };
       if (envelope) item.envelope = envelope;
       const kept = payload ? PalsStore.add('inbox', item).catch(() => null) : Promise.resolve();
-      return Promise.all([kept, sender(envelope)]);
+      return Promise.all([kept, sender(envelope), envelope]);
     })
-    .then(([, name]) => Promise.all([
+    .then(([, from, envelope]) => Promise.all([
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
         windows.forEach((client) => client.postMessage({ type: 'pals:push' }));
       }),
-      self.registration.showNotification('Pals', {
-        body: name ? 'New message from ' + name : 'New message',
-        icon: './icon-192.png',
-        tag: 'pals'
-      })
+      self.registration.showNotification('Pals', notice(envelope, from))
     ])));
 });
 
@@ -131,7 +154,11 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
       for (const client of windows) {
-        if (client.url.split(/[?#]/)[0] === url && 'focus' in client) return client.focus();
+        if (client.url.split(/[?#]/)[0] === url && 'focus' in client) {
+          // A ring waits in the inbox: the page opens it once told.
+          client.postMessage({ type: 'pals:push' });
+          return client.focus();
+        }
       }
       if (self.clients.openWindow) return self.clients.openWindow(url);
     })

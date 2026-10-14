@@ -7,7 +7,7 @@ import http from 'node:http';
 import net from 'node:net';
 import nodeCrypto from 'node:crypto';
 import { REPO_ROOT, tmpDbPaths, seedSchema } from './helpers/db.js';
-import TurnApi, { DEFAULT_TTL, cleanIceServers, configFrom, coturnCredentials } from '../src/h2t/TurnApi.js';
+import TurnApi, { DEFAULT_RATE, DEFAULT_TTL, cleanIceServers, configFrom, coturnCredentials } from '../src/h2t/TurnApi.js';
 
 const PUB = 'A+/' + 'B'.repeat(83) + '==';
 const SECRET = 'a-shared-secret-of-some-length';
@@ -28,26 +28,30 @@ function response() {
     };
 }
 
+const OTHER = 'C'.repeat(86) + '==';
+
 function api(env, { fetch, now = () => 1_700_000_000_000 } = {}) {
-    const out = response();
     const logged = [];
-    const turn = new TurnApi({ render: out.render, env, fetch, now, log: (...a) => logged.push(a.join(' ')),
-        verifySsid: ssid => ssid === 'good' ? { sValid: true, pubB64: PUB } : { sValid: false } });
+    const turn = new TurnApi({ render: null, env, fetch, now, log: (...a) => logged.push(a.join(' ')),
+        verifySsid: ssid => ssid === 'good' ? { sValid: true, pubB64: PUB } : ssid === 'other' ? { sValid: true, pubB64: OTHER } : { sValid: false } });
+    // A fresh response for every request, as a server has.
     const ask = async (ssid = 'good', url = '/turn/api/ice', method = 'GET') => {
+        const out = response();
+        turn.render = out.render;
         await turn.handle({ url, method }, out.target, ssid);
         return out.res;
     };
-    return { ask, logged };
+    return { ask, logged, turn };
 }
 
 describe('TurnApi - configuration', () => {
     it('reads coturn and Cloudflare from the environment, and nothing when nothing is set', () => {
         assert.strictEqual(configFrom({}), null);
-        assert.deepStrictEqual(configFrom(COTURN), { kind: 'coturn', secret: SECRET, ttl: DEFAULT_TTL,
+        assert.deepStrictEqual(configFrom(COTURN), { kind: 'coturn', secret: SECRET, ttl: DEFAULT_TTL, rate: DEFAULT_RATE,
             urls: ['turn:turn.example.org:3478?transport=udp', 'turns:turn.example.org:5349?transport=tcp'],
             stun: ['stun:turn.example.org:3478'] });
-        assert.deepStrictEqual(configFrom({ ...CLOUDFLARE, NORTHERN_TURN_TTL: '3600' }),
-            { kind: 'cloudflare', keyId: 'key-id-1234', token: 'token', ttl: 3600 });
+        assert.deepStrictEqual(configFrom({ ...CLOUDFLARE, NORTHERN_TURN_TTL: '3600', NORTHERN_TURN_RATE: '20' }),
+            { kind: 'cloudflare', keyId: 'key-id-1234', token: 'token', ttl: 3600, rate: 20 });
     });
 
     it('refuses a configuration that would not work', () => {
@@ -57,6 +61,9 @@ describe('TurnApi - configuration', () => {
         assert.throws(() => configFrom({ ...COTURN, NORTHERN_TURN_STUN: 'turn:x:1' }), /stun: addresses/);
         assert.throws(() => configFrom({ ...CLOUDFLARE, NORTHERN_TURN_KEY_TOKEN: '' }), /API token/);
         assert.throws(() => configFrom({ ...CLOUDFLARE, NORTHERN_TURN_TTL: '10' }), /60 to a week/);
+        for (const rate of ['0', '1.5', 'many', '601']) {
+            assert.throws(() => configFrom({ ...CLOUDFLARE, NORTHERN_TURN_RATE: rate }), /1 to 600/, rate);
+        }
     });
 
     it('makes coturn\'s REST credentials: expiry:user, and HMAC-SHA1 of it in base64', () => {
@@ -97,6 +104,41 @@ describe('TurnApi - /turn/api/ice', () => {
         assert.strictEqual(res.status, 503);
         assert.ok(!JSON.stringify(res.body).includes('SECRET'), 'what is wrong goes to the log, not the browser');
         assert.match(wrong.logged[0], /NORTHERN_TURN_URLS/);
+    });
+
+    it('answers each user a few times a minute, then 429 with when to come back - logged once', async () => {
+        let now = 1_700_000_000_000;
+        const { ask, logged, turn } = api(COTURN, { now: () => now });
+        for (let i = 0; i < DEFAULT_RATE; i++) {
+            assert.strictEqual((await ask()).status, 200, 'request ' + (i + 1));
+            now += 5000;
+        }
+        // The first came 30 s ago: a place frees up in 30 s.
+        const refused = await ask();
+        assert.strictEqual(refused.status, 429);
+        assert.strictEqual(refused.headers['Retry-After'], '30');
+        assert.deepStrictEqual(refused.body, { error: 'TooManyRequests', message: 'too many requests for TURN credentials; try again in 30 s' });
+        assert.strictEqual((await ask()).status, 429);
+        assert.deepStrictEqual(logged, [`turn: ${PUB.slice(0, 12)} asked more than ${DEFAULT_RATE} times in a minute; refusing for 30 s`],
+            'the log hears of it once, and never the whole key');
+
+        assert.strictEqual((await ask('other')).status, 200, 'somebody else is not held up');
+        now += 30_000;
+        assert.strictEqual((await ask()).status, 200, 'a minute after the first, a place is free');
+        assert.strictEqual((await ask()).status, 429);
+
+        now += 10 * 60_000;
+        await ask('other');
+        assert.deepStrictEqual([...turn.asked.keys()], [OTHER], 'whoever has not asked for a minute is forgotten');
+        assert.strictEqual(turn.warned.size, 0);
+    });
+
+    it('takes its limit from NORTHERN_TURN_RATE, and counts nobody it turns away unsigned', async () => {
+        const { ask } = api({ ...COTURN, NORTHERN_TURN_RATE: '2' });
+        for (let i = 0; i < 5; i++) {
+            assert.strictEqual((await ask('forged')).status, 401);
+        }
+        assert.deepStrictEqual([(await ask()).status, (await ask()).status, (await ask()).status], [200, 200, 429]);
     });
 
     it('answers coturn credentials that expire, made for the head of the caller\'s key', async () => {

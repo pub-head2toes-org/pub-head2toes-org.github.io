@@ -25,6 +25,14 @@
     // sealed and opened with it, here - never on the server (UPDATE_2).
     let ownKey = null;
 
+    // A video call (calls.js, call.js): the one there is, if any -
+    // {id, peer, name, role, device, controller, source, media} - and the
+    // calls already rung, answered, declined or missed, never shown again.
+    let current = null;
+    const handled = [];
+    // Whether this device makes and takes calls: switched on in Settings.
+    let callsOn = false;
+
     function needCard(missing) {
         $('need_card').hidden = !missing;
         $('need_card_link').href = PalsModel.regUrl(window.location.pathname, window.location.search, '');
@@ -34,9 +42,10 @@
     // to sign in again was easy to miss, and writing on regardless ended in
     // "Not delivered" (UPDATE_4): so the page goes to Reg.html, and back here
     // after. This runs whenever the page comes back into view, and before a
-    // message is written or sent again. False when the page is leaving.
+    // message is written or sent again - never in the middle of a call, which
+    // needs Northern no more once it is set up. False when the page is leaving.
     function checkSession() {
-        if (session.signedIn()) {
+        if (session.signedIn() || current) {
             return true;
         }
         window.location.replace(PalsModel.regUrl(window.location.pathname, window.location.search, ''));
@@ -174,6 +183,13 @@
         $('group_remove').disabled = !ui.group;
         $('member_add').disabled = !ui.group;
         $('member_remove').disabled = !ui.member;
+
+        // A call is made from a pal's messages, to the key pinned for them.
+        $('call_start').hidden = !callsOn || !(ui.filter.kind === 'pal' && PalsModel.pal(state, ui.filter.pub));
+        $('call_start').disabled = !!current || !ownKey;
+        if (callPeer) {
+            $('call_with').innerHTML = callWith(callPeer);
+        }
     }
 
     /**
@@ -615,9 +631,10 @@
 
     /**
      * One thing from the inbox: opened here if the service worker could not,
-     * then filed. 1 filed, 0 left or dropped, -1 waiting for the ID Card.
+     * then filed - or, for a video call, handed to `signals`. 1 filed, 0 left
+     * or dropped, -1 waiting for the ID Card.
      */
-    function take(item) {
+    function take(item, signals) {
         const value = item.value || {};
         const outer = value.payload;
         const drop = () => PalsStore.remove('inbox', item.key).then(() => 0);
@@ -634,6 +651,14 @@
         }
         const opened = value.envelope ? Promise.resolve(value.envelope) : PalsSeal.open(ownKey, outer);
         return opened.then(function (envelope) {
+            if (typeof envelope.signal === 'string') {
+                // A video call's ring or cancel: for the call, not the log.
+                const signal = PalsCalls.readSignal(envelope.signal);
+                if (signal) {
+                    signals.push({ from: envelope.from, signal: signal });
+                }
+                return PalsStore.remove('inbox', item.key).then(() => 0);
+            }
             return nameFor(envelope.from).then(function (name) {
                 PalsModel.receive(state, me, envelope, name);
                 return save().then(() => PalsStore.remove('inbox', item.key)).then(() => 1);
@@ -707,8 +732,9 @@
             again = true;
             return draining;
         }
+        const signals = [];
         draining = PalsStore.all('inbox')
-            .then(items => items.reduce((done, item) => done.then(counts => take(item).then(n => counts.concat(n))), Promise.resolve([])))
+            .then(items => items.reduce((done, item) => done.then(counts => take(item, signals).then(n => counts.concat(n))), Promise.resolve([])))
             .then(function (counts) {
                 // What comes in while somebody's messages are open is read as it comes.
                 if ($('dlg_messages').open && ui.filter.kind === 'pal' && PalsModel.isUnread(state, ui.filter.pub)) {
@@ -721,6 +747,7 @@
                     say(waiting + (waiting === 1 ? ' message is' : ' messages are') +
                         ' waiting. Load your ID Card on this device to read them.');
                 }
+                return rang(signals);
             })
             .catch(e => say('The inbox could not be read: ' + e.message))
             .then(function () {
@@ -849,6 +876,450 @@
         });
     }
 
+
+    // ---- video calls ---------------------------------------------------
+    //
+    // As InPerson tried them live (../inPerson/PLAN.md), with what Pals adds:
+    // only a pal can call and be called, and everything is sealed to the key
+    // pinned when they were added - the directory only says where to ring.
+
+    // Where Settings keeps whether calls are on: the setup store, beside the setup.
+    const CALL_SETTING = 'calls ' + me.pub;
+    // Whom the call layer is about: the call there is, or the one just over.
+    let callPeer = null;
+
+    function showCall(text) {
+        $('call_state').textContent = text || '';
+    }
+
+    /** Who the call is with, as the call layer's title says it: ✓ once their key is compared. */
+    function callWith(pub) {
+        const pal = PalsModel.pal(state, pub);
+        return PalsViews.pill(PalsModel.nameOf(state, pub, me), pub) +
+            (pal && pal.verified ? ' <span class="verified" title="Key compared in person">&#10003;</span>' : '');
+    }
+
+    /** STUN, and fresh TURN credentials from Northern for the call. */
+    function rtcConfig() {
+        return fetch('/turn/api/ice', { credentials: 'same-origin' }).then(answered)
+            .then(data => PalsCalls.rtcConfig(data))
+            .catch(function (e) {
+                // A call may still get through without TURN.
+                say('No TURN credentials from Northern (' + e.message + '); trying without.');
+                return PalsCalls.rtcConfig(null);
+            });
+    }
+
+    /**
+     * Rings - or stops ringing - the pal's device: the signal is sealed here
+     * to their pinned key, and pushed as a message is. The text is what a
+     * Pals too old to know calls files instead.
+     */
+    function pushSignal(to, device, id, signalText, text) {
+        const wire = { id: id, part: 1, parts: 1 };
+        return PalsSeal.seal(ownKey, me.pub, to, wire, { ts: Date.now(), body: text, signal: signalText })
+            .then(sealed => send({
+                to: to,
+                subscription: device.subscription,
+                provider: device.provider,
+                sealed: sealed,
+                id: id,
+                part: 1,
+                parts: 1
+            }));
+    }
+
+    // The call's channel is Northern's /sub/ of the call's random id, which
+    // only the two ends and Northern know. Anybody signed in can write to it,
+    // so every signal on it is sealed: Northern relays them, and can neither
+    // read nor change them, nor forge one.
+
+    /** Sends one signal on the call's channel, sealed to the other side; one at a time, in order. */
+    function signal(call, t, extra) {
+        call.sending = call.sending.then(function () {
+            call.seq += 1;
+            const wire = { id: call.id + '-' + call.seq, part: 1, parts: 1 };
+            const text = PalsCalls.signal(t, call.id, Date.now(), extra);
+            return PalsSeal.seal(ownKey, me.pub, call.peer, wire, { ts: Date.now(), body: '', signal: text })
+                .then(sealed => fetch(PalsCalls.channel(call.id), {
+                    method: 'PUT',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(Object.assign({ v: PalsSeal.VERSION, from: me.pub, to: call.peer, sealed: sealed }, wire))
+                }));
+        }).catch(() => {});
+        return call.sending;
+    }
+
+    /**
+     * Listens on the call's channel. Resolves once Northern says it is
+     * listening - a signal sent before then is not heard. Every message is
+     * opened in turn, in the order it came; one not from the other side, not
+     * for this call, seen before or that will not open is dropped.
+     */
+    function listen(call) {
+        return new Promise(function (resolve, reject) {
+            const source = new EventSource(PalsCalls.channel(call.id));
+            const seen = {};
+            let opened = false;
+            let order = Promise.resolve();
+            call.source = source;
+            const late = setTimeout(() => reject(new Error('Northern\'s channel did not answer')), 10000);
+            source.onmessage = function (event) {
+                let outer;
+                try {
+                    outer = JSON.parse(event.data);
+                } catch (e) {
+                    return;
+                }
+                if (outer && outer.status === 'OK' && !opened) {
+                    opened = true;
+                    clearTimeout(late);
+                    resolve();
+                    return;
+                }
+                if (!outer || outer.from !== call.peer || outer.to !== me.pub || typeof outer.id !== 'string' || seen[outer.id]) {
+                    return;
+                }
+                seen[outer.id] = true;
+                order = order.then(() => PalsSeal.open(ownKey, outer))
+                    .then(function (envelope) {
+                        const s = PalsCalls.readSignal(envelope.signal, call.id);
+                        return s && call.controller ? call.controller.receive(s) : null;
+                    })
+                    .catch(() => {});
+            };
+        });
+    }
+
+    function camera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            return Promise.reject(new Error('this browser cannot use the camera here'));
+        }
+        return navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } })
+            .catch(function (e) {
+                throw new Error('the camera and microphone are not allowed (' + (e.name || e.message) + ')');
+            });
+    }
+
+    function play(video, stream) {
+        video.srcObject = stream;
+        if (stream && video.play) {
+            const playing = video.play();
+            if (playing && playing.catch) {
+                playing.catch(() => {});
+            }
+        }
+    }
+
+    /** What a call is, before WebRTC is in it. */
+    function newCall(id, peer, role, device) {
+        return { id: id, peer: peer, name: PalsModel.nameOf(state, peer, me), role: role, device: device,
+                 seq: 0, sending: Promise.resolve(), source: null, controller: null, media: null };
+    }
+
+    /** A new call's id: 16 random bytes, base64url - the name of its channel. */
+    function callId() {
+        const raw = crypto.getRandomValues(new Uint8Array(16));
+        return btoa(String.fromCharCode.apply(null, raw)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    /** The call layer, over everything: the two videos, how the call stands, Hang up. */
+    function openCall(call) {
+        callPeer = call.peer;
+        $('call_with').innerHTML = callWith(call.peer);
+        $('contact_caption').textContent = call.name;
+        $('hang_up').hidden = false;
+        $('call_close').hidden = true;
+        layer('call');
+    }
+
+    /** WebRTC takes over: the controller, its state in the call layer, the other side's video. */
+    function connect(call, rtc) {
+        call.controller = PalsCall.create({
+            role: call.role,
+            call: call.id,
+            config: rtc,
+            local: call.media,
+            RTCPeerConnection: RTCPeerConnection,
+            send: (t, extra) => signal(call, t, extra),
+            on: {
+                state: s => showCall(PalsCalls.stateText(s, call.name)),
+                remote: stream => play($('contact_video'), stream),
+                ended: reason => ended(call, reason)
+            }
+        });
+        showCall(PalsCalls.stateText(call.role === 'caller' ? 'calling' : 'connecting', call.name));
+        return call.controller.start();
+    }
+
+    /** It is over: the camera off, the channel closed, the layer says why. A caller who gave up stops the ringing. */
+    function ended(call, reason) {
+        if (call.media) {
+            call.media.getTracks().forEach(t => t.stop());
+        }
+        if (call.source) {
+            call.source.close();
+        }
+        if (current === call) {
+            current = null;
+        }
+        play($('self_video'), null);
+        play($('contact_video'), null);
+        showCall('Call with ' + call.name + ': ' + reason + '.');
+        $('hang_up').hidden = true;
+        $('call_close').hidden = false;
+        render();
+        if (call.role === 'caller' && (reason === 'cancelled' || reason === 'no answer') && call.device) {
+            pushSignal(call.peer, call.device, call.id + '-x', PalsCalls.signal('cancel', call.id, Date.now()), PalsCalls.MISSED_TEXT)
+                .catch(() => {});
+        }
+    }
+
+    /**
+     * Setting up went wrong: undo what was done. Whatever WebRTC started is
+     * hung up first, without stopping a ringing that never started.
+     */
+    function abandon(call, why) {
+        const controller = call.controller;
+        call.controller = null;
+        call.device = null;
+        if (controller) {
+            controller.hangUp();
+        }
+        ended(call, why);
+    }
+
+    // The user hung up while the camera was still being asked for.
+    const GONE = new Error('gone');
+
+    /** The camera, once allowed, on the Self video - or off at once when the call is gone by then. */
+    function cameraFor(call) {
+        return camera().then(function (media) {
+            call.media = media;
+            if (current !== call) {
+                media.getTracks().forEach(t => t.stop());
+                throw GONE;
+            }
+            play($('self_video'), media);
+            return media;
+        });
+    }
+
+    /**
+     * Call, from a pal's messages: the camera on, the call's channel open,
+     * then the pal rung by push. WebRTC starts when they answer (call.js).
+     */
+    function startCall() {
+        if (!checkSession() || current) {
+            return Promise.resolve();
+        }
+        const pal = ui.filter.kind === 'pal' ? PalsModel.pal(state, ui.filter.pub) : null;
+        if (!ownKey) {
+            say('Load your ID Card on this device first - calls are set up sealed with its key.');
+            return Promise.resolve();
+        }
+        if (!pal) {
+            say('Only a pal can be called: add them with + first.');
+            return Promise.resolve();
+        }
+        if (!callsOn) {
+            say('Switch video calls on in Settings first.');
+            return Promise.resolve();
+        }
+        const call = current = newCall(callId(), pal.pub, 'caller', null);
+        openCall(call);
+        showCall('Getting the camera ready…');
+        render();
+        return cameraFor(call)
+            .then(() => Promise.all([lookUp(pal.pub), listen(call), rtcConfig()]))
+            .then(function (found) {
+                if (current !== call) {
+                    throw GONE;
+                }
+                if (!found[0]) {
+                    throw new Error('they have not set Pals up');
+                }
+                return connect(call, found[2])
+                    .then(() => pushSignal(call.peer, found[0], call.id, PalsCalls.signal('ring', call.id, Date.now()), PalsCalls.RING_TEXT))
+                    // Rung: from here on, giving up stops the ringing.
+                    .then(function () {
+                        call.device = found[0];
+                        if (current !== call) {
+                            // Hung up while the ring was on its way: stop it.
+                            pushSignal(call.peer, call.device, call.id + '-x', PalsCalls.signal('cancel', call.id, Date.now()), PalsCalls.MISSED_TEXT)
+                                .catch(() => {});
+                        } else if (call.controller && call.controller.state() === 'calling') {
+                            showCall(PalsCalls.stateText('ringing', call.name));
+                        }
+                    });
+            })
+            .catch(function (e) {
+                if (e !== GONE) {
+                    abandon(call, 'could not ring them: ' + e.message);
+                }
+            });
+    }
+
+    function hangUp() {
+        const call = current;
+        if (!call) {
+            return;
+        }
+        if (call.controller) {
+            call.controller.hangUp();
+        } else {
+            abandon(call, 'cancelled');
+        }
+    }
+
+    // ---- ringing --------------------------------------------------------
+
+    let ringing = null;
+    let ringTimer = null;
+
+    function closeIncoming() {
+        clearTimeout(ringTimer);
+        ringing = null;
+        if ($('dlg_incoming').open) {
+            $('dlg_incoming').close();
+        }
+    }
+
+    /** Files calls not taken in the log, by the caller's name. */
+    function missed(list) {
+        if (!list.length) {
+            return Promise.resolve();
+        }
+        list.forEach(m => handled.push(m.call));
+        return Promise.all(list.map(m => nameFor(m.from).then(name => PalsModel.missedCall(state, me, m.from, m.ts, m.call, name))))
+            .then(function () {
+                save();
+                render();
+            });
+    }
+
+    function ring(r) {
+        if (ringing && ringing.call === r.call) {
+            return;
+        }
+        ringing = r;
+        $('incoming_from').innerHTML = callWith(r.from);
+        if (!$('dlg_incoming').open) {
+            $('dlg_incoming').showModal();
+        }
+        clearTimeout(ringTimer);
+        ringTimer = setTimeout(function () {
+            closeIncoming();
+            missed([r]);
+        }, Math.max(0, PalsCalls.RING_MS - (Date.now() - r.ts)));
+    }
+
+    function answerCall() {
+        const r = ringing;
+        if (!r) {
+            return Promise.resolve();
+        }
+        handled.push(r.call);
+        closeIncoming();
+        const call = current = newCall(r.call, r.from, 'callee', null);
+        openCall(call);
+        showCall('Getting the camera ready…');
+        render();
+        return cameraFor(call)
+            .then(() => Promise.all([listen(call), rtcConfig()]))
+            .then(function (found) {
+                if (current !== call) {
+                    throw GONE;
+                }
+                return connect(call, found[1]);
+            })
+            .catch(function (e) {
+                if (e !== GONE) {
+                    signal(call, 'decline');
+                    abandon(call, 'could not answer: ' + e.message);
+                }
+            });
+    }
+
+    function declineCall() {
+        const r = ringing;
+        if (!r) {
+            return Promise.resolve();
+        }
+        handled.push(r.call);
+        closeIncoming();
+        return signal(newCall(r.call, r.from, 'callee', null), 'decline');
+    }
+
+    /**
+     * What the inbox held for calls: the call ringing now - from a pal, with
+     * calls switched on here, and only while there is no other call - and
+     * the ones missed, which go in the log. Somebody who is not a pal never
+     * rings, nor does anybody while calls are off: they are a missed call.
+     */
+    function rang(signals) {
+        if (!signals.length) {
+            return Promise.resolve();
+        }
+        const found = PalsCalls.incoming(signals, Date.now(), handled);
+        const lost = found.missed;
+        if (ringing && signals.some(s => s.signal.t === 'cancel' && s.signal.call === ringing.call)) {
+            lost.push(ringing);
+            closeIncoming();
+        }
+        let r = found.ringing;
+        if (r && (!callsOn || !PalsModel.pal(state, r.from))) {
+            lost.push(r);
+            r = null;
+        }
+        if (r && current) {
+            // On a call already: the other caller hears so.
+            signal(newCall(r.call, r.from, 'callee', null), 'decline', { busy: true });
+            lost.push(r);
+            r = null;
+        }
+        if (r) {
+            ring(r);
+        }
+        return missed(lost);
+    }
+
+    // ---- calls on or off, in Settings -------------------------------------
+
+    function report(text) {
+        $('calls_report').textContent = text || '';
+    }
+
+    function keepCalls(on) {
+        return PalsStore.put('setup', CALL_SETTING, { enabled: on }).then(function () {
+            callsOn = on;
+            render();
+        });
+    }
+
+    /**
+     * The switch: on asks for the camera and microphone at once - so the
+     * first call is not held up by the question - and lets go of them again.
+     * Refused, it stays off. Off, a pal's call is a missed call.
+     */
+    function switchCalls() {
+        if (!$('calls_on').checked) {
+            return keepCalls(false).then(() => report('Off: a pal who calls finds no answer, and you see a missed call.'),
+                e => report('This could not be saved in the browser: ' + e.message));
+        }
+        report('Asking for the camera and microphone…');
+        return camera()
+            .then(function (media) {
+                media.getTracks().forEach(t => t.stop());
+                return keepCalls(true);
+            })
+            .then(() => report('On: call a pal from their messages; your pals can call you.'), function (e) {
+                $('calls_on').checked = false;
+                report('Still off: ' + e.message + '.');
+            });
+    }
+
     // ---- start ---------------------------------------------------------
 
     $('user').innerHTML = PalsViews.pill(me.name, me.pub);
@@ -856,6 +1327,8 @@
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) {
             checkSession();
+            // A ring that came while the page was away.
+            drain();
         }
     });
 
@@ -864,7 +1337,11 @@
     onRow('members', 'data-pub', selectMember);
     onRow('messages', 'data-message', openMessage);
 
-    $('settings_open').addEventListener('click', () => layer('settings'));
+    $('settings_open').addEventListener('click', function () {
+        $('calls_on').checked = callsOn;
+        report('');
+        layer('settings');
+    });
     $('group_messages').addEventListener('click', groupMessages);
     $('pal_add').addEventListener('click', addPal);
     $('pal_remove').addEventListener('click', removePal);
@@ -874,6 +1351,24 @@
     $('group_remove').addEventListener('click', removeGroup);
     $('member_add').addEventListener('click', addMember);
     $('member_remove').addEventListener('click', removeMember);
+    $('call_start').addEventListener('click', startCall);
+    $('hang_up').addEventListener('click', hangUp);
+    $('call_answer').addEventListener('click', answerCall);
+    $('call_decline').addEventListener('click', declineCall);
+    // Keys compared while the two can hear each other: the call's pal, in the Key overlay.
+    $('call_key').addEventListener('click', function () {
+        if (callPeer && PalsModel.pal(state, callPeer)) {
+            ui.pal = callPeer;
+            verifyPal();
+        }
+    });
+    // The call layer stays while there is a call: Escape does not close it.
+    $('dlg_call').addEventListener('cancel', function (event) {
+        if (current) {
+            event.preventDefault();
+        }
+    });
+    $('calls_on').addEventListener('change', switchCalls);
 
     /** The device stopped getting pushes since it was set up: the browser dropped or replaced the subscription. */
     function checkSubscription(setup) {
@@ -899,10 +1394,12 @@
         }
         return Promise.all([
             PalsStore.get('state', me.pub),
-            NorthernKeys.available() ? NorthernKeys.get(me.pub).catch(() => null) : null
+            NorthernKeys.available() ? NorthernKeys.get(me.pub).catch(() => null) : null,
+            PalsStore.get('setup', CALL_SETTING).catch(() => null)
         ]).then(function (found) {
             state = PalsModel.load(found[0]);
             ownKey = found[1];
+            callsOn = PalsCalls.enabled(found[2]);
             needCard(!ownKey);
             render();
             if ('serviceWorker' in navigator) {

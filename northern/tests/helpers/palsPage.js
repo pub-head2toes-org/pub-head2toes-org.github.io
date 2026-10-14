@@ -24,12 +24,13 @@ export function loadPals() {
     const context = { console, crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa };
     context.globalThis = context;
     vm.createContext(context);
-    for (const file of ['model.js', 'views.js', 'seal.js']) {
+    for (const file of ['model.js', 'views.js', 'seal.js', 'calls.js', 'call.js']) {
         vm.runInContext(read(file), context, { filename: file });
     }
     vm.runInContext(readReg('keystore.js'), context, { filename: 'keystore.js' });
     const of = name => vm.runInContext(name, context);
-    return { Model: of('PalsModel'), Views: of('PalsViews'), Seal: of('PalsSeal'), Keys: of('NorthernKeys') };
+    return { Model: of('PalsModel'), Views: of('PalsViews'), Seal: of('PalsSeal'), Keys: of('NorthernKeys'),
+             Calls: of('PalsCalls'), Call: of('PalsCall') };
 }
 
 /** A Northern identity's private key as reg/keystore.js keeps it: non-extractable, ECDH only. */
@@ -184,8 +185,9 @@ function stubElements(ids) {
         if (!elements[id]) {
             const form = { onsubmit: null };
             elements[id] = {
-                id, value: '', innerHTML: '', textContent: '', hidden: false, disabled: false, open: false,
-                scrollTop: 0, scrollHeight: 0, listeners: {}, onclick: null, style: {},
+                id, value: '', innerHTML: '', textContent: '', hidden: false, disabled: false, open: false, checked: false,
+                scrollTop: 0, scrollHeight: 0, listeners: {}, onclick: null, style: {}, srcObject: null, played: 0,
+                play() { this.played += 1; return Promise.resolve(); },
                 addEventListener(event, fn) { this.listeners[event] = fn; },
                 querySelector: () => form,
                 showModal() { this.open = true; },
@@ -273,7 +275,8 @@ function location(pathname, replaced) {
  * `idb` seeds IndexedDB: { state: {<pub>: …}, setup: {<pub>: …}, inbox: {1: …} }.
  * Unless it says otherwise, the user has been through welcome.html.
  */
-export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm = true, idb, indexedDB: reuse, subscription } = {}) {
+export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm = true, idb, indexedDB: reuse, subscription,
+                            hub, net, timers, camera = true } = {}) {
     const element = stubElements(idsOf(read('index.html')));
     const pub = localStorage.pub;
     const setup = pub ? { [pub]: { path: '/pals/x/y', endpoint: 'https://fcm.googleapis.com/fcm/send/device' } } : {};
@@ -281,9 +284,31 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     const worker = stubWorker({
         subscription: subscription === undefined ? { endpoint: 'https://fcm.googleapis.com/fcm/send/device' } : subscription
     });
-    const fetch = fakeFetch(routes);
+    const base = fakeFetch(routes);
+    // A video call's signals go to Northern's /sub/: to `hub`, when the test has one.
+    const fetch = (url, options = {}) => {
+        if (hub && String(url).startsWith('/sub/') && options.method === 'PUT') {
+            base.calls.push({ url, method: 'PUT', body: options.body, headers: options.headers || {} });
+            return hub.put(url, options.body);
+        }
+        return base(url, options);
+    };
+    fetch.calls = base.calls;
     const store = storage(localStorage);
     const confirms = [];
+    // The camera and microphone, as a call asks for them.
+    const media = [];
+    const mediaDevices = {
+        getUserMedia: constraints => {
+            if (!camera) {
+                return Promise.reject(Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }));
+            }
+            const tracks = ['audio', 'video'].map(kind => ({ kind, stopped: false, stop() { this.stopped = true; } }));
+            const stream = { name: localStorage.pub_name, tracks, getTracks: () => tracks };
+            media.push({ constraints, stream });
+            return Promise.resolve(stream);
+        }
+    };
     // Object URLs, as the page makes them for a photo or a video: blob:1, blob:2...
     const urls = { made: new Map(), revoked: [] };
     const URL = {
@@ -301,12 +326,21 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
         localStorage: store,
         location: location(PAGE),
         confirm: text => { confirms.push(text); return confirm; },
-        navigator: { serviceWorker: worker.serviceWorker },
+        navigator: { serviceWorker: worker.serviceWorker, mediaDevices },
         crypto: globalThis.crypto,
         indexedDB, fetch, Date, JSON, Promise, encodeURIComponent, Uint8Array, TextEncoder, TextDecoder, atob, btoa,
-        Blob, URL
+        Blob, URL,
+        setTimeout: timers ? timers.setTimeout : setTimeout,
+        clearTimeout: timers ? timers.clearTimeout : clearTimeout,
+        requestAnimationFrame: fn => setImmediate(fn)
     };
-    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'views.js', 'pals.js']);
+    if (hub) {
+        sandbox.EventSource = hub.EventSource;
+    }
+    if (net) {
+        sandbox.RTCPeerConnection = net.RTCPeerConnection;
+    }
+    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'views.js', 'calls.js', 'call.js', 'pals.js']);
 
     const stored = () => {
         const state = indexedDB.stores.state && indexedDB.stores.state.get(pub);
@@ -314,7 +348,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     };
 
     return {
-        element, fetch, store, stored, confirms, worker, indexedDB, settle, document, urls,
+        element, fetch, store, stored, confirms, worker, indexedDB, settle, document, urls, media,
         /** What this device keeps of a message's photo or video. */
         file: id => indexedDB.stores.files && indexedDB.stores.files.get(pub + ' ' + id),
         location: sandbox.location,

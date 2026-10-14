@@ -9,16 +9,23 @@ const ICE_URL = /^(stun|stuns|turn|turns):[^\s,]+$/;
 // How long credentials last unless NORTHERN_TURN_TTL says otherwise: longer
 // than any call, as Cloudflare advises.
 export const DEFAULT_TTL = 12 * 3600;
+// How many times a minute one user may ask, unless NORTHERN_TURN_RATE says
+// otherwise. A call asks once at each end, so this is a few calls a minute -
+// and not a script running up a relay bill that is paid by the gigabyte.
+export const DEFAULT_RATE = 6;
+const MINUTE = 60 * 1000;
 const CLOUDFLARE = 'https://rtc.live.cloudflare.com/v1/turn/keys/';
 
 export class TurnError extends Error {
-    constructor(status, code, message){
+    constructor(status, code, message, retryAfter){
         super(message);
         this.status = status;
         this.code = code;
+        this.retryAfter = retryAfter;
     }
 }
 const fail = (status, code, message) => { throw new TurnError(status, code, message); };
+const fail429 = wait => { throw new TurnError(429, 'TooManyRequests', `too many requests for TURN credentials; try again in ${wait} s`, wait); };
 
 const list = text => String(text || '').split(/[\s,]+/).filter(Boolean);
 
@@ -31,6 +38,7 @@ const list = text => String(text || '').split(/[\s,]+/).filter(Boolean);
  *   NORTHERN_TURN=cloudflare   NORTHERN_TURN_KEY_ID   the TURN key's id
  *                              NORTHERN_TURN_KEY_TOKEN  its API token
  *   NORTHERN_TURN_TTL          seconds a credential lasts (both; default 12 hours)
+ *   NORTHERN_TURN_RATE         requests a user may make a minute (both; default 6)
  *
  * The secrets stay on the server: a browser only ever gets credentials that
  * expire. Null when nothing is configured; throws what is wrong otherwise.
@@ -44,6 +52,10 @@ export function configFrom (env = {}){
     if (!Number.isInteger(ttl) || ttl < 60 || ttl > 7 * 24 * 3600){
         throw new Error('NORTHERN_TURN_TTL must be whole seconds, 60 to a week');
     }
+    const rate = env.NORTHERN_TURN_RATE === undefined ? DEFAULT_RATE : Number(env.NORTHERN_TURN_RATE);
+    if (!Number.isInteger(rate) || rate < 1 || rate > 600){
+        throw new Error('NORTHERN_TURN_RATE must be a whole number of requests a minute, 1 to 600');
+    }
     if (kind === 'coturn'){
         const urls = list(env.NORTHERN_TURN_URLS);
         const stun = list(env.NORTHERN_TURN_STUN);
@@ -56,7 +68,7 @@ export function configFrom (env = {}){
         if (String(env.NORTHERN_TURN_SECRET || '').length < 16){
             throw new Error('NORTHERN_TURN_SECRET must be coturn\'s static-auth-secret, 16 characters at least');
         }
-        return { kind, urls, stun, secret: String(env.NORTHERN_TURN_SECRET), ttl };
+        return { kind, urls, stun, secret: String(env.NORTHERN_TURN_SECRET), ttl, rate };
     }
     if (kind === 'cloudflare'){
         const keyId = String(env.NORTHERN_TURN_KEY_ID || '');
@@ -64,7 +76,7 @@ export function configFrom (env = {}){
         if (!/^[A-Za-z0-9_-]{8,128}$/.test(keyId) || !token){
             throw new Error('NORTHERN_TURN_KEY_ID and NORTHERN_TURN_KEY_TOKEN must be the TURN key\'s id and API token');
         }
-        return { kind, keyId, token, ttl };
+        return { kind, keyId, token, ttl, rate };
     }
     throw new Error('NORTHERN_TURN must be coturn or cloudflare');
 }
@@ -101,7 +113,7 @@ export function cleanIceServers (servers){
 }
 
 /**
- * TURN credentials for InPerson's calls, mounted at /turn/api/.
+ * TURN credentials for video calls - Pals' and InPerson's - mounted at /turn/api/.
  *
  *   GET /turn/api/ice   `{iceServers, ttl, provider}`, ready for
  *                       `new RTCPeerConnection({iceServers})`
@@ -109,6 +121,10 @@ export function cleanIceServers (servers){
  * Only for a signed-in user: a TURN server relays whatever it is given, so
  * credentials handed to anybody would make it everybody's relay. The relay
  * only ever sees the call encrypted (DTLS-SRTP), whichever provider it is.
+ *
+ * And only so often: NORTHERN_TURN_RATE requests a minute per user, counted
+ * in this process's memory - Northern runs one (Cluster.js). Past it, 429
+ * with Retry-After; the page then tries the call without TURN.
  */
 export default class TurnApi {
     constructor({ render, verifySsid, env = process.env, fetch = (...args) => globalThis.fetch(...args),
@@ -119,6 +135,11 @@ export default class TurnApi {
         this.fetch = fetch;
         this.now = now;
         this.log = log;
+        // When each user asked, over the last minute: key -> times, oldest first.
+        this.asked = new Map();
+        // When each user refused was last logged: once a minute each, not once a request.
+        this.warned = new Map();
+        this.swept = 0;
     }
 
     /** True for the paths this API owns, so Server can branch on it. */
@@ -137,6 +158,9 @@ export default class TurnApi {
             this.render.renderJSON(data, res);
         } catch (err) {
             if (err instanceof TurnError){
+                if (err.retryAfter){
+                    res.setHeader('Retry-After', String(err.retryAfter));
+                }
                 this.render.renderJSON({ error: err.code, message: err.message }, res, err.status);
                 return;
             }
@@ -154,6 +178,40 @@ export default class TurnApi {
         return checked.pubB64;
     }
 
+    /**
+     * At most `rate` requests in any minute for one user. Whoever has not
+     * asked for a minute is forgotten, so the map holds only the users of the
+     * last minute.
+     */
+    limit (pub, rate){
+        const now = this.now();
+        if (now - this.swept >= MINUTE){
+            this.swept = now;
+            for (const [key, times] of this.asked){
+                if (now - times[times.length - 1] >= MINUTE){
+                    this.asked.delete(key);
+                }
+            }
+            for (const [key, at] of this.warned){
+                if (now - at >= MINUTE){
+                    this.warned.delete(key);
+                }
+            }
+        }
+        const recent = (this.asked.get(pub) || []).filter(t => now - t < MINUTE);
+        if (recent.length >= rate){
+            this.asked.set(pub, recent);
+            const wait = Math.max(1, Math.ceil((recent[0] + MINUTE - now) / 1000));
+            if (!(now - (this.warned.get(pub) || -Infinity) < MINUTE)){
+                this.warned.set(pub, now);
+                this.log('turn: ' + pub.slice(0, 12) + ' asked more than ' + rate + ' times in a minute; refusing for ' + wait + ' s');
+            }
+            fail429(wait);
+        }
+        recent.push(now);
+        this.asked.set(pub, recent);
+    }
+
     /** The configuration, read afresh so a fixed environment needs no new code - only a restart. */
     config (){
         try {
@@ -169,6 +227,7 @@ export default class TurnApi {
         if (!config){
             fail(503, 'NotConfigured', 'this node gives no TURN credentials; set a STUN or TURN server on the device instead');
         }
+        this.limit(pub, config.rate);
         if (config.kind === 'coturn'){
             // Who the credentials are for, as coturn logs it: the head of the key, never all of it.
             const user = pub.slice(0, 12).replace(/\+/g, '-').replace(/\//g, '_');

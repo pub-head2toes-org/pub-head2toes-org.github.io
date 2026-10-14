@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=15">
+  <link rel="stylesheet" href="./styles.css?v=17">
   <title>Pals</title>
 </head>
 <body>
@@ -78,6 +78,8 @@
     </div>
     <div class="buttons">
       <button type="button" class="primary" id="message_add">Send</button>
+      <!-- A video call, when the layer shows a pal. -->
+      <button type="button" id="call_start" hidden>Call</button>
       <button type="submit" class="close">Close</button>
     </div>
   </form>
@@ -96,11 +98,51 @@
   </form>
 </dialog>
 
+<!-- A video call with a pal: their camera large, this device's small in its corner. -->
+<dialog class="layer" id="dlg_call" aria-labelledby="call_title">
+  <form method="dialog">
+    <h2 id="call_title">Call <span class="context" id="call_with"></span></h2>
+    <section class="videos" aria-label="The call">
+      <figure class="video contact">
+        <video id="contact_video" autoplay playsinline></video>
+        <figcaption id="contact_caption">Contact</figcaption>
+      </figure>
+      <figure class="video self">
+        <video id="self_video" autoplay playsinline muted></video>
+        <figcaption>Self</figcaption>
+      </figure>
+    </section>
+    <p class="status" id="call_state" role="status"></p>
+    <div class="buttons">
+      <!-- Compare keys while you can hear each other. -->
+      <button type="button" id="call_key" aria-label="Compare keys with this pal">Key</button>
+      <button type="button" class="danger" id="hang_up" hidden>Hang up</button>
+      <button type="submit" class="close" id="call_close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- A pal is calling. -->
+<dialog id="dlg_incoming" aria-labelledby="incoming_title">
+  <form method="dialog">
+    <h2 id="incoming_title"><span id="incoming_from"></span> is calling</h2>
+    <div class="buttons">
+      <button type="button" class="danger" id="call_decline">Decline</button>
+      <button type="button" class="primary" id="call_answer">Answer</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog class="layer" id="dlg_settings" aria-labelledby="settings_title">
   <form method="dialog">
     <h2 id="settings_title">Settings</h2>
     <p>Signed in as <span id="user"></span></p>
     <p><a class="link" href="./welcome.html" id="setup_again">Set up this device again</a></p>
+    <!-- Video calls, on this device: off until switched on. STUN and TURN come from Northern. -->
+    <div class="ice">
+      <label class="choice"><input type="checkbox" id="calls_on"> Video calls with my pals</label>
+      <p class="status" id="calls_report" role="status"></p>
+    </div>
     <!-- The version of the app: the one its service worker's cache is named after. -->
     <p class="version">Pals <span id="version"></span></p>
     <div class="buttons">
@@ -193,18 +235,20 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=15"></script>
-<script src="../../reg/cookies.js?v=15"></script>
-<script src="../../reg/oo.js?v=15"></script>
-<script src="../../reg/idcard.js?v=15"></script>
-<script src="../../reg/keystore.js?v=15"></script>
-<script src="../../reg/session.js?v=15"></script>
+<script src="../../reg/sjcl.js?v=17"></script>
+<script src="../../reg/cookies.js?v=17"></script>
+<script src="../../reg/oo.js?v=17"></script>
+<script src="../../reg/idcard.js?v=17"></script>
+<script src="../../reg/keystore.js?v=17"></script>
+<script src="../../reg/session.js?v=17"></script>
 
-<script src="./version.js?v=15"></script>
-<script src="./model.js?v=15"></script>
-<script src="./store.js?v=15"></script>
-<script src="./seal.js?v=15"></script>
-<script src="./views.js?v=15"></script>
-<script src="./pals.js?v=15"></script>
+<script src="./version.js?v=17"></script>
+<script src="./model.js?v=17"></script>
+<script src="./store.js?v=17"></script>
+<script src="./seal.js?v=17"></script>
+<script src="./views.js?v=17"></script>
+<script src="./calls.js?v=17"></script>
+<script src="./call.js?v=17"></script>
+<script src="./pals.js?v=17"></script>
 </body>
 </html>

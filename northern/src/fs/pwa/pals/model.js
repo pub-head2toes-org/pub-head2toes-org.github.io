@@ -44,6 +44,8 @@ const PalsModel = (function () {
     api.FILE_NAME_MAX = 60;
     // Where every device that set Pals up is listed: /pals/<username>/<key>.
     api.DIRECTORY = '/pals/';
+    // What the log says of a video call that was not taken (calls.js).
+    api.MISSED_CALL = 'Missed video call';
 
     api.empty = function () {
         return { v: api.VERSION, seq: 0, pals: [], groups: [], messages: [], incoming: [], unread: [] };
@@ -704,6 +706,38 @@ const PalsModel = (function () {
         m.complete = m.parts.every(p => p !== null);
         api.noteIncoming(state, e.from);
         api.markUnread(state, e.from, true);
+        return m;
+    };
+
+    /**
+     * A video call the user did not take - not answered, given up by the
+     * caller, or from somebody who is not a pal and so never rang - filed in
+     * the log as a line of its own, once per call, with the dot by the
+     * caller's name. Returns it, or null for a call already filed.
+     */
+    api.missedCall = function (state, me, from, ts, call, fromName) {
+        if (!api.isPub(from)) {
+            throw new Error('not a caller');
+        }
+        const wire = from + ' call ' + String(call || '');
+        if (state.messages.some(m => !m.out && m.wire === wire)) {
+            return null;
+        }
+        const known = api.nameOf(state, from, me);
+        const m = file(state, {
+            ts: Number(ts) || 0,
+            out: false,
+            wire: wire,
+            from: from,
+            fromName: known !== '?' ? known : api.cleanName(fromName) || '?',
+            to: { kind: 'pal', id: me.pub, name: me.name || api.UNKNOWN },
+            parts: [api.MISSED_CALL],
+            body: api.MISSED_CALL,
+            complete: true,
+            call: 'missed'
+        });
+        api.noteIncoming(state, from);
+        api.markUnread(state, from, true);
         return m;
     };
 

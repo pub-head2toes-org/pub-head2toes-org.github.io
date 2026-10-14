@@ -507,3 +507,104 @@ select[size] { padding: 4px; }
              max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
 }
+
+/* ---- video calls ---- */
+
+:root { --danger: #b3261e; --video-bg: #0f151b; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --danger: #e0645b; --video-bg: #05080b; }
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+/* The call: the pal's camera large, this device's small in its corner. */
+.videos {
+  position: relative;
+  min-width: 0;
+}
+
+.video {
+  margin: 0;
+  position: relative;
+  background: var(--video-bg);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video figcaption {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 0.8rem;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video.contact { aspect-ratio: 4 / 3; }
+
+.video.self {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28%;
+  min-width: 96px;
+  aspect-ratio: 3 / 4;
+  border: 2px solid var(--panel);
+}
+
+/* One's own camera mirrored, as people expect to see themselves. */
+.video.self video { transform: scaleX(-1); }
+
+/* Video calls on or off, in Settings. */
+.ice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+dialog label.choice {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  white-space: normal;
+}
+
+
+@media (max-width: 760px) {
+  /* A call takes the whole screen on a phone. */
+  #dlg_call {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+             max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  #dlg_call .video.contact { aspect-ratio: 3 / 4; max-height: calc(100dvh - 9rem); }
+}

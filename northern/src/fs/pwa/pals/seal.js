@@ -10,7 +10,7 @@
  * only from the sender it names, and only in the direction it was sent, so it
  * cannot be bounced back to its sender as the other pal's.
  *
- *   sealed = 2 | salt(16) | iv(12) | AES-256-GCM({ts, body, att?}) | tag(16), base64url
+ *   sealed = 2 | salt(16) | iv(12) | AES-256-GCM({ts, body, att?, signal?}) | tag(16), base64url
  *
  * `v, from, to, id, part, parts` are AES-GCM additional data. They travel
  * beside the seal, in clear inside the push encryption, and none of them can
@@ -19,6 +19,10 @@
  * `att`, when a photo or a video goes with the message, says where the file
  * is held and holds the key it was locked with (`lock`), so only the
  * receivers can fetch it and open it.
+ *
+ * `signal`, on what sets up a video call (calls.js), is the call's signal as
+ * JSON text: a page files it with the call, never as a message. A Pals too
+ * old to know it drops it and files the `body` - which says what it was.
  *
  * Works in a page and in a service worker. The private key is the one
  * reg/keystore.js keeps: not extractable, ECDH only.
@@ -71,13 +75,16 @@ const PalsSeal = (function () {
     api.VERSION = VERSION;
 
     /**
-     * Seals `{ts, body, att?}` from `from` (whose private key is `own`) to
-     * `to`. `wire` is `{id, part, parts}`. Resolves to the base64url seal.
+     * Seals `{ts, body, att?, signal?}` from `from` (whose private key is
+     * `own`) to `to`. `wire` is `{id, part, parts}`. Resolves to the base64url seal.
      */
     api.seal = function (own, from, to, wire, inner) {
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const plain = inner.att ? { ts: inner.ts, body: inner.body, att: inner.att } : { ts: inner.ts, body: inner.body };
+        if (typeof inner.signal === 'string') {
+            plain.signal = inner.signal;
+        }
         return messageKey(own, to, from, to, salt)
             .then(key => subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: additional(from, to, wire.id, wire.part, wire.parts) },
                 key, utf8(JSON.stringify(plain))))
@@ -87,7 +94,7 @@ const PalsSeal = (function () {
     /**
      * Opens what arrived for `to` (whose private key is `own`):
      * `{v, from, to, id, part, parts, sealed}`. Resolves to the envelope the
-     * model files - `{v, from, to, id, part, parts, ts, body, att?}` - or rejects.
+     * model files - `{v, from, to, id, part, parts, ts, body, att?, signal?}` - or rejects.
      */
     api.open = function (own, outer) {
         const o = outer || {};
@@ -108,6 +115,9 @@ const PalsSeal = (function () {
                 const envelope = { v: VERSION, from: o.from, to: o.to, id: o.id, part: o.part, parts: o.parts, ts: inner.ts, body: inner.body };
                 if (inner.att) {
                     envelope.att = inner.att;
+                }
+                if (typeof inner.signal === 'string') {
+                    envelope.signal = inner.signal;
                 }
                 return envelope;
             });
