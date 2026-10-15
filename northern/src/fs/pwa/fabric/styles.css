@@ -294,7 +294,7 @@ label { color: var(--muted); font-size: 0.9rem; }
   accent-color: var(--theme);
 }
 
-.slider output {
+.slider output, h2 output {
   display: inline-block;
   min-width: 2.5em;
   color: var(--text);

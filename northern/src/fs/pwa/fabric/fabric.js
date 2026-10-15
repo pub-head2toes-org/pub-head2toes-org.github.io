@@ -8,7 +8,8 @@
     const el = $('c');
     el.width = window.innerWidth;
     el.height = window.innerHeight;
-    const canvas = window.__canvas = new fabric.Canvas('c', { isDrawingMode: true });
+    // What is selected stays where it is among the others, not drawn over them: see restack.
+    const canvas = window.__canvas = new fabric.Canvas('c', { isDrawingMode: true, preserveObjectStacking: true });
 
     fabric.Object.prototype.transparentCorners = false;
 
@@ -47,12 +48,18 @@
     /** What the controls show of the canvas: what is selected, whether there is anything to paste. */
     function refresh() {
         const chosen = canvas.getActiveObjects().length;
-        $('selected').textContent = chosen ? plural(chosen, 'object') + ' selected' : 'Nothing selected';
+        $('selected').textContent = chosen === 1 ? '1 object selected, ' + layer(canvas.getActiveObject())
+            : chosen ? plural(chosen, 'object') + ' selected' : 'Nothing selected';
         $('copy-el').disabled = !chosen;
         $('remove-el').disabled = !chosen;
         $('down-selected').disabled = !chosen;
-        ['fit-width', 'fit-height', 'set-width', 'set-height'].forEach(id => { $(id).disabled = !chosen; });
+        ['fit-width', 'fit-height', 'set-width', 'set-height', 'to-back', 'backward', 'forward', 'to-front'].forEach(id => { $(id).disabled = !chosen; });
         $('paste-el').disabled = !clipboard;
+        const zoom = canvas.getZoom();
+        $('zoom-level').textContent = Math.round(zoom * 100) + '%';
+        $('zoom-out').disabled = zoom <= ZOOMS[0];
+        $('zoom-in').disabled = zoom >= ZOOMS[ZOOMS.length - 1];
+        $('zoom-reset').disabled = isActualSize();
         $('drawing-mode').setAttribute('aria-pressed', String(tools.drawing));
         showFont();
         showFill();
@@ -241,12 +248,21 @@
         refresh();
     }
 
-    /** The area from `start` to `end`, inside the canvas, in whole pixels. */
+    /** The area from `start` to `end` - points on the drawing - as the screen shows it: inside the canvas, in whole pixels. */
     function areaBox(start, end) {
+        const vpt = canvas.viewportTransform;
+        const [a, b] = [fabric.util.transformPoint(start, vpt), fabric.util.transformPoint(end, vpt)];
         const x = v => Math.round(Math.min(Math.max(v, 0), canvas.getWidth()));
         const y = v => Math.round(Math.min(Math.max(v, 0), canvas.getHeight()));
-        const [x0, x1, y0, y1] = [x(start.x), x(end.x), y(start.y), y(end.y)];
+        const [x0, x1, y0, y1] = [x(a.x), x(b.x), y(a.y), y(b.y)];
         return { left: Math.min(x0, x1), top: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) };
+    }
+
+    /** A `box` of the screen, where it is on the drawing: zoomed, the two differ. */
+    function onDrawing(box) {
+        const zoom = canvas.getZoom();
+        const vpt = canvas.viewportTransform;
+        return { left: (box.left - vpt[4]) / zoom, top: (box.top - vpt[5]) / zoom, width: box.width / zoom, height: box.height / zoom };
     }
 
     const areaTool = {
@@ -256,7 +272,7 @@
             fill: 'rgba(0, 94, 122, 0.12)', stroke: '#005e7a', strokeWidth: 1, strokeDashArray: [6, 4],
             selectable: false, evented: false, excludeFromExport: true
         }),
-        move: (frame, start, end) => frame.set(areaBox(start, end)),
+        move: (frame, start, end) => frame.set(onDrawing(areaBox(start, end))),
         end(frame, start, end) {
             const box = areaBox(start, end);
             // The frame goes before the copy is taken: it is not in it.
@@ -270,13 +286,14 @@
         }
     };
 
-    /** What is in `box` on the canvas, as one new image where it was: Paste adds it. */
+    /** What is in `box` on the screen, as one new image where it was on the drawing: Paste adds it. */
     function cutout(box) {
-        // As many pixels as the screen has: the copy is as sharp as the drawing.
-        const retina = canvas.getRetinaScaling();
+        // As many pixels as the screen has: the copy is as sharp as the drawing is shown.
+        const scale = 1 / (canvas.getRetinaScaling() * canvas.getZoom());
+        const at = onDrawing(box);
         const url = canvas.toDataURL({ format: 'png', enableRetinaScaling: true, ...box });
         fabric.Image.fromURL(url, function (img) {
-            img.set({ left: box.left, top: box.top, scaleX: 1 / retina, scaleY: 1 / retina });
+            img.set({ left: at.left, top: at.top, scaleX: scale, scaleY: scale });
             clipboard = img;
             refresh();
             say('Area copied: Paste adds it as a new image.');
@@ -505,13 +522,16 @@
 
     $('font-selector').addEventListener('change', function () { run('font', this.value); });
 
-    // Each text a little further on than the one before.
+    // Each text a little further on than the one before: from the corner of what the canvas shows.
     let posX = 50;
     let posY = 50;
 
+    /** Where the next text goes, on the drawing: in what the canvas shows, zoomed or not. */
     function nextPlace() {
-        posX = (posX + 100) % Math.max(1, canvas.getWidth() - 150);
-        posY = (posY + 20) % Math.max(1, canvas.getHeight() - 50);
+        const shown = view();
+        posX = (posX + 100) % Math.max(1, shown.width - 150);
+        posY = (posY + 20) % Math.max(1, shown.height - 50);
+        return { left: shown.left + posX, top: shown.top + posY, room: shown.width - posX };
     }
 
     function addText() {
@@ -521,7 +541,7 @@
             $('textblob').focus();
             return;
         }
-        nextPlace();
+        const place = nextPlace();
         const bubble = new fabric.Circle({
             radius: 150,
             fill: '#eef',
@@ -535,7 +555,7 @@
             originY: 'center',
             fontFamily: $('font-selector').value
         });
-        canvas.add(new fabric.Group([bubble, text], { left: posX, top: posY }));
+        canvas.add(new fabric.Group([bubble, text], { left: place.left, top: place.top }));
         $('textblob').value = '';
         say('Text added.');
     }
@@ -549,11 +569,11 @@
      */
     function addTextbox() {
         const words = $('textblob').value.trim() ? $('textblob').value : 'Text';
-        nextPlace();
+        const place = nextPlace();
         const box = new fabric.Textbox(words, {
-            left: posX,
-            top: posY,
-            width: Math.max(50, Math.min(TEXTBOX_WIDTH, canvas.getWidth() - posX)),
+            left: place.left,
+            top: place.top,
+            width: Math.max(50, Math.min(TEXTBOX_WIDTH, place.room)),
             fontSize: 24,
             fill: drawingColorEl.value,
             fontFamily: $('font-selector').value
@@ -578,7 +598,9 @@
         const img = new Image();
         img.onload = function () {
             const picture = new fabric.Image(img);
-            picture.scaleToHeight(canvas.getHeight());
+            const shown = view();
+            picture.scaleToHeight(shown.height);
+            picture.set({ left: shown.left, top: shown.top });
             canvas.add(picture);
             say('Image loaded.');
         };
@@ -751,12 +773,16 @@
         return chosen.length;
     }
 
-    /** As wide - or as tall - as the canvas, along its left - or top - edge. An image still downloads at its own resolution. */
+    /**
+     * As wide - or as tall - as the canvas shows, along its left - or top - edge: zoomed, what is
+     * on the screen. An image still downloads at its own resolution.
+     */
     function fitCanvas(axis) {
+        const shown = view();
         const count = resizeSelected(function (obj) {
-            scaleTo(obj, axis, axis === 'width' ? canvas.getWidth() : canvas.getHeight());
+            scaleTo(obj, axis, shown[axis]);
             const bounds = obj.getBoundingRect(true, true);
-            obj.set(axis === 'width' ? { left: obj.left - bounds.left } : { top: obj.top - bounds.top });
+            obj.set(axis === 'width' ? { left: obj.left + shown.left - bounds.left } : { top: obj.top + shown.top - bounds.top });
             obj.setCoords();
             obj.sizeFixed = false;
         });
@@ -782,6 +808,97 @@
         if (count) say('Set ' + plural(count, 'object') + ' ' + size + ' px ' + (axis === 'width' ? 'wide' : 'tall') + ': Download selected saves it so.');
     }
 
+    // ---- the order: which of the objects that overlap is in front ----------
+
+    /** Where `obj` is in the order the canvas draws, from the back: 'layer 1 of 5' is behind all four others. */
+    function layer(obj) {
+        const stack = canvas.getObjects();
+        return 'layer ' + (stack.indexOf(obj) + 1) + ' of ' + stack.length;
+    }
+
+    const PLACES = { front: 'to the front', back: 'to the back', forward: 'forward', backward: 'backward' };
+
+    /**
+     * The selected objects to the front or the back - `where` - of all the others, or one place
+     * forward or backward: as many as are selected, in the order they were among themselves.
+     */
+    function restack(where) {
+        const chosen = canvas.getActiveObjects();
+        if (!chosen.length) {
+            say('Nothing selected to move.');
+            return;
+        }
+        const at = obj => canvas.getObjects().indexOf(obj);
+        const top = canvas.getObjects().length - 1;
+        // From the back one: the front one moves first when they go forward, so none passes another.
+        const sorted = chosen.slice().sort((a, b) => at(a) - at(b));
+        if (where === 'front') {
+            sorted.forEach(obj => canvas.moveTo(obj, top));
+        } else if (where === 'back') {
+            sorted.reverse().forEach(obj => canvas.moveTo(obj, 0));
+        } else if (where === 'forward') {
+            // Those already at the front stay there: under them, the next ones as they are.
+            sorted.reverse().forEach((obj, i) => { if (at(obj) < top - i) canvas.moveTo(obj, at(obj) + 1); });
+        } else {
+            sorted.forEach((obj, i) => { if (at(obj) > i) canvas.moveTo(obj, at(obj) - 1); });
+        }
+        canvas.requestRenderAll();
+        refresh();
+        say(chosen.length === 1
+            ? 'Moved ' + PLACES[where] + ': ' + layer(chosen[0]) + '.'
+            : 'Moved ' + plural(chosen.length, 'object') + ' ' + PLACES[where] + '.');
+    }
+
+    // ---- zoom: the whole drawing nearer, or further -------------------------
+
+    // The levels a zoom steps through, as a browser's: 1 is the drawing as it is.
+    const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+
+    /** What the canvas shows of the drawing, in the drawing's own units: zoomed, more or less of it. */
+    function view() {
+        const zoom = canvas.getZoom();
+        const vpt = canvas.viewportTransform;
+        return { left: -vpt[4] / zoom, top: -vpt[5] / zoom, width: canvas.getWidth() / zoom, height: canvas.getHeight() / zoom };
+    }
+
+    /** Whether the drawing is shown as it is: at 100%, from its own corner. */
+    function isActualSize() {
+        return canvas.viewportTransform.every((v, i) => v === [1, 0, 0, 1, 0, 0][i]);
+    }
+
+    /** Where on the screen a zoom keeps still: the middle of what is selected, when it shows, else of the canvas. */
+    function zoomCenter() {
+        const middle = new fabric.Point(canvas.getWidth() / 2, canvas.getHeight() / 2);
+        const active = canvas.getActiveObject();
+        if (!active) return middle;
+        const point = fabric.util.transformPoint(active.getCenterPoint(), canvas.viewportTransform);
+        const shows = point.x >= 0 && point.y >= 0 && point.x <= canvas.getWidth() && point.y <= canvas.getHeight();
+        return shows ? point : middle;
+    }
+
+    /**
+     * One level nearer - `step` 1 - or further - -1 - or, with 0, the drawing as it is.
+     * Back at 100%, the drawing is where it was before any zoom.
+     */
+    function zoom(step) {
+        const now = canvas.getZoom();
+        const level = step === 0 ? 1
+            : step > 0 ? ZOOMS.find(z => z > now + 0.001)
+                : ZOOMS.slice().reverse().find(z => z < now - 0.001);
+        if (level === undefined) {
+            say(step > 0 ? 'Zoomed in as far as it goes.' : 'Zoomed out as far as it goes.');
+            return;
+        }
+        if (level === 1) {
+            canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+        } else {
+            canvas.zoomToPoint(zoomCenter(), level);
+        }
+        canvas.requestRenderAll();
+        refresh();
+        say('Zoom ' + Math.round(level * 100) + '%.');
+    }
+
     // ---- the commands: what a button runs, by the name in its data-command ----
 
     // A remote device can send these names later, as text; a keyboard types them already: see below.
@@ -803,6 +920,13 @@
         'fit-height': () => fitCanvas('height'),
         width: pixels => setSize('width', pixels),
         height: pixels => setSize('height', pixels),
+        'to-front': () => restack('front'),
+        'forward': () => restack('forward'),
+        'backward': () => restack('backward'),
+        'to-back': () => restack('back'),
+        'zoom-in': () => zoom(1),
+        'zoom-out': () => zoom(-1),
+        'zoom-reset': () => zoom(0),
         // As their buttons and links on the controls do: the file picker opens, the download starts.
         'load-image': () => $('fileinput').click(),
         'load-json': () => $('jsoninput').click(),
@@ -848,8 +972,43 @@
         'download-json': ['download-json'],
         'download-selected-image': ['download-selected'],
         'fit-width': ['fit-width'],
-        'fit-height': ['fit-height']
+        'fit-height': ['fit-height'],
+        'bring-to-front': ['to-front'],
+        'bring-forward': ['forward'],
+        'send-backward': ['backward'],
+        'send-to-back': ['to-back'],
+        'zoom-in': ['zoom-in'],
+        'zoom-out': ['zoom-out'],
+        'zoom-reset': ['zoom-reset']
     };
+
+    // A command at one keystroke: what each key runs with Ctrl held, or with Alt - as TYPED
+    // does, a command and its value. Ctrl+O turns drawing mode the other way round, on or off.
+    // A letter is a letter with Shift or without: Ctrl+W and Ctrl+Shift+W are both fit-width.
+    const SHORTCUTS = {
+        ctrl: {
+            c: TYPED['copy'],
+            v: TYPED['paste'],
+            r: TYPED['remove'],
+            s: TYPED['select'],
+            o: ['drawing'],
+            i: TYPED['load-image'],
+            j: TYPED['load-json'],
+            w: TYPED['fit-width'],
+            h: TYPED['fit-height'],
+            '+': TYPED['zoom-in'],
+            '-': TYPED['zoom-out']
+        },
+        alt: {
+            p: TYPED['pencil'],
+            l: TYPED['line'],
+            r: TYPED['rectangle'],
+            c: TYPED['circle'],
+            t: TYPED['text-box']
+        }
+    };
+    // Held down, these go on: a step for each repeat of the key. Any other runs once.
+    const REPEATING = ['zoom-in', 'zoom-out'];
 
     // Longer than this, what came after a `{` is no command: it is let go.
     const TYPED_MAX = 200;
@@ -861,7 +1020,13 @@
         return !!target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || !!target.isContentEditable);
     }
 
-    /** Runs what `text` - from `{` to `}` - says, as its control does. An area not dragged yet is let go first, as when the controls come back. */
+    /** Runs a command of TYPED - its name and value - as its control does. An area not dragged yet is let go first, as when the controls come back. */
+    function perform(command) {
+        endArea();
+        run(command[0], command[1]);
+    }
+
+    /** Runs what `text` - from `{` to `}` - says. */
     function runTyped(text) {
         let cmd;
         try {
@@ -873,17 +1038,46 @@
             say('No such command: ' + text);
             return;
         }
-        endArea();
-        run(TYPED[cmd][0], TYPED[cmd][1]);
+        perform(TYPED[cmd]);
     }
 
-    // On the drawing only, and not in text being written. A `{` starts a command, and
-    // starts it over; Escape lets it go. Its keys are its own: none presses the corner.
+    /**
+     * The key of a shortcut: a letter as the keyboard's layout types it - or by where it is when
+     * it types another character, as Alt does on a Mac - and + or -, with Shift or without.
+     */
+    function shortcutKey(event) {
+        const key = event.key;
+        if (typeof key === 'string' && /^[a-z]$/i.test(key)) return key.toLowerCase();
+        if (key === '+' || key === '=') return '+';
+        if (key === '-' || key === '_') return '-';
+        const letter = /^Key([A-Z])$/.exec(event.code || '');
+        return letter ? letter[1].toLowerCase() : null;
+    }
+
+    /**
+     * Runs the shortcut `event` presses, if it is one: Ctrl or Alt, not both - AltGr is both,
+     * and types the `{` of a command on many keyboards - and not with the Mac's Command key.
+     */
+    function shortcut(event) {
+        if (event.ctrlKey === event.altKey || event.metaKey) return false;
+        const keys = SHORTCUTS[event.ctrlKey ? 'ctrl' : 'alt'];
+        const key = shortcutKey(event);
+        if (!key || !keys.hasOwnProperty(key)) return false;
+        // The browser's own, for the same keys, is not done: reload, save, zoom the page and the like.
+        event.preventDefault();
+        if (!event.repeat || REPEATING.includes(keys[key][0])) perform(keys[key]);
+        return true;
+    }
+
+    // On the drawing only, and not in text being written. A shortcut runs at once, outside a
+    // command being typed. A `{` starts a command, and starts it over; Escape lets it go.
+    // Its keys are its own: none presses the corner.
     document.addEventListener('keydown', function (event) {
         if (ui.front !== 'draw' || ui.peeling || writing(event.target) || event.isComposing) {
             typed = null;
             return;
         }
+        if (typed === null && shortcut(event)) return;
         const key = event.key;
         if (key === '{') {
             typed = '';

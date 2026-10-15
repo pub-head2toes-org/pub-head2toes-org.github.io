@@ -9,7 +9,7 @@
   <meta name="description" content="Notebook drawing, powered by Fabric.js.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=12">
+  <link rel="stylesheet" href="./styles.css?v=13">
   <title>Fabric Draw</title>
 </head>
 <body>
@@ -17,7 +17,8 @@
 <!-- Two pages, one on top of the other. The corner of the top one peels it off. -->
 
 <!-- The drawing: the canvas, and nothing else. A keyboard reaches the controls from it:
-     typed as {"cmd":"copy"}, a command runs as its control does (see TYPED in fabric.js). -->
+     typed as {"cmd":"copy"}, or as Ctrl+C, a command runs as its control does
+     (see TYPED and SHORTCUTS in fabric.js). -->
 <section class="page draw front" id="page_draw" aria-label="Drawing">
   <canvas id="c"></canvas>
   <button type="button" class="peel" id="peel_top" aria-label="Peel off to the controls"></button>
@@ -40,6 +41,13 @@
         <button type="button" id="copy-el" data-command="copy">Copy</button>
         <button type="button" id="paste-el" data-command="paste">Paste</button>
         <button type="button" id="remove-el" data-command="remove">Remove</button>
+      </div>
+      <!-- Where it is among the objects it overlaps: in front of them, or behind. -->
+      <div class="buttons">
+        <button type="button" id="to-back" data-command="to-back">To back</button>
+        <button type="button" id="backward" data-command="backward">Backward</button>
+        <button type="button" id="forward" data-command="forward">Forward</button>
+        <button type="button" id="to-front" data-command="to-front">To front</button>
       </div>
       <!-- A drag over the drawing copies all that is under it, as one image for Paste. -->
       <div class="buttons">
@@ -153,6 +161,16 @@
       </div>
     </section>
 
+    <!-- The whole drawing nearer or further: Ctrl and + or - on the drawing does it too. -->
+    <section class="group">
+      <h2>Zoom <output id="zoom-level">100%</output></h2>
+      <div class="buttons">
+        <button type="button" id="zoom-out" data-command="zoom-out">Zoom out</button>
+        <button type="button" id="zoom-in" data-command="zoom-in">Zoom in</button>
+        <button type="button" id="zoom-reset" data-command="zoom-reset">Actual size</button>
+      </div>
+    </section>
+
     <section class="group">
       <h2>Canvas</h2>
       <button type="button" class="danger" id="clear-canvas" data-command="clear">Clear</button>
@@ -165,8 +183,8 @@
 <!-- Every script and the stylesheet carry ?v=<the version in sw.js's CACHE_NAME>:
      a cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
-<script src="./lib/fabric.js?v=12"></script>
-<script src="./fabric.js?v=12"></script>
+<script src="./lib/fabric.js?v=13"></script>
+<script src="./fabric.js?v=13"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')

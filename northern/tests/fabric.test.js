@@ -18,10 +18,20 @@ const PEEL_MS = 650;
  * brushes. The real one needs a browser; this one remembers what was done.
  */
 function fakeFabric(element, retina = 1) {
+    // fabric 3.4's own, for points and the viewport: what a zoom does to where things are.
+    class Point { constructor(x, y) { this.x = x; this.y = y; } }
+    const transformPoint = (p, t) => new Point(t[0] * p.x + t[2] * p.y + t[4], t[1] * p.x + t[3] * p.y + t[5]);
+    function invertTransform(t) {
+        const a = 1 / (t[0] * t[3] - t[1] * t[2]);
+        const r = [a * t[3], -a * t[1], -a * t[2], a * t[0]];
+        const o = transformPoint({ x: t[4], y: t[5] }, [...r, 0, 0]);
+        return [...r, -o.x, -o.y];
+    }
     class Obj {
         constructor(options = {}) { Object.assign(this, { type: 'object', left: 0, top: 0, scaleX: 1, scaleY: 1 }, options); }
         set(key, value) { Object.assign(this, typeof key === 'string' ? { [key]: value } : key); return this; }
         setCoords() {}
+        getCenterPoint() { const b = this.getBoundingRect(); return new Point(b.left + b.width / 2, b.top + b.height / 2); }
         clone(callback) { callback(new this.constructor({ ...this })); }
         // What it covers on the canvas: as wide and tall as it is shown.
         getBoundingRect() {
@@ -54,6 +64,22 @@ function fakeFabric(element, retina = 1) {
             Object.assign(this, { objects: [], active: null, listeners: {}, offsets: 0, cleared: 0 });
             this.freeDrawingBrush = new fabric.PencilBrush(this);
             Object.assign(this, { selection: true, skipTargetFind: false, defaultCursor: 'default', snapshots: [] });
+            Object.assign(this, { preserveObjectStacking: !!options.preserveObjectStacking, viewportTransform: [1, 0, 0, 1, 0, 0] });
+        }
+        getObjects() { return this.objects.slice(); }
+        moveTo(obj, index) { this.objects = this.objects.filter(o => o !== obj); this.objects.splice(index, 0, obj); }
+        getZoom() { return this.viewportTransform[0]; }
+        setViewportTransform(vpt) { this.viewportTransform = vpt; return this; }
+        zoomToPoint(point, value) {
+            const before = point;
+            const vpt = this.viewportTransform.slice(0);
+            point = transformPoint(point, invertTransform(this.viewportTransform));
+            vpt[0] = value;
+            vpt[3] = value;
+            const after = transformPoint(point, vpt);
+            vpt[4] += before.x - after.x;
+            vpt[5] += before.y - after.y;
+            return this.setViewportTransform(vpt);
         }
         on(event, fn) { (this.listeners[event] = this.listeners[event] || []).push(fn); }
         fire(event, data) { (this.listeners[event] || []).forEach(fn => fn(data)); }
@@ -84,7 +110,7 @@ function fakeFabric(element, retina = 1) {
         loadFromJSON(json, callback) { this.loaded = json; callback(); }
     }
     const fabric = {
-        Object: Obj, ActiveSelection, Canvas,
+        Object: Obj, ActiveSelection, Canvas, Point, util: { transformPoint, invertTransform },
         PencilBrush: class PencilBrush extends Brush {},
         CircleBrush: class CircleBrush extends Brush {},
         SprayBrush: class SprayBrush extends Brush {},
@@ -225,6 +251,23 @@ function mountFabric({ width = 800, height = 600, confirm = true, retina = 1 } =
             document.listeners.keydown(event);
             return event.prevented;
         }),
+        /**
+         * A key pressed with Ctrl, Alt, Shift or Command held - 'ctrl+c', 'alt+shift+t' - and whether the page took it.
+         * The key is as a US keyboard types it, unless `key` says otherwise; `code` is where it is.
+         */
+        press: (keys, { key, code, repeat = false, in: target = element('peel_top') } = {}) => {
+            const parts = keys.split('+');
+            const last = parts.pop() || '+';
+            const held = name => parts.includes(name);
+            const event = {
+                key: key || (held('shift') && /^[a-z]$/.test(last) ? last.toUpperCase() : last),
+                code: code || (/^[a-z]$/i.test(last) ? 'Key' + last.toUpperCase() : ''),
+                ctrlKey: held('ctrl'), altKey: held('alt'), shiftKey: held('shift'), metaKey: held('meta'), repeat, target,
+                prevented: false, preventDefault() { this.prevented = true; }
+            };
+            document.listeners.keydown(event);
+            return event.prevented;
+        },
         /** A drag on the drawing, from one point to another, by way of the ones between. */
         drag: (...points) => {
             canvas.fire('mouse:down', { e: points[0] });
@@ -1031,7 +1074,7 @@ describe('Fabric: text and files', () => {
         assert.strictEqual(page.canvas.getActiveObject(), box);
         assert.strictEqual(page.canvas.isDrawingMode, false, 'a textbox is edited with drawing mode off');
         assert.strictEqual(page.element('drawing-mode').getAttribute('aria-pressed'), 'false');
-        assert.strictEqual(page.element('selected').textContent, '1 object selected');
+        assert.strictEqual(page.element('selected').textContent, '1 object selected, layer 1 of 1');
         assert.strictEqual(page.element('textblob').value, '');
 
         page.peel();
@@ -1163,7 +1206,8 @@ describe('Fabric: commands typed on the drawing', () => {
         const page = mountFabric();
         ['escape', 'copy', 'paste', 'remove', 'select', 'turn-on', 'turn-off', 'pencil', 'line', 'rectangle', 'circle',
             'text-box', 'bubble', 'load-image', 'load-json', 'download-image', 'download-json', 'download-selected-image',
-            'fit-width', 'fit-height'].forEach(function (name) {
+            'fit-width', 'fit-height', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+            'zoom-in', 'zoom-out', 'zoom-reset'].forEach(function (name) {
             page.type(cmd(name));
             assert.doesNotMatch(page.status(), /No such command/, name);
         });
@@ -1332,5 +1376,320 @@ describe('Fabric: commands typed on the drawing', () => {
         page.peel();
         page.type('-off"}');
         assert.strictEqual(page.canvas.isDrawingMode, true);
+    });
+});
+
+describe('Fabric: shortcuts on the drawing', () => {
+    it('copies, pastes, removes and selects an area with Ctrl, as the controls do', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.select(a);
+        assert.strictEqual(page.press('ctrl+c'), true, 'the browser does not copy too');
+        assert.strictEqual(page.status(), 'Copied 1 object.');
+        page.press('ctrl+v');
+        assert.strictEqual(page.canvas.objects.length, 2);
+        page.press('ctrl+r');
+        assert.deepStrictEqual(page.names(), ['a'], 'the pasted one removed; the page is not reloaded');
+        page.press('ctrl+s');
+        assert.strictEqual(page.canvas.skipTargetFind, true, 'an area to drag');
+        assert.strictEqual(page.front(), 'draw');
+    });
+
+    it('turns drawing mode the other way round with Ctrl+O', () => {
+        const page = mountFabric();
+        page.press('ctrl+o');
+        assert.strictEqual(page.canvas.isDrawingMode, false);
+        page.press('ctrl+o');
+        assert.strictEqual(page.canvas.isDrawingMode, true);
+        assert.strictEqual(page.status(), 'Drawing mode on.');
+    });
+
+    it('picks the pencil, the line, the rectangle and the circle, and adds a textbox, with Alt', () => {
+        const page = mountFabric();
+        const mode = page.element('drawing-mode-selector');
+        page.press('alt+l');
+        assert.strictEqual(mode.value, 'straight');
+        page.press('alt+r');
+        assert.strictEqual(mode.value, 'rectangle');
+        page.press('alt+c');
+        assert.strictEqual(mode.value, 'circle');
+        page.press('alt+p');
+        assert.strictEqual(mode.value, 'Pencil');
+        page.press('alt+t');
+        assert.strictEqual(page.canvas.objects[0].type, 'textbox');
+    });
+
+    it('opens the file pickers with Ctrl+I and Ctrl+J', () => {
+        const page = mountFabric();
+        page.press('ctrl+i');
+        page.press('ctrl+j');
+        assert.deepStrictEqual([page.element('fileinput').clicked, page.element('jsoninput').clicked], [1, 1]);
+    });
+
+    it('fits what is selected with Ctrl+W and Ctrl+H, with Shift or without', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        a.set({ width: 100, height: 50 });
+        page.select(a);
+        page.press('ctrl+shift+w');
+        assert.strictEqual(a.scaleX, 8);
+        page.press('ctrl+shift+h');
+        assert.strictEqual(a.scaleY, 12);
+        page.press('ctrl+w');
+        assert.strictEqual(a.scaleX, 8);
+        page.press('ctrl+h');
+        assert.strictEqual(a.scaleY, 12);
+    });
+
+    it('zooms in with Ctrl and + or =, out with Ctrl and -, and goes on while the key is held', () => {
+        const page = mountFabric();
+        assert.strictEqual(page.press('ctrl+='), true, 'the browser does not zoom the page');
+        assert.strictEqual(page.canvas.getZoom(), 1.1);
+        page.press('ctrl+shift++');
+        assert.strictEqual(page.canvas.getZoom(), 1.25);
+        page.press('ctrl++', { code: 'NumpadAdd' });
+        page.press('ctrl++', { repeat: true });
+        assert.strictEqual(page.canvas.getZoom(), 1.75);
+        page.press('ctrl+-');
+        page.press('ctrl+-', { code: 'NumpadSubtract' });
+        page.press('ctrl+shift+_');
+        page.press('ctrl+-');
+        assert.strictEqual(page.canvas.getZoom(), 1);
+        assert.strictEqual(page.status(), 'Zoom 100%.');
+    });
+
+    it('runs any other shortcut once, however long it is held', () => {
+        const page = mountFabric();
+        page.press('ctrl+o');
+        assert.strictEqual(page.press('ctrl+o', { repeat: true }), true, 'taken all the same');
+        assert.strictEqual(page.canvas.isDrawingMode, false);
+    });
+
+    it('knows a letter by where it is when the key types another character: Alt on a Mac, another alphabet', () => {
+        const page = mountFabric();
+        page.press('alt+r', { key: '®' });
+        assert.strictEqual(page.element('drawing-mode-selector').value, 'rectangle');
+        const [a] = page.draw('a');
+        page.select(a);
+        page.press('ctrl+c', { key: 'с' });
+        assert.strictEqual(page.status(), 'Copied 1 object.');
+    });
+
+    it('leaves the browser its keys: none of the list, Ctrl and Alt together, Command', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.select(a);
+        assert.strictEqual(page.press('ctrl+t'), false);
+        assert.strictEqual(page.press('alt+f'), false);
+        assert.strictEqual(page.press('ctrl+alt+c'), false);
+        assert.strictEqual(page.press('meta+c'), false);
+        assert.strictEqual(page.press('ctrl+meta+c'), false);
+        assert.strictEqual(page.press('ctrl+Control', { code: 'ControlLeft' }), false);
+        assert.strictEqual(page.status(), '');
+    });
+
+    it('types a { with AltGr - Ctrl and Alt - into a command, not a shortcut', () => {
+        const page = mountFabric();
+        page.press('ctrl+alt+7', { key: '{', code: 'Digit7' });
+        page.type('"cmd":"turn-off"');
+        page.press('ctrl+alt+0', { key: '}', code: 'Digit0' });
+        assert.strictEqual(page.canvas.isDrawingMode, false);
+    });
+
+    it('takes a shortcut\'s keys as a command\'s while one is typed', () => {
+        const page = mountFabric();
+        page.type('{"cmd":"turn');
+        assert.strictEqual(page.press('ctrl+o'), true);
+        assert.strictEqual(page.canvas.isDrawingMode, true, 'no shortcut in the middle of a command');
+        page.type('-off"}');
+        assert.match(page.status(), /No such command/);
+    });
+
+    it('works on the drawing only, and not in text being written', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a');
+        page.select(a);
+        assert.strictEqual(page.press('ctrl+c', { in: { tagName: 'TEXTAREA' } }), false, 'the text is copied');
+        page.peel();
+        assert.strictEqual(page.press('ctrl+c', { in: page.element('peel_back') }), false);
+        assert.strictEqual(page.press('ctrl+=', { in: page.element('peel_back') }), false);
+        assert.strictEqual(page.status(), '');
+        assert.strictEqual(page.canvas.getZoom(), 1);
+    });
+
+    it('lets an area not dragged go when another shortcut comes', () => {
+        const page = mountFabric();
+        page.press('ctrl+s');
+        page.press('alt+l');
+        page.drag({ x: 0, y: 0 }, { x: 50, y: 0 });
+        assert.strictEqual(page.canvas.snapshots.length, 0);
+        assert.strictEqual(page.canvas.objects[0].type, 'line');
+    });
+});
+
+describe('Fabric: the order of objects', () => {
+    it('makes the selection the drawing\'s order: what is selected is not drawn over the rest', () => {
+        const page = mountFabric();
+        assert.strictEqual(page.canvas.preserveObjectStacking, true);
+    });
+
+    it('is off with nothing selected', () => {
+        const page = mountFabric();
+        page.peel();
+        ['to-back', 'backward', 'forward', 'to-front'].forEach(id => assert.strictEqual(page.element(id).disabled, true, id));
+        page.select(...page.draw('a'));
+        ['to-back', 'backward', 'forward', 'to-front'].forEach(id => assert.strictEqual(page.element(id).disabled, false, id));
+        page.canvas.discardActiveObject();
+        page.click('to-front');
+        assert.strictEqual(page.status(), 'Nothing selected to move.');
+    });
+
+    it('moves one object to the front and back, and one place forward and backward', () => {
+        const page = mountFabric();
+        const [, b] = page.draw('a', 'b', 'c', 'd');
+        page.select(b);
+        page.peel();
+        assert.strictEqual(page.element('selected').textContent, '1 object selected, layer 2 of 4');
+        page.click('forward');
+        assert.deepStrictEqual(page.names(), ['a', 'c', 'b', 'd']);
+        assert.strictEqual(page.status(), 'Moved forward: layer 3 of 4.');
+        assert.strictEqual(page.element('selected').textContent, '1 object selected, layer 3 of 4');
+        page.click('to-front');
+        assert.deepStrictEqual(page.names(), ['a', 'c', 'd', 'b']);
+        page.click('forward');
+        assert.deepStrictEqual(page.names(), ['a', 'c', 'd', 'b'], 'the front one stays there');
+        page.click('backward');
+        assert.deepStrictEqual(page.names(), ['a', 'c', 'b', 'd']);
+        page.click('to-back');
+        assert.deepStrictEqual(page.names(), ['b', 'a', 'c', 'd']);
+        assert.strictEqual(page.status(), 'Moved to the back: layer 1 of 4.');
+        page.click('backward');
+        assert.deepStrictEqual(page.names(), ['b', 'a', 'c', 'd']);
+        assert.strictEqual(page.canvas.getActiveObject(), b, 'still selected');
+    });
+
+    it('moves many together, in the order they were among themselves, however they were picked', () => {
+        const page = mountFabric();
+        const [a, , c, , e] = page.draw('a', 'b', 'c', 'd', 'e');
+        page.select(e, a, c);
+        page.click('to-front');
+        assert.deepStrictEqual(page.names(), ['b', 'd', 'a', 'c', 'e']);
+        assert.strictEqual(page.status(), 'Moved 3 objects to the front.');
+        page.click('to-back');
+        assert.deepStrictEqual(page.names(), ['a', 'c', 'e', 'b', 'd']);
+        page.click('forward');
+        assert.deepStrictEqual(page.names(), ['b', 'a', 'c', 'e', 'd'], 'each one place');
+        page.click('forward');
+        page.click('forward');
+        assert.deepStrictEqual(page.names(), ['b', 'd', 'a', 'c', 'e']);
+        page.click('forward');
+        assert.deepStrictEqual(page.names(), ['b', 'd', 'a', 'c', 'e'], 'none passes another, and none past the front');
+        page.click('backward');
+        assert.deepStrictEqual(page.names(), ['b', 'a', 'c', 'e', 'd']);
+    });
+
+    it('takes the order from the keyboard as typed commands', () => {
+        const page = mountFabric();
+        const [a] = page.draw('a', 'b');
+        page.select(a);
+        page.type('{"cmd":"bring-to-front"}');
+        assert.deepStrictEqual(page.names(), ['b', 'a']);
+        page.type('{"cmd":"send-backward"}');
+        assert.deepStrictEqual(page.names(), ['a', 'b']);
+        page.type('{"cmd":"bring-forward"}');
+        page.type('{"cmd":"send-to-back"}');
+        assert.deepStrictEqual(page.names(), ['a', 'b']);
+    });
+});
+
+describe('Fabric: zoom', () => {
+    it('steps through the levels, shows the level, and stops at the ends', () => {
+        const page = mountFabric();
+        page.peel();
+        assert.strictEqual(page.element('zoom-level').textContent, '100%');
+        assert.strictEqual(page.element('zoom-reset').disabled, true);
+        page.click('zoom-in');
+        assert.strictEqual(page.element('zoom-level').textContent, '110%');
+        assert.strictEqual(page.element('zoom-reset').disabled, false);
+        for (let i = 0; i < 20; i += 1) page.click('zoom-in');
+        assert.strictEqual(page.canvas.getZoom(), 5);
+        assert.strictEqual(page.element('zoom-in').disabled, true);
+        assert.strictEqual(page.status(), 'Zoomed in as far as it goes.');
+        for (let i = 0; i < 20; i += 1) page.click('zoom-out');
+        assert.strictEqual(page.canvas.getZoom(), 0.25);
+        assert.strictEqual(page.element('zoom-out').disabled, true);
+        assert.strictEqual(page.element('zoom-level').textContent, '25%');
+        page.click('zoom-reset');
+        assert.deepStrictEqual([...page.canvas.viewportTransform], [1, 0, 0, 1, 0, 0]);
+        assert.strictEqual(page.status(), 'Zoom 100%.');
+    });
+
+    it('keeps the middle of the canvas still, or of what is selected, and comes back to where it was at 100%', () => {
+        const page = mountFabric();
+        page.click('zoom-in');
+        page.click('zoom-in');
+        const vpt = page.canvas.viewportTransform;
+        // The middle of the canvas, 400 by 300, is where it was.
+        assert.deepStrictEqual([vpt[0] * 400 + vpt[4], vpt[3] * 300 + vpt[5]].map(Math.round), [400, 300]);
+        page.click('zoom-reset');
+
+        const [a] = page.draw('a');
+        a.set({ left: 100, top: 100, width: 100, height: 100 });
+        page.select(a);
+        page.click('zoom-in');
+        page.click('zoom-in');
+        const v = page.canvas.viewportTransform;
+        assert.deepStrictEqual([v[0] * 150 + v[4], v[3] * 150 + v[5]].map(Math.round), [150, 150]);
+        page.click('zoom-out');
+        page.click('zoom-out');
+        assert.deepStrictEqual([...page.canvas.viewportTransform], [1, 0, 0, 1, 0, 0]);
+    });
+
+    it('copies an area as the screen shows it, and puts it where it was on the drawing', () => {
+        const page = mountFabric({ retina: 2 });
+        page.canvas.setViewportTransform([2, 0, 0, 2, -100, -50]);
+        page.click('area-el');
+        // From 60,30 to 260,130 on the drawing: on the screen, 20,10 to 420,210.
+        page.drag({ x: 60, y: 30 }, { x: 260, y: 130 });
+        const shot = page.canvas.snapshots[0];
+        assert.deepStrictEqual([shot.left, shot.top, shot.width, shot.height], [20, 10, 400, 200]);
+        page.click('paste-el');
+        const img = page.canvas.objects[0];
+        assert.deepStrictEqual([img.left, img.top, img.scaleX], [70, 40, 0.25], 'pasted 10 on, as Paste does');
+    });
+
+    it('shows the area dragged on the drawing, inside what the canvas shows', () => {
+        const page = mountFabric();
+        page.canvas.setViewportTransform([2, 0, 0, 2, -100, -50]);
+        page.click('area-el');
+        page.canvas.fire('mouse:down', { e: { x: 60, y: 30 } });
+        page.canvas.fire('mouse:move', { e: { x: 1000, y: 1000 } });
+        const frame = page.canvas.objects[0];
+        // The canvas, 800 by 600, shows the drawing from 50,25 to 450,325.
+        assert.deepStrictEqual([frame.left, frame.top, frame.width, frame.height], [60, 30, 390, 295]);
+    });
+
+    it('fits what is selected to what the canvas shows', () => {
+        const page = mountFabric();
+        page.canvas.setViewportTransform([2, 0, 0, 2, -100, -50]);
+        const [a] = page.draw('a');
+        a.set({ width: 100, height: 50, left: 0, top: 0 });
+        page.select(a);
+        page.click('fit-width');
+        assert.deepStrictEqual([a.scaleX, a.left], [4, 50]);
+        page.click('fit-height');
+        assert.deepStrictEqual([a.scaleY, a.top], [6, 25]);
+    });
+
+    it('adds an image, a textbox and a bubble in what the canvas shows', () => {
+        const page = mountFabric();
+        page.canvas.setViewportTransform([0.5, 0, 0, 0.5, 100, 50]);
+        page.load('fileinput', 'AAAA');
+        page.Image.made[page.Image.made.length - 1].onload();
+        const picture = page.canvas.objects[0];
+        assert.deepStrictEqual([picture.height, picture.left, picture.top], [1200, -200, -100]);
+        page.type('{"cmd":"text-box"}');
+        const box = page.canvas.objects[1];
+        assert.deepStrictEqual([box.left, box.top], [-200 + 150, -100 + 70]);
     });
 });
