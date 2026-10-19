@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Check</title>
+    <!-- The same key derivation and AES that Reg.html runs for a passphrase,
+         so test B takes as long here as Save Id Card does there. -->
+    <script type="text/javascript" src="oo.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16px;
+            line-height: 1.4;
+        }
+        main { max-width: 760px; margin: 0 auto; padding: 16px; }
+        h1 { font-size: 1.4em; margin: 0 0 4px; }
+        h2 { font-size: 1.1em; border-bottom: 1px solid #0f0; padding-bottom: 4px; margin: 28px 0 10px; }
+        h3 { font-size: 1em; margin: 0 0 4px; }
+        p, li, code { overflow-wrap: anywhere; }
+        .hint { color: #8c8; font-size: 0.9em; margin: 4px 0; }
+        .test { border: 1px solid #060; border-radius: 6px; padding: 12px; margin: 12px 0; }
+        .test.verified { border-color: #0f0; box-shadow: 0 0 0 1px #0f0; }
+        button, .btn {
+            display: block;
+            width: 100%;
+            margin-top: 8px;
+            padding: 12px;
+            font: inherit;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            color: #000;
+            background: #0f0;
+            border: 1px solid #0f0;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button.secondary { background: transparent; color: #0f0; }
+        label { display: block; margin-top: 10px; }
+        label.inline { display: flex; gap: 8px; align-items: flex-start; }
+        /* 16px or iPhone zooms in on focus; min-width 0 or a long option
+           pushes the page wider than a 375px screen. */
+        select, input[type=text], input[type=file], textarea {
+            display: block;
+            width: 100%;
+            min-width: 0;
+            margin-top: 4px;
+            padding: 8px;
+            font: inherit;
+            font-size: 16px;
+            color: #0f0;
+            background: #000;
+            border: 1px solid #0f0;
+            border-radius: 4px;
+        }
+        textarea { min-height: 14em; white-space: pre; }
+        .status { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85em; color: #8c8; margin-top: 8px; }
+        .status.ok { color: #0f0; }
+        .status.bad { color: #f66; }
+        dl.env { display: grid; grid-template-columns: minmax(0, 10em) minmax(0, 1fr); gap: 4px 10px; font-size: 0.9em; margin: 0; }
+        dl.env dt { color: #8c8; }
+        dl.env dd { margin: 0; overflow-wrap: anywhere; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+
+<body>
+<main>
+
+<h1>Download check</h1>
+<p class="hint">Finds out why saving an ID Card can hang on some iPhones. Nothing here
+   touches your ID Card or your keys: every test saves a small text file whose name
+   starts with <code>northern-check</code>, which is safe to delete afterwards.</p>
+<p class="hint">Do the steps in order, then copy or share the report at the bottom.</p>
+
+<h2>1. This phone</h2>
+<p class="hint">Look these up in the Settings app. They go into the report.</p>
+
+<label for="q_ios">iOS version (Settings &rsaquo; General &rsaquo; About)</label>
+<input type="text" id="q_ios" class="question" data-report="iOS version" placeholder="e.g. 18.6.2" autocomplete="off">
+
+<label for="q_model">iPhone model (same screen)</label>
+<input type="text" id="q_model" class="question" data-report="iPhone model" placeholder="e.g. iPhone 12 mini" autocomplete="off">
+
+<label for="q_location">Where Safari saves downloads (Settings &rsaquo; Apps &rsaquo; Safari &rsaquo; Downloads)</label>
+<select id="q_location" class="question" data-report="Safari download location">
+    <option value="">not checked</option>
+    <option>iCloud Drive</option>
+    <option>On My iPhone</option>
+    <option>Other</option>
+</select>
+
+<label for="q_icloud">iCloud storage (Settings &rsaquo; your name &rsaquo; iCloud)</label>
+<select id="q_icloud" class="question" data-report="iCloud storage">
+    <option value="">not checked</option>
+    <option>full or nearly full</option>
+    <option>has free space</option>
+    <option>iCloud Drive is off</option>
+    <option>not signed in to iCloud</option>
+</select>
+
+<label for="q_power">Low Power Mode (Settings &rsaquo; Battery)</label>
+<select id="q_power" class="question" data-report="Low Power Mode">
+    <option value="">not checked</option>
+    <option>on</option>
+    <option>off</option>
+</select>
+
+<label for="q_data">Low Data Mode (Settings &rsaquo; Wi-Fi or Mobile Data)</label>
+<select id="q_data" class="question" data-report="Low Data Mode">
+    <option value="">not checked</option>
+    <option>on</option>
+    <option>off</option>
+</select>
+
+<label for="q_lockdown">Lockdown Mode (Settings &rsaquo; Privacy &amp; Security)</label>
+<select id="q_lockdown" class="question" data-report="Lockdown Mode">
+    <option value="">not checked</option>
+    <option>on</option>
+    <option>off</option>
+</select>
+
+<label for="q_opened">How this page was opened</label>
+<select id="q_opened" class="question" data-report="Opened from">
+    <option value="">not sure</option>
+    <option>typed or bookmarked in Safari</option>
+    <option>a link in another app (WhatsApp, Mail, Messages...)</option>
+    <option>Chrome, Firefox or another browser</option>
+    <option>a Home Screen icon</option>
+</select>
+
+<h2>2. This browser</h2>
+<p class="hint">Read by the page itself.</p>
+<dl class="env" id="env"></dl>
+
+<h2>3. Tests</h2>
+<p class="hint">Run one test at a time. Watch for the &ldquo;Download?&rdquo; question and the
+   progress line under the address bar, wait up to a minute, then say what happened.
+   Do not tap Continue or leave the page while a download is running.</p>
+
+<label class="inline" for="warn">
+    <input type="checkbox" id="warn" checked>
+    <span>Warn before leaving the page, as Reg.html does while an ID Card is unsaved</span>
+</label>
+
+<div class="test" id="t_A">
+    <h3>A. Save Id Card, no passphrase</h3>
+    <p class="hint">Exactly what Reg.html does: the page clicks a hidden <code>data:</code> link by itself, straight after your tap.</p>
+    <button id="run_A">Run A</button>
+    <label for="out_A">What happened?</label>
+    <select id="out_A" class="outcome"></select>
+    <div class="status" id="st_A">not run</div>
+</div>
+
+<div class="test" id="t_B">
+    <h3>B. Save Id Card, with a passphrase</h3>
+    <p class="hint">As A, after the same encryption Reg.html does for a passphrase. The file name has a <code>*</code> in it, as an encrypted ID Card&rsquo;s does.</p>
+    <button id="run_B">Run B</button>
+    <label for="out_B">What happened?</label>
+    <select id="out_B" class="outcome"></select>
+    <div class="status" id="st_B">not run</div>
+</div>
+
+<div class="test" id="t_C">
+    <h3>C. As B, without the <code>*</code></h3>
+    <p class="hint">Same encryption first, plain file name. If B hangs and C does not, the <code>*</code> is to blame.</p>
+    <button id="run_C">Run C</button>
+    <label for="out_C">What happened?</label>
+    <select id="out_C" class="outcome"></select>
+    <div class="status" id="st_C">not run</div>
+</div>
+
+<div class="test" id="t_D">
+    <h3>D. Click 3 seconds after the tap</h3>
+    <p class="hint">The page waits 3 seconds, then clicks. By then Safari may no longer count the click as yours.</p>
+    <button id="run_D">Run D</button>
+    <label for="out_D">What happened?</label>
+    <select id="out_D" class="outcome"></select>
+    <div class="status" id="st_D">not run</div>
+</div>
+
+<div class="test" id="t_E">
+    <h3>E. Tap a real <code>data:</code> link</h3>
+    <p class="hint">Like Reg.html&rsquo;s &ldquo;Download Id Card again&rdquo;: you tap the link itself, nothing is clicked for you.</p>
+    <a class="btn" id="run_E" href="#" download>Run E</a>
+    <label for="out_E">What happened?</label>
+    <select id="out_E" class="outcome"></select>
+    <div class="status" id="st_E">not run</div>
+</div>
+
+<div class="test" id="t_F">
+    <h3>F. Tap a real Blob link (text file)</h3>
+    <p class="hint">As E, but the file is a Blob marked as plain text instead of a <code>data:</code> URL.</p>
+    <a class="btn" id="run_F" href="#" download>Run F</a>
+    <label for="out_F">What happened?</label>
+    <select id="out_F" class="outcome"></select>
+    <div class="status" id="st_F">not run</div>
+</div>
+
+<div class="test" id="t_G">
+    <h3>G. Share sheet &rsaquo; Save to Files</h3>
+    <p class="hint">Opens the share sheet with the file. Choose &ldquo;Save to Files&rdquo; and pick <em>On My iPhone</em>. Safari&rsquo;s downloads are not used at all.</p>
+    <button id="run_G">Run G</button>
+    <label for="out_G">What happened?</label>
+    <select id="out_G" class="outcome"></select>
+    <div class="status" id="st_G">not run</div>
+</div>
+
+<h2>4. Check what reached the phone</h2>
+<p class="hint">Pick the files the tests saved, from Files &rsaquo; Downloads (in iCloud Drive or
+   On My iPhone, wherever step 1 says) or wherever you saved test G. You can pick
+   several at once. A test whose file is found gets a bright border.</p>
+<label for="verify">Files saved by the tests</label>
+<input type="file" id="verify" multiple>
+<div class="status" id="verify_status"></div>
+
+<h2>5. Report</h2>
+<p class="hint">Copy it, or share it by Messages or Mail. A screenshot of it works too.</p>
+<button id="copy_report">Copy report</button>
+<button id="share_report" class="secondary">Share report</button>
+<div class="status" id="report_status"></div>
+<label for="report">Report</label>
+<textarea id="report" readonly></textarea>
+
+<h3>Event log</h3>
+<div class="status" id="log"></div>
+
+</main>
+
+<script>
+'use strict';
+
+const T0 = Date.now();
+const byId = id => document.getElementById(id);
+
+const TESTS = {
+    A: 'Save Id Card, no passphrase',
+    B: 'Save Id Card, with a passphrase (* in name)',
+    C: 'As B, without the *',
+    D: 'Click 3 seconds after the tap',
+    E: 'Tap a real data: link',
+    F: 'Tap a real Blob link',
+    G: 'Share sheet > Save to Files'
+};
+
+const OUTCOMES = [
+    ['', 'not run / not sure'],
+    ['saved', 'Saved - the file is in Files'],
+    ['stuck', 'Progress line under the address bar never finished'],
+    ['asked', 'Asked "Download?", then nothing'],
+    ['cancelled', 'Asked, and I cancelled'],
+    ['text', 'Showed the file as a page of text'],
+    ['sheet', 'Share sheet opened, but could not save'],
+    ['nothing', 'Nothing happened'],
+    ['error', 'The page showed an error']
+];
+
+// Every file handed out, by its token: which test made it and what it was called.
+const issued = {};
+const statusLines = {};
+const logLines = [];
+const env = [];
+
+const since = () => `${((Date.now() - T0) / 1000).toFixed(1)}s`;
+
+function note (text){
+    logLines.push(`${since()} ${text}`);
+    byId('log').textContent = logLines.join('\n');
+    refreshReport();
+}
+
+/** A line under one test, and in the log. */
+function report (test, text, kind){
+    statusLines[test] = (statusLines[test] || []).concat(`${since()} ${text}`);
+    const status = byId(`st_${test}`);
+    status.textContent = statusLines[test].join('\n');
+    status.className = `status${kind ? ` ${kind}` : ''}`;
+    note(`[${test}] ${text}`);
+}
+
+/** Whether Safari still counts what happens now as the visitor's tap. */
+function gesture (){
+    const activation = navigator.userActivation;
+    if (!activation){
+        return 'unknown (this browser does not say)';
+    }
+    if (activation.isActive){
+        return 'yes';
+    }
+    return activation.hasBeenActive ? 'NO - expired' : 'NO - never tapped';
+}
+
+function newToken (){
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// As idcard.timestamp: 20261017T103000.
+function stamp (){
+    return new Date().toISOString().slice(0, 19).replace(/[-:]/g, '');
+}
+
+/**
+ * A new file for one test, about the size of an ID Card. Its token is what
+ * step 4 recognises it by, whatever the phone renamed it to.
+ */
+function prepare (test, star){
+    const token = newToken();
+    const name = `northern-check${star ? '*' : ''}.${test}.${stamp()}.txt`;
+    const content = [
+        'Northern download check',
+        `test: ${test}`,
+        `token: ${token}`,
+        `created: ${new Date().toISOString()}`,
+        'This file holds no keys and is safe to delete.',
+        ''
+    ].join('\n');
+    issued[token] = { test: test, name: name };
+    return { token: token, name: name, content: content };
+}
+
+// The same URL Reg.html's fileHref() builds.
+function dataHref (content){
+    return 'data:application/octet-stream,' + encodeURIComponent(content);
+}
+
+function blobHref (content){
+    // Never revoked: a Blob URL revoked while Safari still reads it is a hang of its own.
+    return URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+}
+
+// The same steps as Reg.html's startDownload().
+function clickDownload (href, name){
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+/** A download the page starts by itself, as Reg.html's Save Id Card does. */
+function pageDownload (test, star, how){
+    const file = prepare(test, star);
+    const tap = gesture();
+    try {
+        clickDownload(dataHref(file.content), file.name);
+        report(test, `clicked ${file.name} ${how}; still counts as your tap: ${tap}`, tap.startsWith('NO') ? 'bad' : 'ok');
+    } catch (err) {
+        report(test, `the click failed: ${err.name}: ${err.message}`, 'bad');
+    }
+}
+
+/**
+ * What idcard.toFile() does between the tap and the download when there is a
+ * passphrase: derive a key, encrypt, derive again and decrypt to check.
+ */
+async function encryptLikeReg (){
+    const started = Date.now();
+    const passphrase = 'download check passphrase';
+    const card = JSON.stringify({ v: 2, username: 'check', pub: newToken().repeat(8), priv: newToken().repeat(4) });
+    const ciphertext = await oo.encrypt(card, await oo.idme(passphrase));
+    await oo.decrypt(ciphertext, await oo.idme(passphrase));
+    return Date.now() - started;
+}
+
+async function runA (){
+    // idcard.toFile() without a passphrase still awaits once.
+    await Promise.resolve();
+    pageDownload('A', false, 'right after the tap');
+}
+
+async function runEncrypted (test, star){
+    report(test, `encrypting... (tap counts: ${gesture()})`);
+    let ms;
+    try {
+        ms = await encryptLikeReg();
+    } catch (err) {
+        report(test, `encryption failed: ${err.name}: ${err.message}`, 'bad');
+        return;
+    }
+    pageDownload(test, star, `after ${ms} ms of encryption`);
+}
+
+async function runD (){
+    report('D', 'waiting 3 seconds...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    pageDownload('D', false, 'after 3 s');
+}
+
+/** Points a real link at a fresh file, ready for the next tap. */
+function arm (test){
+    const link = byId(`run_${test}`);
+    const file = prepare(test, false);
+    link.href = test === 'F' ? blobHref(file.content) : dataHref(file.content);
+    link.download = file.name;
+}
+
+function linkTapped (test){
+    const link = byId(`run_${test}`);
+    report(test, `tapped ${link.download}; counts as your tap: ${gesture()}`, 'ok');
+    // A new file for a second tap - but only once this tap's navigation is
+    // under way, so it is not pulled out from under Safari.
+    setTimeout(() => arm(test), 1000);
+}
+
+async function runG (){
+    const file = prepare('G', false);
+    if (typeof File === 'undefined' || !navigator.share || !navigator.canShare){
+        report('G', 'this browser has no share sheet for files', 'bad');
+        return;
+    }
+    const shared = new File([file.content], file.name, { type: 'text/plain' });
+    if (!navigator.canShare({ files: [shared] })){
+        report('G', 'this browser cannot share files', 'bad');
+        return;
+    }
+    report('G', `share sheet asked for ${file.name}; counts as your tap: ${gesture()}`);
+    try {
+        await navigator.share({ files: [shared] });
+        report('G', 'share sheet finished - the page cannot see where the file went; check in step 4', 'ok');
+    } catch (err) {
+        report('G', err.name === 'AbortError'
+            ? 'share sheet closed without saving'
+            : `share failed: ${err.name}: ${err.message}`, err.name === 'AbortError' ? '' : 'bad');
+    }
+}
+
+/** Step 4: a file read back from the phone, matched to the test that made it. */
+function checkFile (file, text){
+    const test = (text.match(/^test: ([A-Z])$/m) || [])[1];
+    const token = (text.match(/^token: ([0-9a-f]+)$/m) || [])[1];
+    const status = byId('verify_status');
+    if (!test || !token || !TESTS[test]){
+        status.textContent += `${file.name}: not a download-check file\n`;
+        return;
+    }
+    const known = issued[token];
+    const renamed = known && known.name !== file.name ? ` (saved as ${file.name}, asked for ${known.name})` : '';
+    status.textContent += `${file.name}: test ${test}${known ? '' : ', from an earlier visit'}\n`;
+    if (!known){
+        note(`[${test}] a file from an earlier visit is on the phone: ${file.name}`);
+        return;
+    }
+    report(test, `FOUND on the phone, ${file.size} bytes${renamed}`, 'ok');
+    byId(`t_${test}`).classList.add('verified');
+    const outcome = byId(`out_${test}`);
+    if (!outcome.value){
+        outcome.value = 'saved';
+    }
+    refreshReport();
+}
+
+function readBack (){
+    const files = Array.from(this.files || []);
+    files.forEach(function (file){
+        const reader = new FileReader();
+        reader.onload = () => checkFile(file, String(reader.result));
+        reader.onerror = () => note(`could not read ${file.name}: ${reader.error ? reader.error.message : 'unknown error'}`);
+        reader.readAsText(file);
+    });
+}
+
+/** What the browser says about itself. */
+function describeBrowser (){
+    const ua = navigator.userAgent || '';
+    const apple = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const os = ua.match(/OS (\d+)[_.](\d+)(?:[_.](\d+))? like Mac OS X/);
+    const safari = ua.match(/Version\/([\d.]+)/);
+    const apps = [
+        [/CriOS/, 'Chrome'], [/FxiOS/, 'Firefox'], [/EdgiOS/, 'Edge'], [/OPiOS|OPT\//, 'Opera'],
+        [/DuckDuckGo/, 'DuckDuckGo'], [/FBAN|FBAV|FB_IAB/, 'Facebook app'], [/Instagram/, 'Instagram app'],
+        [/GSA\//, 'Google app'], [/ Line\//, 'LINE app'], [/Snapchat/, 'Snapchat'], [/LinkedInApp/, 'LinkedIn app']
+    ];
+    const app = apps.find(([re]) => re.test(ua));
+    let browser = 'other';
+    if (app){
+        browser = app[1];
+    } else if (apple && navigator.standalone){
+        browser = 'Home Screen web app';
+    } else if (apple && !/Safari\//.test(ua)){
+        browser = "an app's built-in browser, not Safari";
+    } else if (/Safari\//.test(ua) && !/Chrome|Chromium|Android/.test(ua)){
+        browser = 'Safari, or a Safari view inside an app';
+    }
+
+    let share = 'no';
+    if (navigator.share){
+        share = 'text only';
+        try {
+            if (typeof File !== 'undefined' && navigator.canShare &&
+                navigator.canShare({ files: [new File(['x'], 'x.txt', { type: 'text/plain' })] })){
+                share = 'files too';
+            }
+        } catch (e) {
+            share = `text only (${e.name})`;
+        }
+    }
+
+    env.length = 0;
+    env.push(
+        ['Browser', browser],
+        ['iOS (as reported)', os ? os.slice(1).filter(Boolean).join('.') : (apple ? 'not in user agent' : 'not an iPhone')],
+        ['Safari version', safari ? safari[1] : 'not in user agent'],
+        ['Share sheet', share],
+        ['Tap tracking', navigator.userActivation ? 'yes' : 'no - tests cannot tell if a tap still counts'],
+        ['Secure page', String(window.isSecureContext)],
+        ['WebCrypto', crypto && crypto.subtle ? 'yes' : 'NO'],
+        ['WebAssembly', typeof WebAssembly === 'undefined' ? 'missing - Lockdown Mode?' : 'yes'],
+        ['Online', String(navigator.onLine)],
+        ['Screen', `${screen.width}x${screen.height} @${window.devicePixelRatio || 1}x`],
+        ['User agent', ua]
+    );
+}
+
+function showBrowser (){
+    const list = byId('env');
+    list.textContent = '';
+    env.forEach(function ([name, value]){
+        const dt = document.createElement('dt');
+        dt.textContent = name;
+        const dd = document.createElement('dd');
+        dd.textContent = value;
+        list.appendChild(dt);
+        list.appendChild(dd);
+    });
+}
+
+async function addStorage (){
+    if (!navigator.storage || !navigator.storage.estimate){
+        return;
+    }
+    try {
+        const { usage, quota } = await navigator.storage.estimate();
+        const mb = n => `${Math.round(n / 1048576)} MB`;
+        env.splice(env.length - 1, 0, ['Site storage', `${mb(usage || 0)} used of ${mb(quota || 0)}`]);
+        showBrowser();
+        refreshReport();
+    } catch (e) {
+        // Not worth a line: the report says enough without it.
+    }
+}
+
+function buildReport (){
+    const lines = [`Northern download check - ${new Date().toISOString()}`, ''];
+
+    lines.push('== Phone (from the visitor)');
+    document.querySelectorAll('.question').forEach(function (question){
+        lines.push(`${question.getAttribute('data-report')}: ${question.value || 'not checked'}`);
+    });
+
+    lines.push('', '== Browser (from the page)');
+    env.forEach(([name, value]) => lines.push(`${name}: ${value}`));
+    lines.push(`Leave-page warning: ${byId('warn').checked ? 'on' : 'off'}`);
+
+    lines.push('', '== Tests');
+    Object.keys(TESTS).forEach(function (test){
+        const outcome = OUTCOMES.find(([value]) => value === byId(`out_${test}`).value);
+        const found = byId(`t_${test}`).classList.contains('verified');
+        lines.push(`${test}. ${TESTS[test]}: ${outcome[1]}${found ? ' [file found on phone]' : ''}`);
+        (statusLines[test] || []).forEach(line => lines.push(`   ${line}`));
+    });
+
+    lines.push('', '== Event log');
+    return lines.concat(logLines).join('\n');
+}
+
+function refreshReport (){
+    byId('report').value = buildReport();
+}
+
+async function copyReport (){
+    refreshReport();
+    const text = byId('report').value;
+    const done = byId('report_status');
+    try {
+        await navigator.clipboard.writeText(text);
+        done.textContent = 'Copied.';
+    } catch (e) {
+        // Older Safari: copy from the selected textarea instead.
+        const area = byId('report');
+        area.focus();
+        area.select();
+        area.setSelectionRange(0, text.length);
+        done.textContent = document.execCommand && document.execCommand('copy')
+            ? 'Copied.'
+            : 'Could not copy - select the report below and copy it by hand.';
+    }
+}
+
+async function shareReport (){
+    refreshReport();
+    const done = byId('report_status');
+    if (!navigator.share){
+        done.textContent = 'This browser cannot share - use Copy report.';
+        return;
+    }
+    try {
+        await navigator.share({ title: 'Northern download check', text: byId('report').value });
+    } catch (err) {
+        if (err.name !== 'AbortError'){
+            done.textContent = `Could not share (${err.name}) - use Copy report.`;
+        }
+    }
+}
+
+// Each of these says something about a download: the "Download?" question
+// takes focus from the page, and a download that turns into a navigation hides it.
+['blur', 'focus', 'pagehide'].forEach(function (name){
+    window.addEventListener(name, () => note(`event: ${name}`));
+});
+window.addEventListener('pageshow', event => note(`event: pageshow${event.persisted ? ' (restored from back-forward cache)' : ''}`));
+document.addEventListener('visibilitychange', () => note(`event: visibilitychange -> ${document.visibilityState}`));
+
+// As Reg.html's warning, so the tests run under the same conditions.
+window.addEventListener('beforeunload', function (event){
+    note('event: beforeunload');
+    if (byId('warn').checked){
+        event.preventDefault();
+        event.returnValue = '';
+        return '';
+    }
+});
+
+window.addEventListener('error', event => note(`error: ${event.message || event.error}`));
+window.addEventListener('unhandledrejection', function (event){
+    const reason = event.reason;
+    note(`error: ${(reason && reason.message) || reason}`);
+});
+
+function init (){
+    document.querySelectorAll('select.outcome').forEach(function (select){
+        OUTCOMES.forEach(function ([value, label]){
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            select.appendChild(option);
+        });
+    });
+    document.querySelectorAll('.question, select.outcome, #warn').forEach(function (input){
+        input.addEventListener('change', refreshReport);
+    });
+
+    byId('run_A').addEventListener('click', runA);
+    byId('run_B').addEventListener('click', () => runEncrypted('B', true));
+    byId('run_C').addEventListener('click', () => runEncrypted('C', false));
+    byId('run_D').addEventListener('click', runD);
+    byId('run_E').addEventListener('click', () => linkTapped('E'));
+    byId('run_F').addEventListener('click', () => linkTapped('F'));
+    byId('run_G').addEventListener('click', runG);
+    byId('verify').addEventListener('change', readBack);
+    byId('copy_report').addEventListener('click', copyReport);
+    byId('share_report').addEventListener('click', shareReport);
+
+    arm('E');
+    arm('F');
+
+    describeBrowser();
+    showBrowser();
+    note('page loaded');
+    addStorage();
+}
+
+init();
+</script>
+</body>
+</html>

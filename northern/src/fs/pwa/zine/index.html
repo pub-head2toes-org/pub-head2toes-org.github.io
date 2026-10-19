@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#6b4423">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css?v=1">
+  <title>Zine</title>
+</head>
+<body class="view-lobby">
+  <!-- Lobby: who you are signed in as, the issue, and how many are in it -->
+  <main id="lobby_view">
+    <h1>Zine</h1>
+    <p class="subtitle">A gallery you walk through</p>
+
+    <div class="lobby-meta">
+      <div>Issue: <strong id="lobby_issue">-</strong></div>
+      <div>You: <strong id="lobby_player">-</strong></div>
+      <div>Here now: <strong id="lobby_count">-</strong></div>
+    </div>
+
+    <div class="field">
+      <button type="button" id="enter_btn">Join</button>
+    </div>
+
+    <p class="lobby-error" id="lobby_error" role="alert" hidden></p>
+  </main>
+
+  <!-- Main (gallery) view -->
+  <div id="game_view" class="hidden">
+    <canvas id="game_canvas"></canvas>
+
+    <div class="hud-tag"><span id="hud_issue">-</span> · <span id="hud_player">-</span></div>
+
+    <div id="zoom_controls">
+      <button type="button" id="zoom_in_btn" aria-label="Zoom in">+</button>
+      <button type="button" id="zoom_out_btn" aria-label="Zoom out">-</button>
+    </div>
+
+    <div id="minimap_wrap">
+      <canvas id="minimap_canvas" width="160" height="160"></canvas>
+    </div>
+
+    <div id="ability_bar" aria-label="Abilities">
+      <div class="ability-slot"></div>
+      <div class="ability-slot"></div>
+      <div class="ability-slot"></div>
+      <div class="ability-slot"></div>
+      <div class="ability-slot"></div>
+      <div class="ability-slot"></div>
+    </div>
+
+    <button type="button" id="booth_btn" aria-label="Toggle chat">&#9742;</button>
+
+    <div id="chat_overlay">
+      <textarea id="chat_board" readonly rows="6"></textarea>
+      <div class="row">
+        <input type="text" id="chat_input" placeholder="message">
+        <button type="button" id="chat_send_btn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Every script and the stylesheet carry ?v=<the version in sw.js's CACHE_NAME>:
+       a cache between here and the browser (Cloudflare keeps .js for 4 hours) can
+       then never hand this page the files of another version. Bump them all with it. -->
+  <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
+  <script src="../../reg/sjcl.js?v=1"></script>
+  <script src="../../reg/cookies.js?v=1"></script>
+  <script src="../../reg/oo.js?v=1"></script>
+  <script src="../../reg/idcard.js?v=1"></script>
+  <script src="../../reg/session.js?v=1"></script>
+
+  <script src="./zine.js?v=1"></script>
+</body>
+</html>

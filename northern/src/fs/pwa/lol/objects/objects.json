@@ -1,0 +1,22 @@
+{
+  "objects": [
+    { "id": "start-tree",     "src": "tree.png",     "x": 520,  "y": 4520 },
+    { "id": "start-blossom",  "src": "blossom.png",  "x": 700,  "y": 4430 },
+    { "id": "start-rock",     "src": "rock.png",     "x": 420,  "y": 4380, "type": "obstacle", "footprint": { "w": 120, "h": 45 } },
+    { "id": "start-tower",    "src": "tower.png",    "x": 860,  "y": 4600, "type": "obstacle", "footprint": { "w": 90,  "h": 40 } },
+    { "id": "start-building", "src": "building.png", "x": 1150, "y": 4720, "type": "obstacle", "footprint": { "w": 330, "h": 130 } },
+    { "id": "hotel-sign",     "src": "hotel-sign.png", "x": 1150, "y": 4450, "type": "cover" },
+    { "id": "lane-tree-1",    "src": "tree.png",     "x": 1000, "y": 4300 },
+    { "id": "lane-tree-2",    "src": "tree.png",     "x": 1150, "y": 4360, "w": 240, "h": 320 },
+    { "id": "lane-tower",     "src": "tower.png",    "x": 1300, "y": 4100, "type": "obstacle", "footprint": { "w": 90,  "h": 40 } },
+    { "id": "mid-tree",       "src": "tree.png",     "x": 2000, "y": 3700 },
+    { "id": "mid-building",   "src": "building.png", "x": 2300, "y": 3420, "type": "obstacle", "footprint": { "w": 330, "h": 130 } },
+    { "id": "mid-blossom",    "src": "blossom.png",  "x": 2500, "y": 3900 },
+    { "id": "west-rock",      "src": "rock.png",     "x": 1500, "y": 2700, "type": "obstacle", "footprint": { "w": 120, "h": 45 } },
+    { "id": "west-tower",     "src": "tower.png",    "x": 1200, "y": 2200, "type": "obstacle", "footprint": { "w": 90,  "h": 40 } },
+    { "id": "south-tree",     "src": "tree.png",     "x": 3000, "y": 4200 },
+    { "id": "east-tower",     "src": "tower.png",    "x": 4300, "y": 3700, "type": "obstacle", "footprint": { "w": 90,  "h": 40 } },
+    { "id": "north-rock",     "src": "rock.png",     "x": 3600, "y": 1500, "type": "obstacle", "footprint": { "w": 120, "h": 45 } },
+    { "id": "north-tree",     "src": "tree.png",     "x": 2500, "y": 1200 }
+  ]
+}

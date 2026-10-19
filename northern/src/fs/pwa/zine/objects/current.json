@@ -1,0 +1,34 @@
+{
+  "objects": [
+    { "id": "sign-exit",        "src": "sign-exit.png",        "x": 340,  "y": 4400, "type": "cover" },
+    { "id": "sign-small-works", "src": "sign-small-works.png", "x": 620,  "y": 4150, "type": "cover" },
+    { "id": "sign-large-works", "src": "sign-large-works.png", "x": 2250, "y": 3900, "type": "cover" },
+    { "id": "sign-more-works",  "src": "sign-more-works.png",  "x": 1350, "y": 2900, "type": "cover" },
+
+    { "id": "small-a1", "src": "frame-small-1.png", "x": 900,  "y": 3500, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-a2", "src": "frame-small-2.png", "x": 1350, "y": 3500, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-a3", "src": "frame-small-3.png", "x": 1800, "y": 3500, "type": "obstacle", "footprint": { "w": 170, "h": 220 } },
+    { "id": "small-a4", "src": "frame-small-3.png", "x": 900,  "y": 4000, "type": "obstacle", "footprint": { "w": 170, "h": 220 } },
+    { "id": "small-a5", "src": "frame-small-1.png", "x": 1350, "y": 4000, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-a6", "src": "frame-small-2.png", "x": 1800, "y": 4000, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-a7", "src": "frame-small-2.png", "x": 900,  "y": 4500, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-a8", "src": "frame-small-3.png", "x": 1350, "y": 4500, "type": "obstacle", "footprint": { "w": 170, "h": 220 } },
+    { "id": "small-a9", "src": "frame-small-1.png", "x": 1800, "y": 4500, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+
+    { "id": "small-b1", "src": "frame-small-1.png", "x": 700,  "y": 1300, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-b2", "src": "frame-small-3.png", "x": 1200, "y": 1300, "type": "obstacle", "footprint": { "w": 170, "h": 220 } },
+    { "id": "small-b3", "src": "frame-small-2.png", "x": 1700, "y": 1300, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-b4", "src": "frame-small-2.png", "x": 700,  "y": 1900, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-b5", "src": "frame-small-1.png", "x": 1200, "y": 1900, "type": "obstacle", "footprint": { "w": 220, "h": 170 } },
+    { "id": "small-b6", "src": "frame-small-3.png", "x": 1700, "y": 1900, "type": "obstacle", "footprint": { "w": 170, "h": 220 } },
+
+    { "id": "large-1", "src": "frame-large-1.png", "x": 2900, "y": 3150, "type": "obstacle", "footprint": { "w": 640, "h": 460 } },
+    { "id": "large-2", "src": "frame-large-2.png", "x": 3650, "y": 3150, "type": "obstacle", "footprint": { "w": 640, "h": 460 } },
+    { "id": "large-3", "src": "frame-large-3.png", "x": 4400, "y": 3330, "type": "obstacle", "footprint": { "w": 460, "h": 640 } },
+    { "id": "large-4", "src": "frame-large-3.png", "x": 2900, "y": 4630, "type": "obstacle", "footprint": { "w": 460, "h": 640 } },
+    { "id": "large-5", "src": "frame-large-1.png", "x": 3650, "y": 4450, "type": "obstacle", "footprint": { "w": 640, "h": 460 } },
+    { "id": "large-6", "src": "frame-large-2.png", "x": 4400, "y": 4450, "type": "obstacle", "footprint": { "w": 640, "h": 460 } },
+    { "id": "large-7", "src": "frame-large-2.png", "x": 3200, "y": 1600, "type": "obstacle", "footprint": { "w": 640, "h": 460 } },
+    { "id": "large-8", "src": "frame-large-3.png", "x": 4400, "y": 2100, "type": "obstacle", "footprint": { "w": 460, "h": 640 } }
+  ]
+}

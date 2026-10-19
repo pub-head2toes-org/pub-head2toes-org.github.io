@@ -228,3 +228,40 @@ DB-backed and Node-bot design from the original addendum below.
   beyond "regular intervals" — this is separate from the <500ms heartbeat,
   which governs idle broadcast, not retargeting frequency. Defaulting to
   something coarser (~1.5–2.5s), tunable.
+
+## Phase 3 addendum — map objects and Y-sorted layering
+
+Per `UPDATE_3.md`.
+
+20. **Objects come from the file system**: `objects/objects.json` (served
+    from `/fs/get/pwa/lol/objects/`), `{ "objects": [{ id, src, x, y, w?, h? }] }`.
+    `x`/`y` is the world point where the image touches the ground — the
+    bottom-center of the image; `src` is relative to the list file; `w`/`h`
+    default to the image's own size. Edit the file in place: `lol.js` fetches
+    it `no-cache` and `sw.js` serves it network-first.
+21. **An object's Z-index is its Y** (`z = y`): the list is sorted so objects
+    higher up the map are drawn first and lower ones over them.
+22. **An avatar's Z-index is the Y of its feet** (`y + AVATAR_RADIUS`),
+    recomputed every frame. Against each object it collides with (overlaps),
+    it is in front when its feet are at or below the object's base, behind
+    when above (`spriteLayer()`). Objects and avatars are drawn as one stack
+    ordered by z; names are drawn last, over everything, and the player's own
+    avatar gets a dashed outline while an object hides it.
+23. Sample images (`tree`, `blossom`, `rock`, `tower`) are placeholders,
+    several placed around the start area so they are visible on entry.
+24. **Obstacles** — `"type": "obstacle"` objects can only be walked around.
+    `"footprint": { w, h }` is the ground they take up, standing on the same
+    x/y (bottom-center); without one it is the image's full width and bottom
+    third. Every footprint grown by `AVATAR_RADIUS` is where an avatar's
+    center cannot go.
+25. **Routes, not straight lines.** `stepParticipant()` walks each local
+    participant (human or bot) along `routeFor(p)`: the shortest path to its
+    target via the corners of the grown footprints (`planPath()`, A* over a
+    visibility graph). It re-plans when the target changes - a click, or a
+    bot's `move()` - so `bots.js` still just sets a target. A target on an
+    obstacle becomes the nearest point beside it; with no way through, the
+    participant stays put. Remote players are shown where they report.
+26. **Covers** — `"type": "cover"` objects (e.g. the `HOTEL` sign on the
+    start building's roof) are drawn over every object and avatar, wherever
+    the avatar stands; only names go over them. A player overlapping one
+    counts as hidden (dashed outline). Covers never block movement.
