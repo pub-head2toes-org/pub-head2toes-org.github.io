@@ -5,15 +5,17 @@
  *
  * Apps that seal messages between users (Pals) need the private key long
  * after the ID Card was loaded - in a service worker, with no page open. It
- * is kept here, in IndexedDB, as a WebCrypto key that is:
+ * is kept here, in IndexedDB, as two WebCrypto keys, neither of them
+ * extractable - no script, this one included, can read them back out:
  *
- *   - not extractable: no script, this one included, can read it back out;
- *   - ECDH only (`deriveBits`): it cannot sign, so it cannot mint a Northern
- *     session cookie or register anything.
+ *   - `key`, ECDH only (`deriveBits`), which seals and opens messages;
+ *   - `signer`, ECDSA only (`sign`), which signs a new session cookie when
+ *     the old one has run out, so a returning visitor needs no ID Card
+ *     (Northern UPDATE_8). It signs nothing else.
  *
- * session.js files it whenever an ID Card is loaded or created on a page that
- * loads this script, and deletes it on forget(). IndexedDB belongs to one
- * origin, so the key is kept per host name (FEATURES J6).
+ * session.js files them whenever an ID Card is loaded or created on a page
+ * that loads this script, and deletes them on forget(). IndexedDB belongs to
+ * one origin, so the keys are kept per host name (FEATURES J6).
  *
  * Works in a page and in a service worker; does nothing where there is no
  * IndexedDB or WebCrypto.
@@ -86,15 +88,32 @@ const NorthernKeys = (function () {
         return { kty: 'EC', crv: 'P-256', x: b64u(point.subarray(0, 32)), y: b64u(point.subarray(32)), d: b64u(d) };
     };
 
-    /** Imports the key for ECDH only, not extractable, and files it under its public key. */
+    /** Imports the key for ECDH and for signing, neither extractable, and files them under its public key. */
     api.keep = function (pub, priv) {
-        return crypto.subtle.importKey('jwk', api.jwk(pub, priv), { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits'])
-            .then(key => run('readwrite', s => s.put({ key: key, at: Date.now() }, pub)));
+        return Promise.all([
+            crypto.subtle.importKey('jwk', api.jwk(pub, priv), { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']),
+            crypto.subtle.importKey('jwk', api.jwk(pub, priv), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'])
+        ]).then(keys => run('readwrite', s => s.put({ key: keys[0], signer: keys[1], at: Date.now() }, pub)));
     };
 
     /** The kept key for a public key, or null. */
     api.get = function (pub) {
         return run('readonly', s => s.get(pub)).then(record => record && record.key || null);
+    };
+
+    /**
+     * Signs text with the kept signing key, as SJCL would with the ID Card's:
+     * ECDSA P-256 over sha256(text), r then s, in base64. Null when nothing
+     * signing is kept for this public key - one kept before UPDATE_8 is not.
+     */
+    api.sign = function (pub, text) {
+        return run('readonly', s => s.get(pub)).then(function (record) {
+            if (!record || !record.signer) {
+                return null;
+            }
+            return crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, record.signer, new TextEncoder().encode(text))
+                .then(sig => btoa(String.fromCharCode.apply(null, new Uint8Array(sig))));
+        });
     };
 
     api.forget = function (pub) {

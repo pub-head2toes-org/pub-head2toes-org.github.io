@@ -1342,6 +1342,18 @@
         report('');
         layer('settings');
     });
+    // Logout (Northern UPDATE_8): this browser forgets who is signed in - the
+    // cookie, and the keys kept for sealing and for signing in again - and
+    // Reg.html offers to sign in, coming back here after. Messages wait on
+    // this device until the ID Card is loaded again.
+    $('logout').href = PalsModel.regUrl(window.location.pathname, window.location.search, '');
+    $('logout').addEventListener('click', function (event) {
+        event.preventDefault();
+        if (!window.confirm('Logout ' + me.name + '? Load your ID Card to sign in again.')) {
+            return;
+        }
+        session.forget().then(() => window.location.replace($('logout').href));
+    });
     $('group_messages').addEventListener('click', groupMessages);
     $('pal_add').addEventListener('click', addPal);
     $('pal_remove').addEventListener('click', removePal);

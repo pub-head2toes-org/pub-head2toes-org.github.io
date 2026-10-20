@@ -1,10 +1,16 @@
 <script type="text/javascript" src="cookies.js"></script>
+<script type="text/javascript" src="reg/keystore.js?v=2"></script>
 
 <link rel="stylesheet" media="screen" href="style.css">
 
 <script>
     try {
         var localStorage = window.localStorage;
+        // The keys reg/keystore.js kept for this identity go too: one of them
+        // signs a new session cookie, which is what logging out ends.
+        if (localStorage.pub && localStorage.pub !== "notloggedin" && typeof NorthernKeys !== "undefined" && NorthernKeys.available()) {
+            NorthernKeys.forget(localStorage.pub).catch(function (err) { console.log(err); });
+        }
         localStorage.pub = "notloggedin";
         // A private key is no longer kept in storage; clear any left by an older
         // version, along with the user name and the session cookie.

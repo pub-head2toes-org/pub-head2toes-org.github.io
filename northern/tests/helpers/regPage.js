@@ -10,7 +10,22 @@ const read = name => fs.readFileSync(path.join(REG_DIR, name), 'utf8');
 
 /** The functions a page may expose; each is optional, pages differ. */
 const EXPORTS = ['init', 'saveIdCard', 'saveToNamedFile', 'currentIdCard',
-    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels', 'savedByLink'];
+    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels', 'savedByLink', 'logout'];
+
+/**
+ * The host's WebCrypto, for a page in a vm. Node's importKey turns down a JWK
+ * made in another realm, as the page's are, so it gets a copy made here -
+ * everything else goes straight through, bound, as in a browser.
+ */
+const subtle = globalThis.crypto.subtle;
+const pageCrypto = {
+    getRandomValues: array => globalThis.crypto.getRandomValues(array),
+    subtle: new Proxy(subtle, {
+        get: (target, name) => name === 'importKey'
+            ? (format, key, ...rest) => target.importKey(format, format === 'jwk' ? JSON.parse(JSON.stringify(key)) : key, ...rest)
+            : typeof target[name] === 'function' ? target[name].bind(target) : target[name]
+    })
+};
 
 /** The inline <script> of a page, in order; <script src=...> tags carry no body. */
 function inlineScripts(html) {
@@ -30,8 +45,12 @@ function inlineScripts(html) {
  *
  * Everything the harness observes - stored values, the POSTed body, the
  * download - is exposed so tests can assert on the page's actual behaviour.
+ *
+ * With `indexedDB` (a fakeIndexedDB from palsPage.js) the real keystore.js
+ * runs too, as it does on Reg.html, and keeps its keys there; pass the same
+ * one to a second page for the same browser on a later visit.
  */
-export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: pageFile = 'reg/Reg.html' } = {}) {
+export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: pageFile = 'reg/Reg.html', indexedDB } = {}) {
     const elements = {};
     const listeners = {};
     const downloads = [];
@@ -100,9 +119,10 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
         document, FileReader, localStorage,
         location: { hash, href: '', replace(url) { this.href = url; } },
         addEventListener: (event, fn) => { windowListeners[event] = fn; },
-        crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa,
+        crypto: pageCrypto, TextEncoder, TextDecoder, atob, btoa,
         queueMicrotask, setTimeout, Headers: globalThis.Headers,
         console: { log() {} },
+        ...(indexedDB ? { indexedDB } : {}),
         fetch: async (url, options) => {
             requests.push({ url, method: options && options.method, body: options && options.body });
             return { status: 200 };
@@ -118,7 +138,8 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
     // Each file runs as its own script, exactly as the browser loads them: sjcl.js
     // opens with "use strict", and concatenating would leak that over the others.
     // Top level const/let still cross script boundaries, as they do on a page.
-    for (const name of ['sjcl.js', 'cookies.js', 'db.js', 'oo.js', 'idcard.js', 'session.js']) {
+    const scripts = ['sjcl.js', 'cookies.js', 'db.js', 'oo.js', 'idcard.js', ...(indexedDB ? ['keystore.js'] : []), 'session.js'];
+    for (const name of scripts) {
         vm.runInContext(read(name), context, { filename: name });
     }
     const html = fs.readFileSync(path.join(FS_DIR, pageFile), 'utf8');

@@ -107,6 +107,15 @@ section.intro.board h2 {
     min-height: 6.5em;              /* room for the longest, so the panels do not jump */
 }
 
+/* Logout, under the board: a quiet link rather than a button, since it is
+   not where most visitors are going. */
+.board .logout {
+    display: inline-block;
+    margin: 5px 10px 0;
+    color: #0f0;
+    font-size: 0.85em;
+}
+
 /* Sign in and Reg: an accordion of two panels, the heading is the toggle. */
 details.panel > summary {
     list-style: none;

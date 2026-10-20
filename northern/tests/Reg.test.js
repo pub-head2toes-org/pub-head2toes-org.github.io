@@ -5,6 +5,8 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadRegPage } from './helpers/regPage.js';
+import { fakeIndexedDB } from './helpers/palsPage.js';
+import Crypto from '../src/h2t/Crypto.js';
 
 const REG_DIR = path.join(import.meta.dirname, '..', 'src', 'fs', 'reg');
 const HTML = fs.readFileSync(path.join(REG_DIR, 'Reg.html'), 'utf8');
@@ -815,5 +817,126 @@ describe('Reg.html saving on a phone', () => {
 
     it('gives the fields 16px text, so Safari does not zoom in on them', () => {
         assert.match(CSS, /\ninput {[^}]*font-size: 16px/);
+    });
+});
+
+// UPDATE_8: the key kept in IndexedDB signs a new cookie when the old one has
+// run out, and whoever signed in here before can Logout.
+describe('Reg.html signing in again by itself', () => {
+    const DESTINATION = '/fs/get/pwa/pals/index.html';
+
+    /**
+     * A browser where alice loaded her ID Card once, and the cookie has since
+     * run out. Her key pair is a real one: WebCrypto checks that the halves
+     * match, which PUB and PRIV do not.
+     */
+    async function expired(options = {}) {
+        const indexedDB = fakeIndexedDB();
+        const first = loadRegPage({ indexedDB });
+        const { pub, priv } = first.session.draft();
+        await first.upload(JSON.stringify({ v: 2, username: 'alice', pub, priv }));
+        assert.strictEqual(await first.session.kept(), true, 'the keys are kept on loading the card');
+
+        const page = loadRegPage({ localStorage: first.localStorage, indexedDB, hash: `#${DESTINATION}`, ...options });
+        return { page, indexedDB, pub };
+    }
+
+    it('keeps a signing key beside the key-agreement one, neither extractable', async () => {
+        const { indexedDB, pub } = await expired();
+        const record = indexedDB.stores.keys.get(pub);
+
+        assert.strictEqual(record.key.algorithm.name, 'ECDH');
+        assert.deepStrictEqual([...record.key.usages], ['deriveBits']);
+        assert.strictEqual(record.signer.algorithm.name, 'ECDSA');
+        assert.deepStrictEqual([...record.signer.usages], ['sign']);
+        assert.strictEqual(record.key.extractable, false);
+        assert.strictEqual(record.signer.extractable, false);
+    });
+
+    it('signs a new session cookie and goes on to the destination', async () => {
+        const { page, pub } = await expired();
+        assert.strictEqual(page.cookie(), '', 'the cookie has run out');
+
+        await page.init();
+
+        assert.ok(page.cookie().startsWith(`ssid=${pub}.`), page.cookie());
+        assert.strictEqual(page.session.signedIn(), true);
+        assert.strictEqual(page.session.unlocked(), false, 'without the ID Card in the page');
+        assert.strictEqual(page.window.location.href, DESTINATION);
+    });
+
+    it('signs a cookie the server accepts as alice', async () => {
+        const { page, pub } = await expired();
+        await page.init();
+
+        const checked = new Crypto().verifySsid(page.cookie().slice('ssid='.length));
+        assert.strictEqual(checked.sValid, true);
+        assert.strictEqual(checked.pubB64, pub);
+    });
+
+    it('asks for the ID Card as before when nothing signing is kept here', async () => {
+        // A key kept before UPDATE_8 was for key agreement only.
+        const { page, indexedDB, pub } = await expired();
+        const record = indexedDB.stores.keys.get(pub);
+        indexedDB.stores.keys.set(pub, { key: record.key, at: record.at });
+
+        await page.init();
+
+        assert.strictEqual(page.cookie(), '');
+        assert.strictEqual(page.window.location.href, '');
+        assert.strictEqual(page.element('reg_section').hidden, true);
+        assert.match(page.element('msg').textContent, /Sign in again: load the ID Card for alice/);
+    });
+
+    it('does not sign in again once logged out', async () => {
+        const { page, indexedDB, pub } = await expired();
+        await page.logout();
+
+        assert.strictEqual(indexedDB.stores.keys.has(pub), false, 'the kept keys are gone');
+        const later = loadRegPage({ localStorage: { pub: 'notloggedin' }, indexedDB });
+        await later.init();
+        assert.ok(!later.cookie().startsWith(`ssid=${pub}.`));
+        assert.strictEqual(later.window.location.href, '');
+    });
+});
+
+describe('Reg.html Logout', () => {
+    it('is offered to whoever signed in here before, live session or not', async () => {
+        for (const options of [{ localStorage: known(), cookie: liveCookie() }, { localStorage: known() }, { localStorage: known({ priv: PRIV }) }]) {
+            const page = loadRegPage(options);
+            await page.init();
+
+            assert.strictEqual(page.element('logout').hidden, false, JSON.stringify(options));
+        }
+    });
+
+    it('is not offered to a brand new visitor, nor after signing out', async () => {
+        for (const options of [{}, { localStorage: { pub: 'notloggedin' } }]) {
+            const page = loadRegPage(options);
+            await page.init();
+
+            assert.strictEqual(page.element('logout').hidden, true, JSON.stringify(options));
+        }
+    });
+
+    it('forgets the identity, and starts over as on a first visit', async () => {
+        const page = loadRegPage({ localStorage: known({ pub_name: 'alice' }) });
+        await page.init();
+        assert.strictEqual(page.element('reg_section').hidden, true);
+
+        await page.logout();
+
+        assert.notStrictEqual(page.localStorage.pub, PUB);
+        assert.ok(!page.cookie().includes(PUB), 'the old cookie is gone');
+        assert.notStrictEqual(page.element('reg_section').hidden, true, 'Reg is back');
+        assert.strictEqual(page.element('logout').hidden, true);
+        assert.match(page.element('msg').textContent, /^Logged out alice\.\n\nNew ID keys generated/);
+        assert.strictEqual(page.warnsOnLeave(), true, 'the new identity is unsaved, as on any first visit');
+    });
+
+    it('is a link on the Info board, which says how to use it when the session expires', () => {
+        const board = HTML.slice(HTML.indexOf('class="intro board"'), HTML.indexOf('id="signin_panel"'));
+        assert.match(board, /<a id="logout"[^>]*hidden[^>]*>Logout<\/a>/);
+        assert.match(HTML, /To register as somebody new, Logout first\./);
     });
 });

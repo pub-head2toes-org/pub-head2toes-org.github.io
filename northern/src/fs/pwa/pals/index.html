@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=17">
+  <link rel="stylesheet" href="./styles.css?v=18">
   <title>Pals</title>
 </head>
 <body>
@@ -138,6 +138,8 @@
     <h2 id="settings_title">Settings</h2>
     <p>Signed in as <span id="user"></span></p>
     <p><a class="link" href="./welcome.html" id="setup_again">Set up this device again</a></p>
+    <!-- Signs this browser out of Northern, and Reg.html offers to sign in again. -->
+    <p><a class="link" href="/fs/get/reg/Reg.html" id="logout">Logout</a></p>
     <!-- Video calls, on this device: off until switched on. STUN and TURN come from Northern. -->
     <div class="ice">
       <label class="choice"><input type="checkbox" id="calls_on"> Video calls with my pals</label>
@@ -235,20 +237,20 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=17"></script>
-<script src="../../reg/cookies.js?v=17"></script>
-<script src="../../reg/oo.js?v=17"></script>
-<script src="../../reg/idcard.js?v=17"></script>
-<script src="../../reg/keystore.js?v=17"></script>
-<script src="../../reg/session.js?v=17"></script>
+<script src="../../reg/sjcl.js?v=18"></script>
+<script src="../../reg/cookies.js?v=18"></script>
+<script src="../../reg/oo.js?v=18"></script>
+<script src="../../reg/idcard.js?v=18"></script>
+<script src="../../reg/keystore.js?v=18"></script>
+<script src="../../reg/session.js?v=18"></script>
 
-<script src="./version.js?v=17"></script>
-<script src="./model.js?v=17"></script>
-<script src="./store.js?v=17"></script>
-<script src="./seal.js?v=17"></script>
-<script src="./views.js?v=17"></script>
-<script src="./calls.js?v=17"></script>
-<script src="./call.js?v=17"></script>
-<script src="./pals.js?v=17"></script>
+<script src="./version.js?v=18"></script>
+<script src="./model.js?v=18"></script>
+<script src="./store.js?v=18"></script>
+<script src="./seal.js?v=18"></script>
+<script src="./views.js?v=18"></script>
+<script src="./calls.js?v=18"></script>
+<script src="./call.js?v=18"></script>
+<script src="./pals.js?v=18"></script>
 </body>
 </html>

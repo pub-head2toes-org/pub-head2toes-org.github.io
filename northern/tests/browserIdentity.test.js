@@ -53,14 +53,16 @@ describe('the private key is never written to local storage', () => {
         assert.ok(!/store\(\)\[LEGACY_PRIV\]\s*=/.test(session.text), 'and is never written back to storage');
     });
 
-    it('keeps the key only as reg/keystore.js does: not extractable, and unable to sign', () => {
-        // A private key (a JWK with `d`) is imported in one place, for ECDH
-        // only, with extractable false - so no script can read it back out,
-        // and it cannot mint a cookie (FEATURES J6).
+    it('keeps the key only as reg/keystore.js does: not extractable, for key agreement and cookies', () => {
+        // A private key (a JWK with `d`) is imported in one place, twice: for
+        // ECDH only, and for ECDSA signing only (UPDATE_8), with extractable
+        // false - so no script can read it back out (FEATURES J6).
         const importers = sources.filter(s => /importKey\(\s*'jwk'/.test(s.text)).map(s => s.file);
         assert.deepStrictEqual(importers.filter(f => !f.includes(path.join('pwa', 'pals', 'example'))), [path.join('reg', 'keystore.js')]);
         const keystore = sources.find(s => s.file === path.join('reg', 'keystore.js')).text;
         assert.match(keystore, /importKey\('jwk', api\.jwk\(pub, priv\), \{ name: 'ECDH', namedCurve: 'P-256' \}, false, \['deriveBits'\]\)/);
+        assert.match(keystore, /importKey\('jwk', api\.jwk\(pub, priv\), \{ name: 'ECDSA', namedCurve: 'P-256' \}, false, \['sign'\]\)/);
+        assert.strictEqual(keystore.match(/importKey\(/g).length, 2, 'and in no other way');
         assert.ok(!/exportKey|wrapKey/.test(keystore), 'and never exports or wraps it');
     });
 
@@ -79,7 +81,7 @@ describe('the private key is never written to local storage', () => {
 
 // session.js depends on sjcl, cookies and idcard being loaded before it.
 describe('pages load the identity scripts they depend on', () => {
-    const pages = sources.filter(s => s.file.endsWith('.html') && /src=["'][^"']*session\.js["']/.test(s.text));
+    const pages = sources.filter(s => s.file.endsWith('.html') && /src=["'][^"']*session\.js(\?[^"']*)?["']/.test(s.text));
 
     it('at least the registration and sign-in pages use it', () => {
         assert.ok(pages.length >= 4, `expected several pages, found ${pages.map(p => p.file).join(', ')}`);
@@ -100,7 +102,8 @@ describe('pages load the identity scripts they depend on', () => {
     it('every script src on those pages resolves to a file that exists', () => {
         for (const page of pages) {
             const dir = path.dirname(path.join(FS_ROOT, page.file));
-            for (const [, src] of page.text.matchAll(/<script[^>]*src=["']([^"']+)["']/g)) {
+            // A ?v= is for the caches on the way (Cloudflare keeps .js for hours), not part of the file name.
+            for (const [, src] of page.text.matchAll(/<script[^>]*src=["']([^"'?]+)[^"']*["']/g)) {
                 const resolved = src.startsWith('/')
                     ? path.join(FS_ROOT, src.replace('/fs/get/', ''))
                     : path.join(dir, src);

@@ -788,7 +788,7 @@ describe('Pals shell', () => {
         assert.ok(!/dlg_compose|compose_to|New message<\/h2>/.test(index), 'no New message overlay, and no To list');
         assert.ok(!messages.includes('>+</button>'));
         for (const id of ['members', 'member_add', 'member_remove', 'group_messages']) assert.ok(layer('members').includes(`id="${id}"`), id);
-        for (const id of ['user', 'setup_again', 'version']) assert.ok(layer('settings').includes(`id="${id}"`), id);
+        for (const id of ['user', 'setup_again', 'logout', 'version']) assert.ok(layer('settings').includes(`id="${id}"`), id);
         for (const id of ['pal_add', 'pal_remove', 'group_add', 'group_remove', 'pal_pick', 'message_retry', 'message_answer', 'message_answer_body']) {
             assert.ok(index.includes(`id="${id}"`), id);
         }
@@ -1185,6 +1185,34 @@ describe('Pals page', () => {
         assert.deepStrictEqual(page.rows('pals'), []);
         assert.ok(page.html('pals').includes('Nobody yet'));
         assert.deepStrictEqual(page.worker.registered, ['./sw.js']);
+    });
+
+    // Northern UPDATE_8: Logout, in the settings.
+    it('logs out from the settings: forgets who is signed in, and goes to Reg.html to sign in again', async () => {
+        const page = await open();
+        const reg = `/fs/get/reg/Reg.html#${PAGE}`;
+        assert.strictEqual(page.element('logout').href, reg);
+
+        let prevented = false;
+        page.element('logout').listeners.click({ preventDefault() { prevented = true; } });
+        await page.settle();
+
+        assert.ok(prevented, 'the page leaves once the keys are gone, not before');
+        assert.match(page.confirms[0], /^Logout alice\?/);
+        assert.strictEqual(page.location.replaced, reg);
+        assert.strictEqual(page.store.pub, 'notloggedin');
+        assert.ok(!page.document.cookie.includes(alice.pub), 'the session cookie is gone');
+        assert.strictEqual(page.indexedDB.stores.keys.has(alice.pub), false, 'and so are the kept keys');
+    });
+
+    it('stays signed in when Logout is not confirmed', async () => {
+        const page = await open({ confirm: false });
+        page.element('logout').listeners.click({ preventDefault() {} });
+        await page.settle();
+
+        assert.strictEqual(page.location.replaced, null);
+        assert.strictEqual(page.store.pub, alice.pub);
+        assert.strictEqual(page.indexedDB.stores.keys.has(alice.pub), true);
     });
 
     it('offers to add everybody in /pals/ but the user, and only rows the key wrote itself', async () => {

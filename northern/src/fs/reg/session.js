@@ -9,7 +9,8 @@
  * first - that is what "Load Id Card" is for.
  *
  * The session cookie it mints lasts a day, so the key is only needed when a
- * new one is due, not on every visit.
+ * new one is due, not on every visit - and on pages that load reg/keystore.js
+ * not even then: `renew` signs it with the copy kept in IndexedDB.
  *
  * Depends on sjcl.js, cookies.js and idcard.js.
  */
@@ -27,10 +28,10 @@ const session = (function () {
     // The private key, never written to storage.
     let held = null;
 
-    // The key-agreement copy kept by reg/keystore.js, on pages that load it:
-    // not extractable, and unable to sign (FEATURES J6). `kept()` resolves
-    // once the latest copy is in IndexedDB, so a page can wait for it before
-    // navigating away.
+    // The copies kept by reg/keystore.js, on pages that load it: not
+    // extractable, one for key agreement and one that signs session cookies
+    // (FEATURES J6). `kept()` resolves once the latest copy is in IndexedDB,
+    // so a page can wait for it before navigating away.
     let keeping = Promise.resolve(false);
     const keep = function (pub, priv) {
         if (typeof NorthernKeys === 'undefined' || !NorthernKeys.available()) {
@@ -47,6 +48,16 @@ const session = (function () {
     const secretKeyFrom = privB64 => new sjcl.ecc.ecdsa.secretKey(
         sjcl.ecc.curves.c256,
         sjcl.ecc.curves.c256.field.fromBits(sjcl.codec.base64.toBits(privB64)));
+
+    // Whether sig is the public key's signature over msg, as the server checks it.
+    const verifies = function (pubB64, msg, sig) {
+        try {
+            return new sjcl.ecc.ecdsa.publicKey(sjcl.ecc.curves.c256, sjcl.codec.base64.toBits(pubB64))
+                .verify(sjcl.hash.sha256.hash(msg), sjcl.codec.base64.toBits(sig));
+        } catch (e) {
+            return false;   // sjcl throws on a bad signature
+        }
+    };
 
     const api = {};
 
@@ -155,21 +166,52 @@ const session = (function () {
         return value;
     };
 
-    /** Forgets everything: the key in memory, the stored identity, the cookie. */
+    /**
+     * Signs a new session cookie with the key kept in IndexedDB, for a browser
+     * that knows who it is but whose cookie has run out - no ID Card needed.
+     * Resolves the cookie, or '' when nothing signing is kept here (a page
+     * without keystore.js, a key kept before UPDATE_8, a browser signed out).
+     */
+    api.renew = function () {
+        const pub = api.pub();
+        if (!pub || typeof NorthernKeys === 'undefined' || !NorthernKeys.available() || !NorthernKeys.sign) {
+            return Promise.resolve('');
+        }
+        const ssId = pub + '.' + new Date().getTime();
+        return NorthernKeys.sign(pub, ssId).then(function (sig) {
+            // A cookie the server would turn down is no better than none.
+            if (!sig || !verifies(pub, ssId, sig)) {
+                return '';
+            }
+            const value = ssId + '.' + sig;
+            setCookie(COOKIE, value, DAYS);
+            return value;
+        }, function (e) {
+            console.log('the session could not be renewed', e);
+            return '';
+        });
+    };
+
     /** Resolves true once the key-agreement copy is kept, false if it could not be. */
     api.kept = function () {
         return keeping;
     };
 
+    /**
+     * Forgets everything: the key in memory, the stored identity, the cookie,
+     * and the keys kept in IndexedDB. Resolves once those are gone too.
+     */
     api.forget = function () {
+        let forgetting = Promise.resolve();
         if (api.pub() && typeof NorthernKeys !== 'undefined' && NorthernKeys.available()) {
-            NorthernKeys.forget(api.pub()).catch(() => {});
+            forgetting = NorthernKeys.forget(api.pub()).catch(() => {});
         }
         held = null;
         store()[PUB] = LOGGED_OUT;
         delete store()[NAME];
         delete store()[LEGACY_PRIV];
         setCookie(COOKIE, '', -1);
+        return forgetting;
     };
 
     /**

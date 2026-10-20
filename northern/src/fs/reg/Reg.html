@@ -9,9 +9,9 @@
     <script type="text/javascript" src="db.js?v=2"></script>
     <script type="text/javascript" src="oo.js"></script>
     <script type="text/javascript" src="idcard.js"></script>
-    <script type="text/javascript" src="keystore.js"></script>
-    <script type="text/javascript" src="session.js"></script>
-    <link rel="stylesheet" media="screen" href="style.css?v=2">
+    <script type="text/javascript" src="keystore.js?v=2"></script>
+    <script type="text/javascript" src="session.js?v=2"></script>
+    <link rel="stylesheet" media="screen" href="style.css?v=3">
 </head>
 
 
@@ -27,6 +27,8 @@
     <section class="intro board">
         <h2>Info</h2>
         <div id="msg" class="info" role="status" aria-live="polite"></div>
+        <!-- Shown to whoever signed in here before: the way to become somebody else. -->
+        <a id="logout" class="logout" href="#" hidden onclick="logout(); return false;">Logout</a>
     </section>
 
     <!-- Sign in and Reg are an accordion: both start closed, and opening one
@@ -179,6 +181,10 @@ async function init() {
 
     currentDraft();
 
+    // Before a brand new visitor is given an identity below, which would make
+    // them known too.
+    document.getElementById("logout").hidden = !session.known();
+
     // A key left in storage by an older version was taken into memory and
     // scrubbed when session.js loaded; the cookie can be refreshed right away.
     if (session.unlocked()){
@@ -193,15 +199,25 @@ async function init() {
 Open Sign in to continue, or to load your ID Card if you want to save a fresh copy.
 The ID Card under Reg is a new identity - saving it replaces this one.`);
 
+    } else if (session.known() && await session.renew()){
+
+      // Somebody signed in here before, and the cookie has run out: the key
+      // kept in IndexedDB when their ID Card was loaded signs a new one, and
+      // they go on to where they were going (UPDATE_8). Replaced, so Back
+      // does not land on this page again.
+      say(`Signed in again as ${whoAmI()}.`);
+      window.location.replace(getNextURL());
+      return;
+
     } else if (session.known()){
 
-      // Somebody signed in here before, and the cookie has run out. Offering
+      // The cookie has run out and nothing signing is kept here. Offering
       // Reg as well made new users of people who only had to sign in again,
       // so Sign in is all there is (UPDATE_4 of Pals).
       hideReg();
       say(`Your session has expired.
 Sign in again: load the ID Card for ${session.userName() || session.pub()}.
-To register as somebody new, sign out first.`);
+To register as somebody new, Logout first.`);
 
     } else {
 
@@ -299,6 +315,25 @@ function showContinue (){
     button.href = getNextURL();
     button.textContent = `Continue as ${whoAmI()}`;
   }
+}
+
+/**
+ * Logout: this browser forgets who it is - the session cookie, the stored
+ * public key and user name, and the keys kept in IndexedDB - and the page
+ * starts over as for a first visit. The ID Card file still opens.
+ */
+async function logout (){
+  const who = whoAmI();
+  try {
+    await session.forget();
+  } catch (err) {
+    console.log(err);
+  }
+  draft = null;
+  document.getElementById("reg_section").hidden = false;
+  await init();
+  const msg = document.getElementById("msg");
+  msg.textContent = `Logged out ${who}.\n\n${msg.textContent}`;
 }
 
 // Leaves Sign in as the only way on, opened ready for the ID Card.
