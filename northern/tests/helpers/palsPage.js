@@ -21,16 +21,16 @@ export const PAGE = '/fs/get/pwa/pals/index.html';
  * evaluated in a context rather than imported - as the other PWA helpers do.
  */
 export function loadPals() {
-    const context = { console, crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa };
+    const context = { console, crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa, Blob };
     context.globalThis = context;
     vm.createContext(context);
-    for (const file of ['model.js', 'views.js', 'seal.js', 'calls.js', 'call.js']) {
+    for (const file of ['model.js', 'views.js', 'seal.js', 'backup.js', 'calls.js', 'call.js']) {
         vm.runInContext(read(file), context, { filename: file });
     }
     vm.runInContext(readReg('keystore.js'), context, { filename: 'keystore.js' });
     const of = name => vm.runInContext(name, context);
     return { Model: of('PalsModel'), Views: of('PalsViews'), Seal: of('PalsSeal'), Keys: of('NorthernKeys'),
-             Calls: of('PalsCalls'), Call: of('PalsCall') };
+             Calls: of('PalsCalls'), Call: of('PalsCall'), Backup: of('PalsBackup') };
 }
 
 /** A Northern identity's private key as reg/keystore.js keeps it: non-extractable, ECDH only. */
@@ -191,6 +191,8 @@ function stubElements(ids) {
                 addEventListener(event, fn) { this.listeners[event] = fn; },
                 querySelector: () => form,
                 showModal() { this.open = true; },
+                clicks: 0,
+                click() { this.clicks += 1; },
                 close() { this.open = false; },
                 focus() {}, select() {}
             };
@@ -264,7 +266,7 @@ function location(pathname, replaced) {
 
 /**
  * Runs the real page scripts - the Northern identity ones, then version.js,
- * model.js, store.js, views.js and pals.js - with just enough of a browser around them.
+ * model.js, store.js, seal.js, backup.js, views.js and pals.js - with just enough of a browser around them.
  *
  * The DOM is a table of elements by id that remember what was written to them
  * and which listeners were attached; a list's content stays the HTML text the
@@ -340,7 +342,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     if (net) {
         sandbox.RTCPeerConnection = net.RTCPeerConnection;
     }
-    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'views.js', 'calls.js', 'call.js', 'pals.js']);
+    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'backup.js', 'views.js', 'calls.js', 'call.js', 'pals.js']);
 
     const stored = () => {
         const state = indexedDB.stores.state && indexedDB.stores.state.get(pub);

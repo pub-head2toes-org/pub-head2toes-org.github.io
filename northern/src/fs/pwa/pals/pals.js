@@ -670,6 +670,8 @@
     }
 
     let fetching = null;
+    // A restore putting photos and videos back (UPDATE_9): nothing is fetched until it is done.
+    let restoring = null;
 
     /**
      * Fetches the photos and videos that came with messages, opens each with
@@ -679,8 +681,8 @@
      * longer has, or that will not open, is given up.
      */
     function fetchAttachments() {
-        if (fetching) {
-            return fetching;
+        if (fetching || restoring) {
+            return fetching || restoring;
         }
         const waiting = PalsModel.unfetched(state);
         if (!waiting.length) {
@@ -1320,6 +1322,132 @@
             });
     }
 
+    // ---- backup and restore, in Settings (UPDATE_9) ---------------------
+
+    // The backup last made, as an object URL, until the next one is.
+    let backupUrl = null;
+    let busy = false;
+
+    function backupSays(text) {
+        $('backup_report').textContent = text || '';
+    }
+
+    function working(on) {
+        busy = on;
+        $('backup').disabled = on;
+        $('restore').disabled = on;
+    }
+
+    /**
+     * Backup: the pals, the groups, every message, and the photos and videos
+     * kept here, sealed with the ID Card's key into one file (backup.js). It
+     * is offered as a link the user taps to save it: iPhone asks before it
+     * saves a file, and drops a download the page starts on its own.
+     */
+    function backup() {
+        if (busy) {
+            return Promise.resolve();
+        }
+        if (!ownKey) {
+            backupSays('Load your ID Card on this device first - the backup is sealed with its key.');
+            return Promise.resolve();
+        }
+        working(true);
+        $('backup_save').hidden = true;
+        backupSays('Making the backup…');
+        const at = Date.now();
+        const counts = { pals: state.pals.length, groups: state.groups.length, messages: state.messages.length };
+        return PalsBackup.make(ownKey, me, state, m => PalsStore.get('files', PalsModel.fileKey(me, m)).catch(() => null), at)
+            .then(function (made) {
+                if (backupUrl) {
+                    URL.revokeObjectURL(backupUrl);
+                }
+                backupUrl = URL.createObjectURL(made.blob);
+                const name = PalsBackup.fileName(me.name, at);
+                const link = $('backup_save');
+                link.href = backupUrl;
+                link.download = name;
+                link.textContent = 'Save ' + name + ', ' + PalsViews.size(made.blob.size);
+                link.hidden = false;
+                counts.files = made.files;
+                backupSays('The backup holds ' + PalsViews.counted(counts) +
+                    '. It opens only with your ID Card: keep it somewhere safe.');
+            }, e => backupSays('The backup could not be made: ' + e.message))
+            .then(() => working(false));
+    }
+
+    /** Restore: picks the file first. */
+    function restore() {
+        if (busy) {
+            return;
+        }
+        if (!ownKey) {
+            backupSays('Load your ID Card on this device first - a backup opens only with its key.');
+            return;
+        }
+        $('restore_file').value = '';
+        $('restore_file').click();
+    }
+
+    /**
+     * Adds what a backup holds to what is here (PalsModel.restore), then puts
+     * back the photos and videos, one at a time, under the messages they go
+     * with now. Nothing is fetched from Northern meanwhile; after, whatever
+     * did not come back from the backup is asked for there.
+     */
+    function restoreFrom() {
+        const files = $('restore_file').files;
+        const picked = files && files.length ? files[0] : null;
+        if (!picked || busy) {
+            return Promise.resolve();
+        }
+        if (!window.confirm('Restore from ' + picked.name + '? What is in it is added to what is here; nothing here is removed.')) {
+            $('restore_file').value = '';
+            return Promise.resolve();
+        }
+        working(true);
+        backupSays('Opening the backup…');
+        let added = null;
+        let restored = 0;
+        let failed = '';
+        restoring = PalsBackup.read(ownKey, me, picked)
+            .then(function (backup) {
+                added = PalsModel.restore(state, backup.state, me);
+                save();
+                render();
+                return backup.files.reduce((done, f, i) => done.then(function () {
+                    const m = PalsModel.message(state, added.ids[f.id]);
+                    if (!m || !m.attachment) {
+                        return;
+                    }
+                    backupSays('Putting back photos and videos: ' + (i + 1) + ' of ' + backup.files.length + '…');
+                    const where = PalsModel.fileKey(me, m);
+                    return PalsStore.get('files', where)
+                        .then(have => !have && backup.file(i)
+                            .then(bytes => PalsStore.put('files', where, { name: f.name, type: f.type, bytes: bytes.buffer }))
+                            .then(() => { restored += 1; }))
+                        .then(function () {
+                            Object.assign(m.attachment, m.out ? {} : { saved: true, lost: false, error: '' });
+                        }, function (e) {
+                            failed = e.message || 'it could not be read';
+                        });
+                }), Promise.resolve());
+            })
+            .then(function () {
+                save();
+                render();
+                backupSays('Restored: ' + PalsViews.counted({ pals: added.pals, groups: added.groups, messages: added.messages, files: restored }) +
+                    ' added.' + (failed ? ' Some photos and videos could not be put back: ' + failed + '.' : ''));
+            }, e => backupSays('The backup could not be restored: ' + e.message))
+            .then(function () {
+                $('restore_file').value = '';
+                working(false);
+                restoring = null;
+                return fetchAttachments();
+            });
+        return restoring;
+    }
+
     // ---- start ---------------------------------------------------------
 
     $('user').innerHTML = PalsViews.pill(me.name, me.pub);
@@ -1381,6 +1509,9 @@
         }
     });
     $('calls_on').addEventListener('change', switchCalls);
+    $('backup').addEventListener('click', backup);
+    $('restore').addEventListener('click', restore);
+    $('restore_file').addEventListener('change', restoreFrom);
 
     /** The device stopped getting pushes since it was set up: the browser dropped or replaced the subscription. */
     function checkSubscription(setup) {

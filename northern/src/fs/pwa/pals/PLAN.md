@@ -645,6 +645,36 @@ the TURN spike and the step-by-step of a call. What it is in Pals:
   (`PalsCall`: WebRTC), the wiring in `pals.js`. Tests:
   `tests/palsCalls.test.js`.
 
+## UPDATE_9.md — Backup and Restore (version 19)
+
+- **Backup** and **Restore** in Settings. Backup makes one file of the pals,
+  the groups, every message, and the photos and videos kept on this device;
+  Restore adds one back.
+- **Sealed as the messages were.** Pals keeps messages opened, so the file is
+  sealed with the ID Card's key, the way a message is (`seal.js`): HKDF over
+  ECDH - here of the key with its own public key - and AES-256-GCM. It opens
+  only where that ID Card is loaded, on this device or another; to anybody
+  else, and to wherever the file is kept, it shows nothing but its size.
+- **The file** (`backup.js`): `Pals backup\n`, a version byte and a salt, then
+  records, each sealed apart with its place in the file: the index first
+  (the state, and which photo goes with which message), then one record per
+  photo or video. Files are sealed one at a time, and a restore reads the
+  file one slice at a time, never whole. A
+  file cut short, changed, made with another ID Card or from a newer Pals is
+  refused before anything is restored, and says why.
+- **Saving it**: once made, the backup is a link - *Save
+  pals-backup-alice-2026-10-19.pals, 3.2 MB* - which the user taps. iPhone
+  asks before it saves a file, and drops a download a page starts on its own.
+- **Restore adds; it never removes** (`PalsModel.restore`). Pals, groups and
+  messages not here are added, each once - a message is known by its wire id
+  and which way it went - so restoring twice is restoring once, and a device
+  in use loses nothing. A name given here stays; a key verified in the backup
+  stays verified. A message still being sent when the backup was made is not
+  sent now: it says so, and *Send again* sends it. Photos and videos go back
+  under the messages they belong to; Northern is asked for none meanwhile, and
+  afterwards only for those the backup did not have.
+- `PALS_VERSION` is 19.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**

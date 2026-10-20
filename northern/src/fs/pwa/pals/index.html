@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=18">
+  <link rel="stylesheet" href="./styles.css?v=19">
   <title>Pals</title>
 </head>
 <body>
@@ -145,6 +145,18 @@
       <label class="choice"><input type="checkbox" id="calls_on"> Video calls with my pals</label>
       <p class="status" id="calls_report" role="status"></p>
     </div>
+    <!-- Backup and Restore (UPDATE_9): pals, groups, messages, and the photos and
+         videos kept here, in one file sealed with the ID Card's key. -->
+    <div class="backup">
+      <div class="buttons">
+        <button type="button" id="backup">Backup</button>
+        <button type="button" id="restore">Restore</button>
+      </div>
+      <input type="file" class="picker" id="restore_file" tabindex="-1" aria-hidden="true">
+      <p class="status" id="backup_report" role="status"></p>
+      <!-- A link to tap, not a download started for the user: iPhone asks first. -->
+      <a class="link" id="backup_save" hidden></a>
+    </div>
     <!-- The version of the app: the one its service worker's cache is named after. -->
     <p class="version">Pals <span id="version"></span></p>
     <div class="buttons">
@@ -237,20 +249,21 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=18"></script>
-<script src="../../reg/cookies.js?v=18"></script>
-<script src="../../reg/oo.js?v=18"></script>
-<script src="../../reg/idcard.js?v=18"></script>
-<script src="../../reg/keystore.js?v=18"></script>
-<script src="../../reg/session.js?v=18"></script>
+<script src="../../reg/sjcl.js?v=19"></script>
+<script src="../../reg/cookies.js?v=19"></script>
+<script src="../../reg/oo.js?v=19"></script>
+<script src="../../reg/idcard.js?v=19"></script>
+<script src="../../reg/keystore.js?v=19"></script>
+<script src="../../reg/session.js?v=19"></script>
 
-<script src="./version.js?v=18"></script>
-<script src="./model.js?v=18"></script>
-<script src="./store.js?v=18"></script>
-<script src="./seal.js?v=18"></script>
-<script src="./views.js?v=18"></script>
-<script src="./calls.js?v=18"></script>
-<script src="./call.js?v=18"></script>
-<script src="./pals.js?v=18"></script>
+<script src="./version.js?v=19"></script>
+<script src="./model.js?v=19"></script>
+<script src="./store.js?v=19"></script>
+<script src="./seal.js?v=19"></script>
+<script src="./backup.js?v=19"></script>
+<script src="./views.js?v=19"></script>
+<script src="./calls.js?v=19"></script>
+<script src="./call.js?v=19"></script>
+<script src="./pals.js?v=19"></script>
 </body>
 </html>

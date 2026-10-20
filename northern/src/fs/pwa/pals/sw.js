@@ -13,6 +13,7 @@ const urlsToCache = [
   './model.js',
   './store.js',
   './seal.js',
+  './backup.js',
   './views.js',
   './calls.js',
   './call.js',

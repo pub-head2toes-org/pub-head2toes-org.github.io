@@ -13,7 +13,7 @@ import sjclClass from '../src/h2t/sjclClass.js';
 import Crypto from '../src/h2t/Crypto.js';
 import { generateKeys, readKeys, sendProof, MAX_PAYLOAD } from '../src/h2t/PushApi.js';
 
-const { Model, Views, Seal, Keys } = loadPals();
+const { Model, Views, Seal, Keys, Backup } = loadPals();
 const sjcl = new sjclClass().get();
 
 /** A Northern identity exactly as reg/session.js drafts one, with a live cookie. */
@@ -755,6 +755,128 @@ describe('Pals attachments - model, seal and views', () => {
     });
 });
 
+// UPDATE_9: Backup and Restore.
+describe('Pals backup - seal, file and model', () => {
+    // alice's Pals: bob, a group, a message each way - one with a photo - and one still going out.
+    const filled = () => {
+        const state = Model.empty();
+        Model.addPal(state, bob.pub, 'bob', me);
+        Model.addPal(state, carol.pub, 'carol', me);
+        Model.verify(state, bob.pub, true);
+        Model.addGroup(state, 'Family');
+        Model.addMember(state, 'Family', bob.pub);
+        const out = Model.compose(state, me, { kind: 'pal', id: bob.pub }, 'see you at 8', 10, 'out1');
+        Model.delivered(state, out.id, bob.pub, 'sent');
+        Model.compose(state, me, { kind: 'group', id: 'Family' }, 'on its way', 20, 'out2');
+        const got = Model.receive(state, me, envelope(bob, 'a photo', { id: 'in1', ts: 30,
+            att: { id: 'F'.repeat(43), key: 'K'.repeat(43), type: 'image/png', name: 'cat.png', size: 4 } }));
+        got.attachment.saved = true;
+        Model.receive(state, me, envelope(dave, 'who is this?', { id: 'in2', ts: 40 }), 'dave');
+        return state;
+    };
+    const photo = Uint8Array.of(1, 2, 3, 4);
+    const fileOf = m => Promise.resolve(m.attachment.name === 'cat.png' ? { name: 'cat.png', type: 'image/png', bytes: photo.buffer } : undefined);
+    const bytesOf = async blob => new Uint8Array(await blob.arrayBuffer());
+
+    it('seals a backup with the ID Card\'s own key: that card opens it, and every record only in its place', async () => {
+        const salt = nodeCrypto.randomBytes(16);
+        const key = await Seal.backupKey(keys.alice, alice.pub, salt);
+        const sealed = await Seal.sealRecord(key, 3, new TextEncoder().encode('hello'));
+
+        assert.strictEqual(new TextDecoder().decode(await Seal.openRecord(await Seal.backupKey(keys.alice, alice.pub, salt), 3, sealed)), 'hello');
+        await assert.rejects(Seal.openRecord(key, 4, sealed), 'not in another place');
+        await assert.rejects(Seal.openRecord(await Seal.backupKey(keys.alice, alice.pub, nodeCrypto.randomBytes(16)), 3, sealed), 'not with another salt');
+        await assert.rejects(Seal.openRecord(await Seal.backupKey(keys.bob, bob.pub, salt), 3, sealed), 'not with another ID Card');
+        // bob, knowing only alice's public key, makes the same key as with a message to her - not hers to herself.
+        await assert.rejects(Seal.openRecord(await Seal.backupKey(keys.bob, alice.pub, salt), 3, sealed));
+    });
+
+    it('keeps pals, groups, messages and photos in one file that shows none of it, and reads them back', async () => {
+        const state = filled();
+        const made = await Backup.make(keys.alice, me, state, fileOf, Date.UTC(2026, 9, 19, 12));
+        assert.strictEqual(made.files, 1);
+        const raw = Buffer.from(await bytesOf(made.blob));
+        assert.strictEqual(raw.subarray(0, 12).toString(), 'Pals backup\n');
+        for (const clear of ['see you at 8', 'a photo', 'Family', 'cat.png', 'bob', alice.pub, Buffer.from(photo)]) {
+            assert.strictEqual(raw.indexOf(clear), -1, `${clear} is not in the clear`);
+        }
+
+        const read = await Backup.read(keys.alice, me, made.blob);
+        assert.strictEqual(read.at, Date.UTC(2026, 9, 19, 12));
+        assert.deepStrictEqual(plain(read.state), plain(state));
+        assert.deepStrictEqual(plain(read.files), [{ id: 'm3', name: 'cat.png', type: 'image/png', size: 4 }]);
+        assert.deepStrictEqual([...await read.file(0)], [...photo]);
+        assert.match(Backup.fileName('ann marie/x', Date.UTC(2026, 9, 19, 12)), /^pals-backup-ann-marie-x-2026-10-19\.pals$/);
+    });
+
+    it('refuses what is not a backup, one cut short or changed, and somebody else\'s', async () => {
+        const made = await Backup.make(keys.alice, me, filled(), fileOf, 1);
+        const raw = await bytesOf(made.blob);
+        const blob = bytes => new Blob([bytes]);
+        const changed = Uint8Array.from(raw);
+        changed[60] ^= 1;
+        const lastByte = Uint8Array.from(raw);
+        lastByte[raw.length - 1] ^= 1;
+
+        for (const [what, file, why] of [
+            ['nothing', null, /not a Pals backup/],
+            ['a photo', blob(nodeCrypto.randomBytes(500)), /not a Pals backup/],
+            ['cut short', blob(raw.subarray(0, raw.length - 1)), /cut short/],
+            ['with more after it', blob(Buffer.concat([raw, Buffer.from('x')])), /more in it/],
+            ['changed', blob(changed), /does not open with your ID Card/],
+            ['from a newer Pals', blob(Buffer.concat([raw.subarray(0, 12), Buffer.of(2), raw.subarray(13)])), /newer Pals/]
+        ]) {
+            await assert.rejects(Backup.read(keys.alice, me, file), why, what);
+        }
+        await assert.rejects(Backup.read(keys.bob, { pub: bob.pub, name: 'bob' }, made.blob), /does not open with your ID Card/);
+        const read = await Backup.read(keys.alice, me, blob(lastByte));
+        await assert.rejects(read.file(0), 'a photo changed does not open');
+    });
+
+    it('adds a backup to what is here, each thing once: nothing removed, and twice is once', () => {
+        const backup = plain(filled());
+        const state = Model.empty();
+        Model.addPal(state, bob.pub, 'robert', me);
+        Model.addGroup(state, 'family');
+        const kept = Model.compose(state, me, { kind: 'pal', id: bob.pub }, 'written here', 5, 'here1');
+        // The same message, received here and in the backup.
+        const same = Model.receive(state, me, envelope(bob, 'a photo', { id: 'in1', ts: 30 }));
+
+        const added = plain(Model.restore(state, backup, me));
+        assert.deepStrictEqual([added.pals, added.groups, added.messages], [1, 0, 3]);
+        assert.deepStrictEqual(plain(state.pals), [{ pub: bob.pub, name: 'robert', verified: true }, { pub: carol.pub, name: 'carol', verified: false }],
+            'the name here kept, the verified mark taken');
+        assert.deepStrictEqual(plain(state.groups), [{ name: 'family', members: [bob.pub] }]);
+        assert.deepStrictEqual(plain(Model.log(state, { kind: 'all' }).map(m => m.body)), ['written here', 'see you at 8', 'on its way', 'a photo', 'who is this?']);
+        assert.strictEqual(Model.message(state, kept.id).body, 'written here');
+        assert.strictEqual(added.ids.m3, same.id, 'a message already here is where its photo goes');
+        assert.strictEqual(new Set(Object.values(added.ids)).size, 4, 'every message of the backup has an id of its own here');
+        assert.strictEqual(state.messages.find(m => m.wire === 'out2').delivery[bob.pub], Model.UNSENT, 'not left sending for ever');
+        assert.deepStrictEqual(plain(state.incoming), [bob.pub, dave.pub]);
+        assert.strictEqual(Model.nameOf(state, dave.pub, me), 'dave');
+
+        const again = plain(Model.restore(state, backup, me));
+        assert.deepStrictEqual([again.pals, again.groups, again.messages], [0, 0, 0]);
+        assert.strictEqual(state.messages.length, 5);
+    });
+
+    it('marks a restored photo as not here until it is put back, and leaves one given up on', () => {
+        const backup = filled();
+        backup.messages[2].attachment.lost = true;
+        backup.messages.push({ ...plain(backup.messages[2]), id: 'm9', wire: 'other', attachment: { ...backup.messages[2].attachment, lost: false, saved: true } });
+        const state = Model.empty();
+        Model.restore(state, plain(backup), me);
+        assert.deepStrictEqual(plain(state.messages.filter(m => m.attachment).map(m => [m.attachment.saved, m.attachment.lost])), [[true, true], [false, false]]);
+        assert.strictEqual(Model.unfetched(state).length, 1);
+    });
+
+    it('says what a backup holds in words', () => {
+        assert.strictEqual(Views.counted({ pals: 2, groups: 1, messages: 14, files: 3 }), '2 pals, 1 group, 14 messages and 3 photos and videos');
+        assert.strictEqual(Views.counted({ pals: 1, groups: 0, messages: 1, files: 0 }), '1 pal, 0 groups and 1 message');
+        assert.strictEqual(Views.counted({ pals: 0, groups: 0, messages: 0, files: 1 }), '0 pals, 0 groups, 0 messages and 1 photo or video');
+    });
+});
+
 describe('Pals shell', () => {
     const index = read('index.html');
     const welcome = read('welcome.html');
@@ -788,7 +910,7 @@ describe('Pals shell', () => {
         assert.ok(!/dlg_compose|compose_to|New message<\/h2>/.test(index), 'no New message overlay, and no To list');
         assert.ok(!messages.includes('>+</button>'));
         for (const id of ['members', 'member_add', 'member_remove', 'group_messages']) assert.ok(layer('members').includes(`id="${id}"`), id);
-        for (const id of ['user', 'setup_again', 'logout', 'version']) assert.ok(layer('settings').includes(`id="${id}"`), id);
+        for (const id of ['user', 'setup_again', 'logout', 'version', 'backup', 'restore', 'restore_file', 'backup_save']) assert.ok(layer('settings').includes(`id="${id}"`), id);
         for (const id of ['pal_add', 'pal_remove', 'group_add', 'group_remove', 'pal_pick', 'message_retry', 'message_answer', 'message_answer_body']) {
             assert.ok(index.includes(`id="${id}"`), id);
         }
@@ -1848,6 +1970,111 @@ describe('Pals page', () => {
         assert.deepStrictEqual(errors()[0], [true, false, '']);
         const asked = page.fetch.calls.filter(c => c.url.startsWith('/temp/api/')).map(c => c.url.slice(-1));
         assert.deepStrictEqual(asked, ['a', 'b', 'c', 'a'], 'only the one that could still come was asked for again');
+    });
+
+    // UPDATE_9: Backup and Restore, in Settings.
+    const uploading = { 'POST /temp/api/upload': () => [200, { status: 'OK', id: FILE_ID, size: 2029 }] };
+    /** Backup, and the file it offers to save. */
+    const backedUp = async page => {
+        page.click('backup');
+        await page.settle();
+        return page.urls.made.get(page.element('backup_save').href);
+    };
+    /** Restore, with a file picked. */
+    const restoreFrom = async (page, blob, name = 'pals-backup-alice.pals') => {
+        page.click('restore');
+        page.element('restore_file').files = [new File([blob], name)];
+        page.element('restore_file').listeners.change({});
+        await page.settle();
+        await page.settle();
+    };
+    // alice's Pals with bob, carol and Family, a photo sent to Family, and one bob sent.
+    const withPhotos = async () => {
+        const sentPhoto = nodeCrypto.randomBytes(2000);
+        const gotPhoto = nodeCrypto.randomBytes(1500);
+        const { locked, key } = await Seal.lock(gotPhoto);
+        const att = { id: 'g'.repeat(43), key, type: 'image/png', name: 'cat.png', size: gotPhoto.length };
+        const page = await populated({ routes: { ...uploading, [`GET /temp/api/download/${att.id}`]: Uint8Array.from(locked) },
+            idb: { inbox: { 1: openedItem(bob, 'from bob', { id: 'b1', att }) } } });
+        await writeWith(page, 'holiday', picked(sentPhoto));
+        return { page, sentPhoto, gotPhoto };
+    };
+
+    it('makes a backup in Settings: a file to save with everything in it, sealed with the ID Card\'s key', async () => {
+        const { page, sentPhoto, gotPhoto } = await withPhotos();
+        page.click('settings_open');
+        const blob = await backedUp(page);
+
+        const link = page.element('backup_save');
+        assert.strictEqual(link.hidden, false, 'a link to tap: iPhone drops a download the page starts itself');
+        assert.match(link.download, /^pals-backup-alice-\d{4}-\d\d-\d\d\.pals$/);
+        assert.strictEqual(link.textContent, `Save ${link.download}, ${Views.size(blob.size)}`);
+        assert.strictEqual(page.element('backup_report').textContent,
+            'The backup holds 2 pals, 1 group, 2 messages and 2 photos and videos. It opens only with your ID Card: keep it somewhere safe.');
+        const raw = Buffer.from(await blob.arrayBuffer());
+        for (const clear of ['holiday', 'from bob', 'Family', sentPhoto.subarray(0, 32), gotPhoto.subarray(0, 32)]) {
+            assert.strictEqual(raw.indexOf(clear), -1, 'nothing in the clear');
+        }
+
+        const read = await Backup.read(keys.alice, me, blob);
+        assert.deepStrictEqual(plain(read.state), page.stored());
+        const photos = await Promise.all(read.files.map((f, i) => read.file(i).then(b => [f.name, Buffer.from(b)])));
+        assert.deepStrictEqual(photos.sort(), [['beach.jpg', sentPhoto], ['cat.png', gotPhoto]].sort());
+        assert.strictEqual(page.element('backup').disabled, false);
+
+        const first = link.href;
+        await backedUp(page);
+        assert.deepStrictEqual(page.urls.revoked, [first], 'a new backup lets the last one go');
+    });
+
+    it('restores on another device: pals, groups, messages and photos, fetching nothing - and twice is once', async () => {
+        const { page: before, sentPhoto, gotPhoto } = await withPhotos();
+        const blob = await backedUp(before);
+
+        const page = await open();
+        page.click('settings_open');
+        await restoreFrom(page, blob);
+
+        assert.strictEqual(page.element('restore_file').clicks, 1, 'Restore opens the file picker');
+        assert.strictEqual(page.confirms.at(-1), 'Restore from pals-backup-alice.pals? What is in it is added to what is here; nothing here is removed.');
+        assert.strictEqual(page.element('backup_report').textContent, 'Restored: 2 pals, 1 group, 2 messages and 2 photos and videos added.');
+        assert.deepStrictEqual(page.rows('pals'), [`bob (${tag(bob.pub)})`, `carol (${tag(carol.pub)})`]);
+        assert.deepStrictEqual(page.rows('groups'), ['Family']);
+        const messages = page.stored().messages;
+        assert.deepStrictEqual(messages.map(m => m.body).sort(), ['from bob', 'holiday']);
+        const byBody = body => messages.find(m => m.body === body);
+        assert.deepStrictEqual(Buffer.from(page.file(byBody('holiday').id).bytes), sentPhoto);
+        assert.deepStrictEqual(Buffer.from(page.file(byBody('from bob').id).bytes), gotPhoto);
+        assert.strictEqual(byBody('from bob').attachment.saved, true);
+        assert.deepStrictEqual(page.fetch.calls.filter(c => c.url.startsWith('/temp/api/')), [], 'Northern is asked for no photo');
+
+        await restoreFrom(page, blob);
+        assert.strictEqual(page.element('backup_report').textContent, 'Restored: 0 pals, 0 groups and 0 messages added.');
+        assert.strictEqual(page.stored().messages.length, 2);
+        assert.strictEqual(page.element('restore_file').value, '', 'the same file can be picked again');
+    });
+
+    it('needs the ID Card for both, restores nobody else\'s backup, and nothing unless the user says so', async () => {
+        const noCard = await open({ idb: { keys: {} } });
+        noCard.click('backup');
+        await noCard.settle();
+        assert.strictEqual(noCard.element('backup_report').textContent, 'Load your ID Card on this device first - the backup is sealed with its key.');
+        assert.strictEqual(noCard.urls.made.size, 0);
+        noCard.click('restore');
+        assert.strictEqual(noCard.element('restore_file').clicks, 0);
+
+        const bobs = await Backup.make(keys.bob, { pub: bob.pub, name: 'bob' }, Model.empty(), () => Promise.resolve(), 1);
+        const page = await open();
+        await restoreFrom(page, bobs.blob);
+        assert.strictEqual(page.element('backup_report').textContent,
+            'The backup could not be restored: it does not open with your ID Card - it is somebody else\'s backup, or it is damaged');
+        assert.strictEqual(page.element('restore').disabled, false);
+
+        const { page: before } = await withPhotos();
+        const declined = await open({ confirm: false });
+        await restoreFrom(declined, await backedUp(before));
+        assert.strictEqual(declined.element('backup_report').textContent, '');
+        assert.deepStrictEqual(declined.rows('pals'), []);
     });
 
     it('asks Northern for nothing but the directory and the push API, and writes nothing to the database', async () => {

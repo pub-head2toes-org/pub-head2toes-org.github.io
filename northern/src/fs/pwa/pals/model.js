@@ -843,5 +843,72 @@ const PalsModel = (function () {
         return state;
     };
 
+    // What a message was sent as tells it apart, on any device: its wire id
+    // and which way it went.
+    const sameness = m => m.wire ? (m.out ? 'out ' : 'in ') + m.wire : 'at ' + m.ts + ' ' + m.from + ' ' + m.body;
+
+    // What a message still on its way when the backup was made says (UPDATE_9).
+    api.UNSENT = 'it was still being sent when the backup was made';
+
+    /**
+     * Adds a backup's state to what is here (UPDATE_9): its pals, groups and
+     * messages, each once - nothing here is removed or overwritten, so it
+     * restores on a device in use, and twice is the same as once. A pal
+     * verified in the backup stays verified: the key is the same. A message
+     * still being sent then is not sent now; it says so, and can be sent again.
+     *
+     * Returns `{pals, groups, messages, ids}`: how many of each were added,
+     * and where each of the backup's messages is now, by its id there - to
+     * put its photo or video back under.
+     */
+    api.restore = function (state, stored, me) {
+        const backup = api.load(stored);
+        const added = { pals: 0, groups: 0, messages: 0, ids: {} };
+        backup.pals.forEach(function (p) {
+            const known = api.pal(state, p.pub);
+            if (known) {
+                known.verified = known.verified || p.verified;
+            } else if (!me || p.pub !== me.pub) {
+                state.pals.push(p);
+                added.pals += 1;
+            }
+        });
+        backup.groups.forEach(function (g) {
+            let group = api.group(state, g.name);
+            if (!group) {
+                group = { name: g.name, members: [] };
+                state.groups.push(group);
+                added.groups += 1;
+            }
+            g.members.filter(pub => api.pal(state, pub) && group.members.indexOf(pub) === -1)
+                .forEach(pub => group.members.push(pub));
+        });
+        const here = {};
+        state.messages.forEach(m => { here[sameness(m)] = m; });
+        backup.messages.forEach(function (m) {
+            const known = here[sameness(m)];
+            if (known) {
+                added.ids[m.id] = known.id;
+                return;
+            }
+            const copy = JSON.parse(JSON.stringify(m));
+            // Here only once the restore puts it back - or Northern has it still.
+            if (!copy.out && copy.attachment && !copy.attachment.lost) {
+                copy.attachment.saved = false;
+            }
+            Object.keys(copy.delivery || {}).forEach(function (pub) {
+                if (copy.delivery[pub] === 'sending') {
+                    copy.delivery[pub] = api.UNSENT;
+                }
+            });
+            added.ids[m.id] = file(state, copy).id;
+            here[sameness(copy)] = copy;
+            added.messages += 1;
+        });
+        backup.incoming.filter(pub => state.incoming.indexOf(pub) === -1)
+            .forEach(pub => state.incoming.push(pub));
+        return added;
+    };
+
     return api;
 })();

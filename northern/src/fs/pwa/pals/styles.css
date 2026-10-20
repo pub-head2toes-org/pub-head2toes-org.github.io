@@ -573,14 +573,28 @@ button.danger {
 /* One's own camera mirrored, as people expect to see themselves. */
 .video.self video { transform: scaleX(-1); }
 
-/* Video calls on or off, in Settings. */
-.ice {
+/* Video calls on or off, and Backup and Restore, in Settings. */
+.ice, .backup {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+.backup .buttons { margin-top: 0; }
+.backup a.link { overflow-wrap: anywhere; }
+
+/* Restore's file picker: opened by the button, never seen. Not display:none,
+   which some browsers will not open a picker from. */
+.picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 dialog label.choice {

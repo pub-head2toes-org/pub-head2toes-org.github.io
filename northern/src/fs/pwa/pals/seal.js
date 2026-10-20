@@ -24,6 +24,8 @@
  * JSON text: a page files it with the call, never as a message. A Pals too
  * old to know it drops it and files the `body` - which says what it was.
  *
+ * A backup (backup.js) is sealed the same way, to the user's own key.
+ *
  * Works in a page and in a service worker. The private key is the one
  * reg/keystore.js keeps: not extractable, ECDH only.
  */
@@ -151,6 +153,41 @@ const PalsSeal = (function () {
         }
         return subtle().importKey('raw', raw, 'AES-GCM', false, ['decrypt'])
             .then(aes => subtle().decrypt({ name: 'AES-GCM', iv: data.subarray(1, 13), additionalData: utf8('Pals file v1') }, aes, data.subarray(13)))
+            .then(plain => new Uint8Array(plain));
+    };
+
+    // ---- backups (UPDATE_9) ------------------------------------------------
+    //
+    // A backup is sealed as a message is - HKDF-SHA256 over ECDH, AES-256-GCM -
+    // but from the user to the user: ECDH of the ID Card's key with its own
+    // public key. Only that ID Card, loaded on any device, opens it.
+
+    /** The AES key of one backup, made with its salt. */
+    api.backupKey = function (own, pub, salt) {
+        return agree(own, point(pub))
+            .then(ikm => subtle().deriveKey(
+                { name: 'HKDF', hash: 'SHA-256', salt: salt, info: join(utf8('Pals backup v1\0'), point(pub)) },
+                ikm, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']));
+    };
+
+    // Each record of a backup is sealed with its place in it, so none can be
+    // moved, swapped or put in another backup.
+    const record = n => utf8('Pals backup record\0' + n);
+
+    /** Seals record `n` of a backup. Resolves to `iv(12) | ciphertext | tag(16)`. */
+    api.sealRecord = function (key, n, plain) {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        return subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: record(n) }, key, plain)
+            .then(sealed => join(iv, new Uint8Array(sealed)));
+    };
+
+    /** Opens what `sealRecord` made of record `n`. Resolves to its bytes, or rejects. */
+    api.openRecord = function (key, n, sealed) {
+        const data = new Uint8Array(sealed);
+        if (data.length < 28) {
+            return Promise.reject(new Error('not a sealed record'));
+        }
+        return subtle().decrypt({ name: 'AES-GCM', iv: data.subarray(0, 12), additionalData: record(n) }, key, data.subarray(12))
             .then(plain => new Uint8Array(plain));
     };
 

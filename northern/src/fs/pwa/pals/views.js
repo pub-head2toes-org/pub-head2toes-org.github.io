@@ -116,6 +116,16 @@ const PalsViews = (function () {
             : (Math.round(n / 1024 / 1024 * 10) / 10) + ' MB';
     };
 
+    /** What a backup holds, or a restore added (UPDATE_9): 2 pals, 1 group, 14 messages and 3 photos and videos. */
+    api.counted = function (counts) {
+        const one = (n, single, many) => (n || 0) + ' ' + (n === 1 ? single : many);
+        const list = [one(counts.pals, 'pal', 'pals'), one(counts.groups, 'group', 'groups'), one(counts.messages, 'message', 'messages')];
+        if (counts.files) {
+            list.push(one(counts.files, 'photo or video', 'photos and videos'));
+        }
+        return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+    };
+
     /**
      * The photo or video that goes with a message, for the overlay. `url` is
      * where the page put the file kept on this device (an object URL); without
