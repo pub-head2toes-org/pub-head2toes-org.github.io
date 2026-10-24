@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame sealing</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 15px/1.5 system-ui, sans-serif; background: Canvas; color: CanvasText; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<h1>Frame sealing</h1>
+<p>What sealing every frame of a call with AES-128-GCM costs on this device, in a worker as an
+RTCRtpScriptTransform would run it (UPDATE_10). Keep the screen on; it takes a few seconds.</p>
+<button type="button" id="go">Run</button>
+<pre id="out"></pre>
+<script>
+document.getElementById('go').onclick = function () {
+    const out = document.getElementById('out');
+    const button = this;
+    button.disabled = true;
+    out.textContent = navigator.userAgent + '\n\n';
+    const worker = new Worker('./frames.js');
+    worker.onmessage = function (event) {
+        if (event.data === 'done') {
+            button.disabled = false;
+            worker.terminate();
+            return;
+        }
+        out.textContent += event.data + '\n';
+    };
+    worker.onerror = function (event) {
+        out.textContent += 'failed: ' + event.message + '\n';
+        button.disabled = false;
+    };
+};
+</script>
+</body>
+</html>

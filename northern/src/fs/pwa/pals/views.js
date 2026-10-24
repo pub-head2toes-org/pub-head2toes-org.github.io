@@ -223,5 +223,22 @@ const PalsViews = (function () {
         return '';
     };
 
+    /** Pals to ring, each picked or not (UPDATE_10). */
+    api.pickList = function (pals, picked) {
+        if (!pals.length) {
+            return api.empty('Nobody to ring.');
+        }
+        return pals.map(p => row('data-pub="' + esc(p.pub) + '"', picked.indexOf(p.pub) !== -1, api.pill(p.name, p.pub))).join('');
+    };
+
+    /**
+     * Who is in a call: a pill each - with who introduced them, for somebody
+     * who is not a pal. `people` are `{pub, name, byName}`.
+     */
+    api.inCall = function (people) {
+        return people.map(p => api.pill(p.name, p.pub) +
+            (p.byName ? ' <span class="by">introduced by ' + esc(p.byName) + '</span>' : '')).join(', ');
+    };
+
     return api;
 })();

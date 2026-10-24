@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Video calls between two pals: how this device reaches the other one (STUN
- * and TURN), and the signals a call is set up with. Brought over from
+ * Video calls among pals - two, or up to four in a mesh (UPDATE_10): how this
+ * device reaches the others (STUN and TURN), the signals a call is set up
+ * with, and how much video each connection sends. Brought over from
  * InPerson (../inPerson/PLAN.md, "Porting calls to Pals"), where it was tried
  * live first.
  *
@@ -27,6 +28,8 @@ const PalsCalls = (function () {
     // What a Pals too old to know calls files in place of a ring, and of a cancelled one.
     api.RING_TEXT = 'Video call - this Pals needs updating to answer it: reload it.';
     api.MISSED_TEXT = 'Missed video call';
+    // A call has four people at most: whoever rang, and three more (UPDATE_10).
+    api.MAX = 4;
 
     // ---- reaching the other device: STUN and TURN ----------------------------
     //
@@ -64,9 +67,10 @@ const PalsCalls = (function () {
     // `signal`, never as the text of a message. The ring and a cancel go as a
     // push, to the pal's /pals/ device; the rest over the call's /sub/ channel.
     //
-    //   ring      caller -> callee (push)     somebody is calling
+    //   ring      caller -> callee (push)     somebody is calling - and who else is in the call
     //   cancel    caller -> callee (push)     they gave up: the call was missed
     //   ready     callee -> caller            answered, and listening on the channel
+    //                                         (in a call of more, to everybody in it)
     //   decline   callee -> caller            not now (or busy)
     //   offer     caller -> callee            the caller's SDP
     //   answer    callee -> caller            the callee's SDP
@@ -76,8 +80,32 @@ const PalsCalls = (function () {
     api.KINDS = ['ring', 'cancel', 'ready', 'decline', 'offer', 'answer', 'ice', 'bye'];
     const CALL_ID = /^[A-Za-z0-9_-]{22}$/;
     const SDP_MAX = 64 * 1024;
+    // A Northern key, as PalsModel.isPub takes it: 64 bytes of base64.
+    const PUB = /^[A-Za-z0-9+/]{86}==$/;
+    const NAME_MAX = 64;
 
     api.isCallId = id => typeof id === 'string' && CALL_ID.test(id);
+
+    /**
+     * Who else a ring says is in the call, besides the one ringing and the
+     * one rung: `[{pub, name}]`, two at most - or null when it is not that.
+     * The names are what the caller calls them; a pal is shown by the name
+     * given here.
+     */
+    function readWith(list) {
+        if (!Array.isArray(list) || list.length > api.MAX - 2) {
+            return null;
+        }
+        const out = [];
+        for (const w of list) {
+            if (!w || typeof w !== 'object' || typeof w.pub !== 'string' || !PUB.test(w.pub) ||
+                typeof w.name !== 'string' || out.some(o => o.pub === w.pub)) {
+                return null;
+            }
+            out.push({ pub: w.pub, name: w.name.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) });
+        }
+        return out;
+    }
 
     /** Where a call's signals go: Northern's /sub/ channel of the call's id. */
     api.channel = call => api.CHANNEL + call;
@@ -129,10 +157,22 @@ const PalsCalls = (function () {
         if (s.t === 'decline' && s.busy === true) {
             out.busy = true;
         }
+        if (s.t === 'ring' && s.with !== undefined) {
+            const others = readWith(s.with);
+            if (!others) {
+                return null;
+            }
+            if (others.length) {
+                out.with = others;
+            }
+        }
+        if (s.t === 'ring' && typeof s.group === 'string' && s.group.trim()) {
+            out.group = s.group.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+        }
         return out;
     };
 
-    /** How a call stands, as the call layer says it - plain text, never markup. */
+    /** How a call stands, as the call layer says it - plain text, never markup. `name` may be several, joined. */
     api.stateText = function (state, name) {
         return {
             calling: 'Calling ' + name + '…',
@@ -155,13 +195,52 @@ const PalsCalls = (function () {
         const rings = {};
         (signals || []).forEach(function (s) {
             if (s.signal.t === 'ring' && done.indexOf(s.signal.call) === -1 && !rings[s.signal.call]) {
-                rings[s.signal.call] = { from: s.from, call: s.signal.call, ts: s.signal.ts };
+                rings[s.signal.call] = { from: s.from, call: s.signal.call, ts: s.signal.ts,
+                                         with: s.signal.with || [], group: s.signal.group || '' };
             }
         });
         const fresh = r => now - r.ts < api.RING_MS && r.ts - now < api.RING_MS;
         const all = Object.keys(rings).map(k => rings[k]).sort((a, b) => b.ts - a.ts);
         const ringing = all.find(r => fresh(r) && !cancelled[r.call]) || null;
         return { ringing: ringing, missed: all.filter(r => r !== ringing).sort((a, b) => a.ts - b.ts) };
+    };
+
+    /** Names as a call says them: "bob", "bob and carol", "bob, carol and dave". */
+    api.names = function (list) {
+        return list.length < 2 ? (list[0] || '') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+    };
+
+    // ---- how much video a connection sends (UPDATE_10) -----------------------
+    //
+    // The camera is asked for 720p once; each connection then sends its own
+    // size, set on its sender while the call goes on - no new offer. A browser
+    // encodes for every connection on its own, so in a call of four a phone
+    // encodes three times: smaller is what makes it possible. A tile in the
+    // 2x2 grid is about 185 x 330 CSS pixels, which 360p fills.
+
+    api.CAMERA = { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } };
+
+    const SIZES = {
+        two: { side: 720, maxBitrate: 1500000, maxFramerate: 30 },
+        grid: { side: 360, maxBitrate: 500000, maxFramerate: 24 },
+        large: { side: 720, maxBitrate: 1200000, maxFramerate: 30 },
+        small: { side: 180, maxBitrate: 150000, maxFramerate: 15 }
+    };
+
+    /**
+     * What one connection sends, as an RTCRtpEncodingParameters: for a call
+     * of `count` people, to somebody who shows this device `size` - 'grid',
+     * or 'large' or 'small' once they have made somebody large. `shortSide`
+     * is the camera's, in pixels; it is scaled down, never up.
+     */
+    api.videoFor = function (count, size, shortSide) {
+        const s = count <= 2 ? SIZES.two : SIZES[size] || SIZES.grid;
+        const side = Number(shortSide) > 0 ? Number(shortSide) : 720;
+        return {
+            maxBitrate: s.maxBitrate,
+            maxFramerate: s.maxFramerate,
+            scaleResolutionDownBy: Math.max(1, Math.round(side / s.side * 100) / 100)
+        };
     };
 
     return api;

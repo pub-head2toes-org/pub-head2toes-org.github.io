@@ -675,6 +675,406 @@ the TURN spike and the step-by-step of a call. What it is in Pals:
   afterwards only for those the backup did not have.
 - `PALS_VERSION` is 19.
 
+## UPDATE_10.md — spike: calls of four, and sealing the frames
+
+It started as a feasibility spike, whose one build was a measurement,
+`example/frames/` (below). Calls of three and four are now built, with the
+video sizes: see *Built: calls of three and four (version 20)* at the end of
+this section. Browser support is from MDN's compatibility data (October
+2026); bandwidth figures are estimates, not measured on a call.
+
+**Short answers.**
+- *Four in one call*: feasible as a **mesh** — every device connected to every
+  other, six connections in all, three on each device. That is the practical
+  ceiling for mesh. What limits it is each phone's upload and CPU, not a cap
+  on connections. A capped call of four needs about **2 Mbit/s up and 2
+  down on each phone**.
+- *Sealing the media before it is sent*: possible, in every current browser,
+  for a cost too small to notice — **1–3 % of one core** on the Pi 5, and
+  about **18 kbit/s per stream**. But a one-to-one call is **already end to
+  end** (see *What a one-to-one call already has*), so sealing frames adds
+  little there. It becomes necessary only if calls ever go through a media
+  server (an SFU).
+
+### Calls of four: what limits a mesh
+
+- **No hard limit on connections.** A page can hold many
+  `RTCPeerConnection`s, and four people need three each. The limits are
+  these:
+  1. **Upload: each device sends its video once per pal in the call.** A
+     browser encodes separately for every connection and cannot share one
+     encoding between them, so three pals means three uploads.
+  2. **CPU and battery: three encoders and three decoders at once** on each
+     phone. This, and heat, is where phones give out first. Phones have few
+     hardware encoders; the rest fall back to software.
+  3. **TURN:** each connection that cannot go direct takes its own TURN
+     allocation (Cloudflare's limits, per allocation, are far above this —
+     see `../inPerson/PLAN.md`).
+- **Past four**, the uploads and encoders grow with every person added. From
+  five on, the usual answer is an SFU: each device sends once, and the server
+  forwards. That changes what the server can see; see *Sealing the frames*.
+
+**Bandwidth.** Each stream is the video plus 32 kbit/s of Opus audio. A device
+sends and receives N−1 streams. Through TURN, the cost is Cloudflare's $0.05
+per GB, and only for the connections that are relayed:
+
+| Video per stream | One to one, each way | Four in a mesh, each phone up / down | All 12 streams relayed |
+| --- | --- | --- | --- |
+| 300 kbit/s (small tiles) | 0.33 Mbit/s | 1.0 / 1.0 Mbit/s | 1.8 GB an hour, $0.09 |
+| **500 kbit/s (360p, recommended cap)** | 0.53 Mbit/s | **1.6 / 1.6 Mbit/s** | 2.9 GB an hour, $0.14 |
+| 1,500 kbit/s (720p) | 1.53 Mbit/s | 4.6 / 4.6 Mbit/s | 8.3 GB an hour, $0.41 |
+
+- **Today's calls are not capped.** `camera()` asks for `{facingMode:
+  'user'}`, and the browser raises the bitrate as far as the line allows. In a
+  call of four that is the 720p row, which is too much upload for many mobile
+  connections and too much encoding for many phones.
+- **So a call of three or four caps each sender.** It would ask for 640×360
+  and set `maxBitrate` of 500 kbit/s through `RTCRtpSender.setParameters`,
+  which every browser has. Mesh has one advantage here: each connection is
+  encoded on its own, so the pal shown large can be sent a higher bitrate
+  than the small tiles.
+
+**What the code would need.**
+- **`call.js` stays one connection to one pal.** A conference keeps one
+  `PalsCall` per pal in the call. Hanging up says `bye` to each, and the call
+  is over for a device when its last pal leaves.
+- **One channel for the whole call: `/sub/pals-call-<id>`.** Everybody
+  listens on it, and each signal names its `to`. `listen()` today drops
+  anything not `from` the one pal; it would accept anyone on the call's list.
+  That keeps one `EventSource` per device (finding 13: six connections per
+  origin on HTTP/1.1). Every signal reaches every listener, but signals are
+  few and small, and sealed to their `to`.
+- **Who offers:** of any two, the smaller key. One who joins says *ready* to
+  everybody in the call. Whoever hears it offers when theirs is the smaller
+  key, and says *ready* back when it is not, so the one who joined offers.
+  Two who join at once come to the same. One side of each pair offers, as in
+  a call of two, and there is no glare. (As built; the spike first had the
+  one already in the call always offer, which needs a tie-break.)
+- **The ring names everybody.** The caller pushes one ring to each invitee,
+  sealed as now, with the list of keys in the call. A late ring, a decline or
+  *busy* affects that one connection, not the call.
+- **Trust: who may be in the call.** Groups are local, so bob may be in
+  alice's call with carol without having carol as a pal. There are two ways
+  (decision **E7**):
+  - *Pals only*: a device connects only to people who are its pals. Simple,
+    but a call can then be four people where not everyone sees everyone.
+  - *Introduced by the caller*: the ring is sealed by alice and carries
+    carol's key as alice pinned it. bob takes it for this call only, and the
+    tile says *introduced by alice*. Northern cannot change the key, but bob
+    is trusting alice's pin. **Recommended.**
+- **TURN credentials** from one `/turn/api/ice` serve all three connections.
+
+### Calls of four on a phone
+
+At 375–390 px wide, in portrait. Phones send portrait video, so tall tiles
+waste little of the picture. The layout follows how many are in the call, with
+CSS grid and `minmax(0, 1fr)` columns (see the iOS memory on narrow widths):
+
+```
+ two (as now)        three               four                four, one tapped
++-------------+    +------+------+    +------+------+    +-------------+
+|             |    | bob  | carol|    | bob  | carol|    |             |
+|    bob      |    |      |      |    |      |      |    |    carol    |
+|             |    +------+------+    +------+------+    |             |
+|        +--+ |    |  +   | me   |    | dave | me   |    |             |
+|        |me| |    | Add a|      |    |      |      |    +----+----+---+
+|        +--+ |    |  pal |      |    |      |      |    |bob |dave| me|
++-------------+    +------+------+    +------+------+    +----+----+---+
+ [Key] [Hang up]    [Mic] [Camera] [+] [Hang up]  (the same row under each)
+```
+
+- **Three and four are a 2×2 grid**, with this device's camera bottom right.
+  With three, the free tile is **+ Add a pal**.
+  Each tile is about 185 × 330 px: big enough for a face. A small picture in
+  the corner would cover part of a tile that is already small.
+- **Tap a tile to make it large**, with the others in a strip beneath. The
+  large one can be sent at a higher bitrate (above).
+- **Who is speaking** gets an outline, from
+  `RTCRtpReceiver.getSynchronizationSources()` and its `audioLevel` (all
+  browsers). No server is needed for that.
+- **On each tile**: the name pill, ✓ once their key is compared, and how
+  that connection stands (*connecting*, *reconnecting*). One pal's connection
+  dropping greys only their tile.
+- **Mic and Camera buttons** join Hang up. A call of four needs them more
+  than a call of two. **Key** moves onto each tile, as a long press or a
+  small button, because there is one key per pal.
+- **Landscape**: four in a row, or the 2×2 grid. The call layer already takes
+  the whole screen on a phone (`#dlg_call`).
+
+### The call of four, step by step
+
+It builds on what a call of two already has: **Call**, the *is calling*
+dialog, *Missed video call* in the log, the switch in Settings.
+
+**Starting it.**
+- **From a group's Messages layer**, **Call** rings its members, up to three.
+  A larger group first shows a short picker: up to three ticks, then **Ring**.
+- **From a call already running**, the free tile **+ Add a pal** rings one
+  more, so a call of two grows to four without hanging up.
+
+**The ring** is one push per invitee, sealed to that pal's pinned key, as now.
+The group's name and the list of people travel inside the seal, so Northern
+sees neither, as it sees no group prefix:
+
+```
+{ t: 'ring', call: <id>, ts, group: 'Family',
+  with: [ {pub: bob, name: 'bob'}, {pub: carol, name: 'carol'}, {pub: dave, name: 'dave'} ] }
+```
+
+A pal is named as this device names them; somebody introduced, by the name the
+caller gave.
+
+**The caller** sees the grid at once, every invitee's tile already there:
+
+```
++------------+------------+
+|    bob     |   carol    |
+| Ringing…   | Ringing…   |
++------------+------------+
+|    dave    |    me      |
+| Ringing…   |  (camera)  |
++------------+------------+
+  [Mic] [Camera] [+] [Hang up]
+```
+
+**An invitee:**
+- The worker's notification: *alice is calling — with carol, dave*.
+- The *is calling* dialog lists everyone in the call: a name pill each, ✓ for a
+  key compared, *introduced by alice* for somebody who is not their pal (E7).
+  Then **Decline** or **Answer**.
+- **Answer**: their device listens on the call's one channel and says *ready*
+  to everybody. Each one already in the call offers to them. Their tiles go
+  from *Connecting…* to video one at a time. They may see alice before carol;
+  each tile says how it stands, so that is fine.
+
+**What a tile shows:**
+
+| State | The tile |
+| --- | --- |
+| Ringing, connecting | the name on their pill colour, *Ringing…* or *Connecting…* |
+| In the call | their video, filling the tile; the name pill bottom left |
+| Speaking | an outline (the audio level the browser reports) |
+| Mic off | a mic-off mark |
+| Camera off | their initials on their pill colour |
+| Line dropped | greyed, *Reconnecting…* (that tile only) |
+| Declined, busy, no answer | *Declined*, *On another call* or *No answer* for a few seconds, then **+ Add a pal** |
+| Left | *Left* for a few seconds, then gone |
+
+Mic off and camera off are said over each connection's data channel.
+
+**Using it:**
+- This device's tile stays bottom right, mirrored.
+- **Tap a tile** to make it large, the others in a strip beneath; tap again
+  for the grid. The one made large is sent a higher bitrate.
+- **Long press a tile** for *Compare keys* (one key per pal) and *Make large*.
+- **Mic, Camera, + and Hang up** under the grid; **+** is off at four.
+- The screen stays on (Screen Wake Lock; Safari since 16.4).
+
+**As people come and go:** four is the grid; three, the grid with **+ Add a
+pal**; two, back to today's layout, the pal large and this device small in the
+corner; one, the call ends with *everybody left*.
+
+**Ending it:**
+- **There is no host.** **Hang up** means *I leave*. If alice leaves, bob,
+  carol and dave go on: in a mesh no server holds the call.
+- **Ringing stops** with a *cancel* from the caller to whoever is still
+  ringing when nobody answers. Otherwise a ring ends after the minute it has
+  now, and is filed as missed.
+- **Joining late.** A missed group call in the log offers **Join** for a
+  while. **Join** listens on the call's channel and says *ready*. Anybody
+  still in the call offers to them; when nobody does within 20 s, it says
+  *the call is over*. Northern keeps no record of calls, so this is the only
+  way to know.
+
+**The log** has one entry in the group's log, not one per pal: *Call with
+bob, carol, dave — 12 min*, or *Missed call from alice — with carol, dave*,
+with **Join**.
+
+**Two things to settle:**
+- **E7** decides the grid. With *pals only*, bob would simply have no tile for
+  carol, and the grid would differ from one device to the next. That is why
+  *introduced by the caller* is recommended.
+- **Who may add.** If anybody in the call can press **+**, the newcomer is
+  *introduced by* whoever added them, not by alice. It works the same way;
+  the tile names who added them.
+
+### Video size in a call of four
+
+Yes, the resolution is kept lower once there are more than two. It is the
+cheapest thing that makes a call of four work, since every phone encodes its
+video once per pal.
+
+- **The camera is asked for once, at 720p** (`PalsCalls.CAMERA`). Then each
+  connection gets its own size and bitrate, on its own video sender, while
+  the call goes on - no new offer:
+  ```js
+  const p = sender.getParameters();
+  p.encodings[0].scaleResolutionDownBy = 2;   // 720p capture -> 360p sent
+  p.encodings[0].maxBitrate = 500000;         // 500 kbit/s
+  p.encodings[0].maxFramerate = 24;
+  sender.setParameters(p);
+  ```
+- **Each connection is on its own**, so the pal shown large can be sent more
+  than the small tiles.
+- **Smaller is cheaper to encode.** The cost goes with the pixels, so 360p is
+  about a quarter of 720p, for each of the three encoders. That matters more
+  than the bandwidth.
+
+| In the call | Sent to each pal (`PalsCalls.videoFor`) | Each phone up / down |
+| --- | --- | --- |
+| Two | 720p, 1.5 Mbit/s, 30 fps | 1.5 / 1.5 Mbit/s |
+| Three or four, the grid | 360p, 500 kbit/s, 24 fps | about 1.6 / 1.6 Mbit/s with four |
+| Four, one made large | the large one 720p, 1.2 Mbit/s; the strip 180p, 150 kbit/s, 15 fps | depends on who is large |
+
+- **360p is enough for a tile.** A tile in the grid is about 185 × 330 CSS
+  pixels; a 360 × 640 portrait stream roughly fills it at 2× pixel density.
+  On a 3× iPhone it is a little soft, which hardly shows at that size.
+- **When it changes:** every time the number in the call changes. The third
+  person coming in moves every connection to 360p; going back to two moves
+  it back. **A tap on a tile** sends `size` over each data channel: *large*
+  to the pal tapped, *small* to the others, and *grid* again on a second tap.
+- **The browser still lowers it on its own** when the CPU or the line cannot
+  keep up; the caps make that predictable. A browser that refuses
+  `maxFramerate` is asked again without it, so the bitrate and size still
+  hold.
+
+### What a one-to-one call already has
+
+- **The media is already encrypted from one browser to the other.** WebRTC
+  encrypts it with DTLS-SRTP, with keys agreed between the two browsers. A
+  TURN server relays packets it cannot read.
+- **And the keys are the right ones.** Each side's DTLS fingerprint is in its
+  SDP. The SDP travels sealed between the two pinned Northern keys (`signal`
+  in `seal.js`). Northern cannot swap the fingerprint to put itself in the
+  middle without breaking the seal.
+- **So sealing every frame on top protects against nothing new** in a
+  one-to-one call, or in a mesh, which is the same thing three times over.
+  Neither layer protects against a server that changes the app it serves (*What
+  this design trusts*): a changed `pals.js` can switch either off.
+- **It matters once a media server is in the path.** An SFU (Cloudflare's
+  Realtime SFU, or one at home, for calls of five or more) ends DTLS itself,
+  so it sees every frame. Sealing the frames is then what keeps the video
+  from the SFU.
+
+### Sealing the frames: how it would be done
+
+**Not the captured video: the encoded frames.** Sealing frames *before* the
+encoder would leave nothing for it to compress, since ciphertext is noise. So
+the seal goes between the encoder and the packetizer, on each encoded frame,
+and is opened on the other side before the decoder:
+
+```
+camera -> encoder -> [seal in a worker] -> RTP, DTLS-SRTP -> ... -> [open in a worker] -> decoder -> video
+```
+
+| Option | Where it runs | Verdict |
+| --- | --- | --- |
+| **`RTCRtpScriptTransform`** (WebRTC Encoded Transform, the standard) | Chrome 141, Firefox 117, Safari 15.4 — every browser on iOS 15.4+; Baseline since October 2025 | **The one to use.** One worker script, for sending and receiving, in every browser |
+| `createEncodedStreams()` (Chrome's older Insertable Streams) | Chrome 86+ only, with `encodedInsertableStreams: true` | Only as a fallback for Chrome before 141; probably not worth carrying |
+| Safari's `SFrameTransform` (built-in SFrame, RFC 9605) | WebKit only | Not cross-browser |
+| WebCodecs encoding, sealed, over a data channel | everywhere WebCodecs is | Rejected: it gives up what RTP does for a call — congestion control, jitter buffer, lip sync, loss recovery |
+
+**The transform.** It is what `example/frames/frames.js` does to made-up
+frames:
+- **AES-128-GCM** with a counter IV, a key per direction. The codec's first
+  bytes stay clear and are bound as additional data (VP8: 10 bytes on a key
+  frame, 3 on others; Opus: 1). That is how WebRTC's own sample and Jitsi do
+  it. A frame that will not open is dropped, and the decoder asks for a new
+  key frame itself.
+- **The keys come the way a photo's do.** A photo's `lock` travels inside the
+  seal; here, the offer and the answer would each carry a random key for that
+  direction, sealed with the SDP. That is no new key exchange, and a fresh
+  key per call. The worker gets the `CryptoKey` through the transform's
+  options; a key can be passed that way without being exportable.
+- **VP8 and Opus, chosen with `setCodecPreferences`** (all browsers). With
+  H.264 the packetizer reads NAL units out of the frame, and a sealed frame
+  has none. Safari prefers H.264, and on an iPhone VP8 is encoded in software,
+  which costs some battery.
+- **Both ends must have it.** The offer would say it seals frames; a device
+  without `RTCRtpScriptTransform` would say so in its answer. The call then
+  either goes without or is refused (part of decision **E8**).
+
+**What it costs — measured.** `node example/frames/frames.js` on this Pi 5
+(Cortex-A76, 2.4 GHz, with AES instructions), Node 24's WebCrypto. Ten
+seconds of a call: 30 video frames a second with a key frame every 3 s, and
+50 Opus frames. Each frame is sealed, and opened on the way back, one at a
+time as a transform stream hands them over. Two runs:
+
+| Call | Frames sealed and opened | Time a frame | Share of one core |
+| --- | --- | --- | --- |
+| One to one, 600 kbit/s | 1,600 | 68–100 µs | 1.1–1.6 % |
+| One to one, 1,500 kbit/s | 1,600 | 61–72 µs | 1.0–1.2 % |
+| Four in a mesh, 600 kbit/s | 4,800 | 52–57 µs | 2.5–2.7 % |
+| Four in a mesh, 1,500 kbit/s | 4,800 | 53–55 µs | 2.5 % |
+
+- **The cost is per frame, not per byte.** A frame 2.5 times larger costs no
+  more; nearly all the time is the asynchronous WebCrypto call. The slowest
+  single frame took 1–5.5 ms, still inside the 33 ms between video frames.
+- **Next to the encoder it is nothing.** Encoding a 360p video in software
+  alone takes a good part of a core.
+- **The bytes: +17.9 kbit/s per stream** (a 12-byte IV and a 16-byte tag on
+  each of 80 frames a second). Video hardly notices (~1 % of 600 kbit/s). For
+  audio, 11 kbit/s on 32 is a third more. Sending a 4-byte counter in place of
+  the IV brings it to 12.8 kbit/s in all.
+- **On a phone it is not measured yet.** `example/frames/frames.html` runs
+  the same thing in a worker, which is where a transform runs. Open it on the
+  main host name, not `pals.`: there `example/` is served sandboxed and runs no
+  script. It prints the browser and the same lines.
+
+### Built: calls of three and four (version 20)
+
+- **`conference.js`, new** (`PalsConference`): the mesh, with no DOM and no
+  network, as `call.js` is. One `PalsCall` per pal in the call; who offers
+  (above); everybody's status (*calling, ringing, waiting, connecting,
+  connected, reconnecting*, then *declined, busy, no answer, left, away,
+  failed*); the data channel's messages (`with`, `mic`, `camera`, `size`);
+  the sizes; and when the call is over. A call of two is now a conference of
+  one other, and goes as it did.
+- **`call.js`**: `video(encoding)` sets the video sender's size, now and once
+  connected; `say(text)` sends over the data channel, held until it opens;
+  `on.message` hears anything but `bye`.
+- **`calls.js`**: the ring's `with` (two others at most, each a valid key and
+  a name) and `group`, checked like everything else; `names`, `videoFor`,
+  `CAMERA`, `MAX` (4).
+- **`pals.js`**:
+  - **Call** in a group's Messages layer when it has members. With more than
+    three, a picker (`dlg_pick`) takes up to three first.
+  - The ring goes to each, sealed, naming the others. The channel is shared,
+    and signals are told apart by sender and id, since each sender numbers
+    their own.
+  - Four fixed tiles (`tile_1`–`tile_3`, `tile_self`) and **+ Add a pal**.
+    Tiles are placed as people come, and a tile says why someone went for 4
+    seconds before it is freed.
+  - Tap to make large; **Key** on each tile; **Mic**, **Camera** and **+**
+    under the call.
+  - Who is speaking comes from `getSynchronizationSources()`, twice a second.
+  - The screen is kept on (Screen Wake Lock), and asked again when the page
+    comes back.
+- **E7 as recommended: introduced by the caller.** Somebody who is not a pal
+  is in the call as introduced by whoever rang them or added them, says so on
+  the tile and in the *is calling* dialog, has no **Key**, and is never made a
+  pal.
+- **`+` works for anybody in the call.** Their new ring names everybody in it,
+  and everybody connected is told over the data channel, so the newcomer is
+  *introduced by* whoever added them.
+- **The worker** says *alice is calling - with carol and dave*.
+- **The caller's ringing stops** (`cancel`) for whoever never answered,
+  when the caller gives up or hangs up; a decline ends only that person.
+- `PALS_VERSION` is 20, with every `?v=` in both pages.
+
+**Not built yet:**
+- **Join** on a missed group call, while it is still going.
+- **One log entry per call** (*Call with bob, carol, dave — 12 min*). A missed
+  call is still filed per caller, as before.
+- **Frame sealing**, which stays tied to an SFU (E8).
+
+**Next steps:**
+1. A live check of a call of three on real phones; see *Not verified*.
+2. Join, and the one log entry per call.
+3. **Frame sealing only with an SFU.** If calls of five or more are wanted,
+   build the SFU and frame sealing together. Do not build frame sealing for
+   one-to-one calls on their own (E8).
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**
@@ -734,7 +1134,18 @@ Until somebody opens the app in a browser, these are untested:
   Update 1 on Android and ChromeOS, by hand; not yet for Update 2);
 - `reg/keystore.js` keeping the key in a real browser, and the worker using
   it with no page open;
-- iOS's Home Screen requirement.
+- iOS's Home Screen requirement;
+- for UPDATE_10, nothing was tried on a real call:
+  - three encoders and decoders at once on a phone;
+  - an iPhone playing three pals' videos with sound (WebKit allows audible
+    autoplay while the page is using the camera, which a call always is; not
+    tried);
+  - `setParameters` sizes and bitrates as each browser takes them, before and
+    after connecting;
+  - the grid at 375–390 px wide, and landscape;
+  - Screen Wake Lock;
+  - the audio levels behind *speaking*;
+  - VP8 on an iPhone's battery, and `example/frames/frames.html` on a phone.
 
 Everything around those is tested: the RFC 8291 encryption against the RFC's
 own vector and a WebCrypto decryption, the VAPID token against a verifier, and
@@ -758,6 +1169,8 @@ the page and worker against stubs. **First live check:**
 | **E4** | Check the `ssid` age in the push API (item 2) | Yes, one day |
 | **E6** | A *Sign out* in Pals that forgets the kept key (item 3) | Yes, before a shared device uses Pals |
 | **E5** | The VAPID `subject`: set one in the config row, a `mailto:` or the site's URL | Set it; Apple rejects tokens whose `sub` it cannot use |
+| **E7** | In a call of four, whom a device connects to: its own pals only, or also those the caller introduces (UPDATE_10) | Introduced by the caller, for that call only, marked on the tile |
+| **E8** | Seal every frame of a call, on top of DTLS-SRTP (UPDATE_10) | Not for one-to-one or mesh calls; together with an SFU, if calls of five or more are ever built |
 
 Update 1 settled the old D1 (nothing stored on the server), D2 (the `pals.`
 host), D4 (V1) and D6 (no invite link). The old D5 (shared groups) became the
@@ -771,15 +1184,16 @@ evaluation, limited to ECDH), and the browsers seal.
 | File | Tests | Covers |
 | --- | --- | --- |
 | `tests/pals.test.js` | 97 | the model (directory, splitting, prefix, compose and pushes, reassembly, the log, storage, the verified mark); **the seal** (round trip; refusal for the wrong receiver, a relabelled sender, a reflected message, a moved part, a changed byte; the key not extractable and unable to sign; fingerprints); the views; the shell (both pages, cached files, `sw.js` in a stubbed worker opening with the kept key and asking the server nothing); `pals.js` and `welcome.js` with the real identity scripts, an in-memory IndexedDB and real WebCrypto: sealing to the pinned key, opening in the page, the notice when the ID Card is not on the device, comparing keys; the premises below, with a directory round trip on a real server |
+| `tests/palsConference.test.js` | 15 | UPDATE_10: the ring's `with` and `group`, and what is refused; names; the video sizes; the worker naming who else is in a call; then three, four and five devices on one fake network: everybody rung and told who else is in it, six and twelve connections with the smaller key offering, the grid, tap to make large (sizes per connection), mic and camera, one leaving and the last, somebody introduced, the picker of three, one added in the middle of a call of two, a decline and no answer |
 | `tests/PushApi.test.js` | 21 | RFC 8291 byte for byte against Appendix A, and opened by WebCrypto; the VAPID token; the provider list (with the page agreeing); then through `Server.js` on a throwaway DB: the config row made, kept and unreadable, one written by somebody else refused, every refusal of `send`, the exact payload limit and the largest part the page makes, a full round trip of a browser-sealed message (the payload strict UTF-8, `from` taken from the cookie, the seal untouched, and opening only for bob), no `/push/api/open`, the push service's answers, the database file out of reach, and the `pals.` host guard |
 
 `tests/browserIdentity.test.js` also pins the new J6: only `reg/keystore.js`
 imports a private key, non-extractable, for `deriveBits` only, and never
 exports it.
 
-The full suite has 987 tests. The ones that fail were failing before this
-change: 98 in `bandage.test.js`, one flaky test in `grinder.test.js` (it
-passes on some runs), and `browserIdentity.test.js`, which flags
+The full suite has 1,388 tests (as of version 20). The ones that fail were
+failing before this change: 98 in `bandage.test.js`, one flaky test in
+`grinder.test.js` (it passes on some runs), and `browserIdentity.test.js`, which flags
 `example/OpenChannel/msg.html` for rebuilding the SJCL key from
 `localStorage.priv`. The example is reference material and was left as it
 came. On the `pals.` host it is now sandboxed.

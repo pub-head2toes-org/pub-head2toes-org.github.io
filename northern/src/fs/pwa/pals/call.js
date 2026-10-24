@@ -27,6 +27,8 @@
  *   on.state(state)    'calling', 'connecting', 'connected', 'reconnecting'
  *   on.remote(stream)  the other side's camera and microphone
  *   on.ended(reason)   once, when it is over, with why in words
+ *   on.message(text)   anything else the other side says over the data
+ *                      channel (in a call of more: who joins, mic off, sizes)
  *   timers     { setTimeout, clearTimeout }, for the tests
  */
 const PalsCall = (function () {
@@ -41,6 +43,9 @@ const PalsCall = (function () {
         const on = o.on || {};
         let pc = null;
         let dc = null;
+        // What carries this device's camera, and how much it sends (PalsCalls.videoFor).
+        let videoSender = null;
+        let video = null;
         let state = o.role === 'caller' ? 'calling' : 'connecting';
         let ended = '';
         let timer = null;
@@ -88,19 +93,45 @@ const PalsCall = (function () {
 
         const send = (t, extra) => Promise.resolve(o.send(t, extra)).catch(() => {});
 
+        // What was said before the data channel opened, sent once it has.
+        const outbox = [];
+
+        function sayAll() {
+            while (outbox.length && !ended && dc && dc.readyState === 'open') {
+                try {
+                    dc.send(outbox[0]);
+                } catch (e) {
+                    return;
+                }
+                outbox.shift();
+            }
+        }
+
         function useChannel(channel) {
             dc = channel;
+            dc.onopen = sayAll;
             dc.onmessage = function (event) {
                 if (event.data === 'bye') {
                     end('they hung up');
+                } else if (on.message && typeof event.data === 'string') {
+                    on.message(event.data);
                 }
             };
+            sayAll();
         }
 
         function makePeer() {
             pc = new o.RTCPeerConnection(o.config);
             if (o.local) {
-                o.local.getTracks().forEach(track => pc.addTrack(track, o.local));
+                o.local.getTracks().forEach(function (track) {
+                    const sender = pc.addTrack(track, o.local);
+                    if (track.kind === 'video' && sender) {
+                        videoSender = sender;
+                    }
+                });
+                if (video) {
+                    applyVideo();
+                }
             }
             pc.onicecandidate = function (event) {
                 if (event.candidate) {
@@ -117,6 +148,9 @@ const PalsCall = (function () {
                 if (s === 'connected') {
                     timers.clearTimeout(timer);
                     setState('connected');
+                    if (video) {
+                        applyVideo();
+                    }
                 } else if (s === 'disconnected') {
                     setState('reconnecting');
                 } else if (s === 'failed') {
@@ -126,6 +160,30 @@ const PalsCall = (function () {
             pc.ondatachannel = event => useChannel(event.channel);
             // Neither side reached the other in time: no route between them.
             wait(30 * 1000, 'the devices could not reach each other - a TURN server would get it through');
+        }
+
+        /** Sets how much video goes this way; a browser that refuses keeps what it had. */
+        function applyVideo() {
+            const set = function (encoding) {
+                try {
+                    const p = videoSender.getParameters();
+                    if (!p.encodings || !p.encodings.length) {
+                        // Before the offer some browsers have none yet: set again once connected.
+                        p.encodings = [{}];
+                    }
+                    Object.assign(p.encodings[0], encoding);
+                    return Promise.resolve(videoSender.setParameters(p));
+                } catch (e) {
+                    return Promise.reject(e);
+                }
+            };
+            if (!videoSender || !videoSender.getParameters || !videoSender.setParameters) {
+                return Promise.resolve();
+            }
+            // A browser that does not take a frame rate still takes the bitrate and the size.
+            const rest = Object.assign({}, video);
+            delete rest.maxFramerate;
+            return set(video).catch(() => set(rest)).catch(() => {});
         }
 
         function flush() {
@@ -202,6 +260,20 @@ const PalsCall = (function () {
             const told = send('bye');
             end(state === 'calling' ? 'cancelled' : 'hung up');
             return told;
+        };
+
+        /** How much video to send this way, as PalsCalls.videoFor says it; kept for when the connection is made. */
+        call.video = function (encoding) {
+            video = encoding;
+            return applyVideo();
+        };
+
+        /** Says something to the other side over the data channel - now, or as soon as it opens. */
+        call.say = function (text) {
+            if (!ended) {
+                outbox.push(text);
+                sayAll();
+            }
         };
 
         call.state = () => state;

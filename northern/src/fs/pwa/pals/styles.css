@@ -573,6 +573,69 @@ button.danger {
 /* One's own camera mirrored, as people expect to see themselves. */
 .video.self video { transform: scaleX(-1); }
 
+/* Under a tile's picture: Ringing…, Mic off. */
+.video .note {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  margin: 0;
+  color: #fff;
+  font-size: 0.8rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.video .note:empty { display: none; }
+
+/* Compare keys with the pal on a tile, in a call of more than two. */
+.video .tile-key {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  padding: 2px 8px;
+  min-height: 0;
+  font-size: 0.75rem;
+}
+
+/* Not connected yet, or no longer: the picture dimmed. Camera off: none. */
+.video.waiting video { opacity: 0.35; }
+.video.no-camera video { visibility: hidden; }
+/* Who is speaking. */
+.video.speaking { box-shadow: inset 0 0 0 3px var(--theme); }
+
+/* Three or four (UPDATE_10): a 2x2 grid, this device's camera in the last tile. */
+.videos.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+.videos.grid .video,
+.videos.grid .video.contact {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: auto;
+  min-width: 0;
+  aspect-ratio: 9 / 16;
+  border: 0;
+}
+.videos.grid .video.self { order: 1; }
+.videos.grid .video.add {
+  font: inherit;
+  color: var(--text);
+  border: 2px dashed var(--border);
+  background: transparent;
+}
+/* One made large: across the top, the others in a strip beneath. */
+.videos.grid.spotlight { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.videos.grid.spotlight .video { aspect-ratio: 3 / 4; }
+.videos.grid.spotlight .video.large { grid-column: 1 / -1; order: -1; aspect-ratio: 3 / 4; }
+.videos.grid.spotlight .video.add { display: none; }
+
+#incoming_with .by { color: var(--muted); font-size: 0.85em; }
+
 /* Video calls on or off, and Backup and Restore, in Settings. */
 .ice, .backup {
   display: grid;
@@ -620,5 +683,15 @@ dialog label.choice {
     padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
              max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
-  #dlg_call .video.contact { aspect-ratio: 3 / 4; max-height: calc(100dvh - 9rem); }
+  #dlg_call .videos.n2 .video.contact { aspect-ratio: 3 / 4; max-height: calc(100dvh - 9rem); }
+  /* The grid fits the screen: two rows of tiles above the buttons. */
+  #dlg_call .videos.grid .video { max-height: calc((100dvh - 11rem) / 2); }
+  #dlg_call .videos.grid.spotlight .video { max-height: calc((100dvh - 11rem) / 4); }
+  #dlg_call .videos.grid.spotlight .video.large { max-height: calc((100dvh - 11rem) * 3 / 4); }
+}
+
+/* A phone on its side: the four in a row. */
+@media (max-width: 960px) and (orientation: landscape) and (max-height: 500px) {
+  #dlg_call .videos.grid:not(.spotlight) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #dlg_call .videos.grid .video { aspect-ratio: 3 / 4; max-height: calc(100dvh - 8rem); }
 }

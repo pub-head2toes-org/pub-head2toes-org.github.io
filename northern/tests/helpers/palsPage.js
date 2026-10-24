@@ -24,13 +24,13 @@ export function loadPals() {
     const context = { console, crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa, Blob };
     context.globalThis = context;
     vm.createContext(context);
-    for (const file of ['model.js', 'views.js', 'seal.js', 'backup.js', 'calls.js', 'call.js']) {
+    for (const file of ['model.js', 'views.js', 'seal.js', 'backup.js', 'calls.js', 'call.js', 'conference.js']) {
         vm.runInContext(read(file), context, { filename: file });
     }
     vm.runInContext(readReg('keystore.js'), context, { filename: 'keystore.js' });
     const of = name => vm.runInContext(name, context);
     return { Model: of('PalsModel'), Views: of('PalsViews'), Seal: of('PalsSeal'), Keys: of('NorthernKeys'),
-             Calls: of('PalsCalls'), Call: of('PalsCall'), Backup: of('PalsBackup') };
+             Calls: of('PalsCalls'), Call: of('PalsCall'), Conference: of('PalsConference'), Backup: of('PalsBackup') };
 }
 
 /** A Northern identity's private key as reg/keystore.js keeps it: non-extractable, ECDH only. */
@@ -189,6 +189,8 @@ function stubElements(ids) {
                 scrollTop: 0, scrollHeight: 0, listeners: {}, onclick: null, style: {}, srcObject: null, played: 0,
                 play() { this.played += 1; return Promise.resolve(); },
                 addEventListener(event, fn) { this.listeners[event] = fn; },
+                attributes: {},
+                setAttribute(name, value) { this.attributes[name] = String(value); },
                 querySelector: () => form,
                 showModal() { this.open = true; },
                 clicks: 0,
@@ -342,7 +344,7 @@ export function mountPals({ localStorage = {}, cookie = '', routes = {}, confirm
     if (net) {
         sandbox.RTCPeerConnection = net.RTCPeerConnection;
     }
-    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'backup.js', 'views.js', 'calls.js', 'call.js', 'pals.js']);
+    run(sandbox, ['version.js', 'model.js', 'store.js', 'seal.js', 'backup.js', 'views.js', 'calls.js', 'call.js', 'conference.js', 'pals.js']);
 
     const stored = () => {
         const state = indexedDB.stores.state && indexedDB.stores.state.get(pub);

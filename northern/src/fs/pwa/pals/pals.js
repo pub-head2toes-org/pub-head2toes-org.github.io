@@ -25,9 +25,9 @@
     // sealed and opened with it, here - never on the server (UPDATE_2).
     let ownKey = null;
 
-    // A video call (calls.js, call.js): the one there is, if any -
-    // {id, peer, name, role, device, controller, source, media} - and the
-    // calls already rung, answered, declined or missed, never shown again.
+    // A video call (calls.js, call.js, conference.js): the one there is, if
+    // any - {id, role, people, devices, controller, source, media, tiles...} -
+    // and the calls already rung, answered, declined or missed, never shown again.
     let current = null;
     const handled = [];
     // Whether this device makes and takes calls: switched on in Settings.
@@ -184,11 +184,13 @@
         $('member_add').disabled = !ui.group;
         $('member_remove').disabled = !ui.member;
 
-        // A call is made from a pal's messages, to the key pinned for them.
-        $('call_start').hidden = !callsOn || !(ui.filter.kind === 'pal' && PalsModel.pal(state, ui.filter.pub));
+        // A call is made from a pal's messages, to the key pinned for them -
+        // or from a group's, to its members (UPDATE_10).
+        $('call_start').hidden = !callsOn || !((ui.filter.kind === 'pal' && PalsModel.pal(state, ui.filter.pub)) ||
+            (ui.filter.kind === 'group' && PalsModel.members(state, ui.filter.id).length));
         $('call_start').disabled = !!current || !ownKey;
-        if (callPeer) {
-            $('call_with').innerHTML = callWith(callPeer);
+        if (shownCall) {
+            renderCall(shownCall);
         }
     }
 
@@ -884,11 +886,20 @@
     // As InPerson tried them live (../inPerson/PLAN.md), with what Pals adds:
     // only a pal can call and be called, and everything is sealed to the key
     // pinned when they were added - the directory only says where to ring.
+    //
+    // A call of three or four (UPDATE_10) is a mesh: one connection to each of
+    // the others (conference.js). Somebody in it who is not this device's pal
+    // is there as introduced by a pal - the one who rang, or who added them -
+    // whose seal, or whose end of the call, vouches for their key.
 
     // Where Settings keeps whether calls are on: the setup store, beside the setup.
     const CALL_SETTING = 'calls ' + me.pub;
     // Whom the call layer is about: the call there is, or the one just over.
-    let callPeer = null;
+    let shownCall = null;
+    // How long somebody who left, declined or did not answer stays on their tile.
+    const LEAVING_MS = 4000;
+    // Who counts as speaking: the audio level the browser reports, 0 to 1.
+    const SPEAKING = 0.05;
 
     function showCall(text) {
         $('call_state').textContent = text || '';
@@ -913,7 +924,7 @@
     }
 
     /**
-     * Rings - or stops ringing - the pal's device: the signal is sealed here
+     * Rings - or stops ringing - a pal's device: the signal is sealed here
      * to their pinned key, and pushed as a message is. The text is what a
      * Pals too old to know calls files instead.
      */
@@ -932,22 +943,23 @@
     }
 
     // The call's channel is Northern's /sub/ of the call's random id, which
-    // only the two ends and Northern know. Anybody signed in can write to it,
-    // so every signal on it is sealed: Northern relays them, and can neither
-    // read nor change them, nor forge one.
+    // only those in the call and Northern know. Everybody in the call listens
+    // on it, and anybody signed in can write to it, so every signal on it is
+    // sealed to the one it is for: Northern relays them, and can neither read
+    // nor change them, nor forge one.
 
-    /** Sends one signal on the call's channel, sealed to the other side; one at a time, in order. */
-    function signal(call, t, extra) {
+    /** Sends one signal on the call's channel, sealed to one of the others; one at a time, in order. */
+    function signal(call, to, t, extra) {
         call.sending = call.sending.then(function () {
             call.seq += 1;
             const wire = { id: call.id + '-' + call.seq, part: 1, parts: 1 };
             const text = PalsCalls.signal(t, call.id, Date.now(), extra);
-            return PalsSeal.seal(ownKey, me.pub, call.peer, wire, { ts: Date.now(), body: '', signal: text })
+            return PalsSeal.seal(ownKey, me.pub, to, wire, { ts: Date.now(), body: '', signal: text })
                 .then(sealed => fetch(PalsCalls.channel(call.id), {
                     method: 'PUT',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(Object.assign({ v: PalsSeal.VERSION, from: me.pub, to: call.peer, sealed: sealed }, wire))
+                    body: JSON.stringify(Object.assign({ v: PalsSeal.VERSION, from: me.pub, to: to, sealed: sealed }, wire))
                 }));
         }).catch(() => {});
         return call.sending;
@@ -956,8 +968,9 @@
     /**
      * Listens on the call's channel. Resolves once Northern says it is
      * listening - a signal sent before then is not heard. Every message is
-     * opened in turn, in the order it came; one not from the other side, not
-     * for this call, seen before or that will not open is dropped.
+     * opened in turn, in the order it came; one not for this device, not from
+     * somebody in the call, not for this call, seen before or that will not
+     * open is dropped.
      */
     function listen(call) {
         return new Promise(function (resolve, reject) {
@@ -980,14 +993,20 @@
                     resolve();
                     return;
                 }
-                if (!outer || outer.from !== call.peer || outer.to !== me.pub || typeof outer.id !== 'string' || seen[outer.id]) {
+                if (!outer || outer.to !== me.pub || typeof outer.from !== 'string' || typeof outer.id !== 'string' ||
+                    !call.controller || !call.controller.knows(outer.from)) {
                     return;
                 }
-                seen[outer.id] = true;
+                // Each sender numbers their own signals: an id is theirs alone.
+                const key = outer.from + ' ' + outer.id;
+                if (seen[key]) {
+                    return;
+                }
+                seen[key] = true;
                 order = order.then(() => PalsSeal.open(ownKey, outer))
                     .then(function (envelope) {
                         const s = PalsCalls.readSignal(envelope.signal, call.id);
-                        return s && call.controller ? call.controller.receive(s) : null;
+                        return s && call.controller ? call.controller.receive(envelope.from, s) : null;
                     })
                     .catch(() => {});
             };
@@ -998,7 +1017,7 @@
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             return Promise.reject(new Error('this browser cannot use the camera here'));
         }
-        return navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } })
+        return navigator.mediaDevices.getUserMedia({ audio: true, video: PalsCalls.CAMERA })
             .catch(function (e) {
                 throw new Error('the camera and microphone are not allowed (' + (e.name || e.message) + ')');
             });
@@ -1014,10 +1033,14 @@
         }
     }
 
-    /** What a call is, before WebRTC is in it. */
-    function newCall(id, peer, role, device) {
-        return { id: id, peer: peer, name: PalsModel.nameOf(state, peer, me), role: role, device: device,
-                 seq: 0, sending: Promise.resolve(), source: null, controller: null, media: null };
+    /**
+     * What a call is, before WebRTC is in it. `people` are the others,
+     * `{pub, name, by}` - `by` who introduced them, when they are not a pal.
+     */
+    function newCall(id, role, people) {
+        return { id: id, role: role, people: people, group: '', devices: {}, seq: 0, sending: Promise.resolve(),
+                 source: null, controller: null, media: null, tiles: [null, null, null], leaving: {}, speaking: {},
+                 poll: null, wake: null };
     }
 
     /** A new call's id: 16 random bytes, base64url - the name of its channel. */
@@ -1026,36 +1049,196 @@
         return btoa(String.fromCharCode.apply(null, raw)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
-    /** The call layer, over everything: the two videos, how the call stands, Hang up. */
+    // ---- the call layer: the tiles ---------------------------------------
+
+    // Tile 1 is the pal of a call of two; tiles 2 and 3 come in with more.
+    const videoOf = i => $(i === 1 ? 'contact_video' : 'contact_video_' + i);
+    const captionOf = i => $(i === 1 ? 'contact_caption' : 'contact_caption_' + i);
+
+    /** Everybody in the call, or who was: as the conference has them, or as rung. */
+    function peopleOf(call) {
+        return call.controller ? call.controller.people() : call.people.map(p => Object.assign({ status: 'calling' }, p));
+    }
+
+    /** What a tile says under the picture: how they stand, or what they turned off. */
+    function noteFor(p) {
+        if (p.status === 'connected') {
+            return [p.mic ? '' : 'Mic off', p.camera ? '' : 'Camera off'].filter(Boolean).join(' · ');
+        }
+        return {
+            calling: 'Calling…', ringing: 'Ringing…', waiting: 'Waiting…', connecting: 'Connecting…',
+            reconnecting: 'Reconnecting…', declined: 'Declined', busy: 'On another call', 'no answer': 'No answer',
+            left: 'Left', away: 'Not here', failed: 'Could not connect'
+        }[p.status] || '';
+    }
+
+    /** Somebody who is no longer in the call keeps their tile a few seconds, saying why; then it is free. */
+    function placeTiles(call, people) {
+        people.forEach(function (p) {
+            const at = call.tiles.indexOf(p.pub);
+            if (!PalsConference.isGone(p.status)) {
+                clearTimeout(call.leaving[p.pub]);
+                delete call.leaving[p.pub];
+                const free = call.tiles.indexOf(null);
+                if (at === -1 && free !== -1) {
+                    call.tiles[free] = p.pub;
+                }
+            } else if (at !== -1 && !call.leaving[p.pub] && current === call) {
+                call.leaving[p.pub] = setTimeout(function () {
+                    delete call.leaving[p.pub];
+                    const still = peopleOf(call).find(q => q.pub === p.pub);
+                    if (still && PalsConference.isGone(still.status) && call.tiles.indexOf(p.pub) !== -1) {
+                        call.tiles[call.tiles.indexOf(p.pub)] = null;
+                        renderCall(call);
+                    }
+                }, LEAVING_MS);
+            }
+        });
+    }
+
+    /**
+     * The call layer as the call stands: two as a pal large and this device
+     * small; three or four as the 2x2 grid, with one made large on a tap.
+     */
+    function renderCall(call) {
+        const people = peopleOf(call);
+        const live = call === current;
+        if (live) {
+            placeTiles(call, people);
+        }
+        const shown = call.tiles.filter(Boolean).length;
+        const grid = shown >= 2;
+        const conf = call.controller;
+        const large = conf ? conf.large() : null;
+        const own = conf ? conf.own() : { mic: true, camera: true };
+        $('call_videos').className = 'videos ' + (grid ? 'grid' + (large ? ' spotlight' : '') : 'n2');
+        for (let i = 1; i <= 3; i++) {
+            const pub = call.tiles[i - 1];
+            const p = pub ? people.find(q => q.pub === pub) : null;
+            $('tile_' + i).hidden = i > 1 && !p;
+            $('key_' + i).hidden = !grid || !p || !PalsModel.pal(state, pub);
+            if (!p) {
+                if (i > 1 && videoOf(i).srcObject) {
+                    play(videoOf(i), null);
+                }
+                continue;
+            }
+            if (live && videoOf(i).srcObject !== p.stream) {
+                play(videoOf(i), p.stream);
+            }
+            const introducer = p.by ? people.find(q => q.pub === p.by) : null;
+            captionOf(i).textContent = p.name + (p.by ? ' · introduced by ' + (introducer ? introducer.name : PalsModel.nameOf(state, p.by, me)) : '');
+            $('note_' + i).textContent = noteFor(p);
+            $('tile_' + i).className = 'video contact' + (p.status !== 'connected' ? ' waiting' : '') +
+                (p.camera ? '' : ' no-camera') + (large === pub ? ' large' : '') + (call.speaking[pub] ? ' speaking' : '');
+        }
+        $('tile_self').className = 'video self' + (own.camera ? '' : ' no-camera');
+        $('self_caption').textContent = 'Self' + (own.mic ? '' : ' · mic off');
+        const room = live && conf && conf.count() < PalsCalls.MAX;
+        $('add_tile').hidden = !(grid && room && shown < 3);
+        $('call_add').hidden = !live;
+        $('call_add').disabled = !room;
+        $('call_mic').hidden = !live;
+        $('call_mic').textContent = own.mic ? 'Mic off' : 'Mic on';
+        $('call_mic').setAttribute('aria-pressed', own.mic ? 'false' : 'true');
+        $('call_camera').hidden = !live;
+        $('call_camera').textContent = own.camera ? 'Camera off' : 'Camera on';
+        $('call_camera').setAttribute('aria-pressed', own.camera ? 'false' : 'true');
+        // With one pal the Key is under the call; with more, on each tile.
+        $('call_key').hidden = grid;
+        $('call_with').innerHTML = people.filter(p => !PalsConference.isGone(p.status) || !live).map(p => callWith(p.pub)).join(', ');
+        if (live && conf) {
+            const s = conf.summary();
+            if (s.state) {
+                showCall(PalsCalls.stateText(s.state, PalsCalls.names(s.names)));
+            }
+        }
+    }
+
+    /** Who is speaking, from the level of each connection's audio, twice a second: an outline on their tile. */
+    function watchSpeakers(call) {
+        const tick = function () {
+            if (current !== call || !call.controller) {
+                return;
+            }
+            const speaking = {};
+            call.controller.connections().forEach(function (c) {
+                (c.pc.getReceivers ? c.pc.getReceivers() : []).forEach(function (r) {
+                    if (r.track && r.track.kind === 'audio' && r.getSynchronizationSources &&
+                        r.getSynchronizationSources().some(s => (s.audioLevel || 0) > SPEAKING)) {
+                        speaking[c.pub] = true;
+                    }
+                });
+            });
+            if (Object.keys(speaking).join() !== Object.keys(call.speaking).join()) {
+                call.speaking = speaking;
+                renderCall(call);
+            }
+            call.poll = setTimeout(tick, 500);
+        };
+        call.poll = setTimeout(tick, 500);
+    }
+
+    /** The screen stays on for the call, where the browser can (Screen Wake Lock). */
+    function keepAwake(call) {
+        if (!navigator.wakeLock || !navigator.wakeLock.request) {
+            return;
+        }
+        navigator.wakeLock.request('screen').then(function (lock) {
+            if (current === call) {
+                call.wake = lock;
+            } else {
+                lock.release().catch(() => {});
+            }
+        }, () => {});
+    }
+
+    /** The call layer, over everything: the videos, how the call stands, Hang up. */
     function openCall(call) {
-        callPeer = call.peer;
-        $('call_with').innerHTML = callWith(call.peer);
-        $('contact_caption').textContent = call.name;
+        shownCall = call;
+        [1, 2, 3].forEach(i => play(videoOf(i), null));
+        renderCall(call);
         $('hang_up').hidden = false;
         $('call_close').hidden = true;
         layer('call');
+        keepAwake(call);
     }
 
-    /** WebRTC takes over: the controller, its state in the call layer, the other side's video. */
+    /** WebRTC takes over: the conference, its state in the call layer, the others' videos. */
     function connect(call, rtc) {
-        call.controller = PalsCall.create({
-            role: call.role,
+        call.controller = PalsConference.create({
+            me: me.pub,
             call: call.id,
+            role: call.role,
+            people: call.people,
+            known: function (pub) {
+                const pal = PalsModel.pal(state, pub);
+                return pal ? pal.name : '';
+            },
             config: rtc,
             local: call.media,
             RTCPeerConnection: RTCPeerConnection,
-            send: (t, extra) => signal(call, t, extra),
+            send: (to, t, extra) => signal(call, to, t, extra),
             on: {
-                state: s => showCall(PalsCalls.stateText(s, call.name)),
-                remote: stream => play($('contact_video'), stream),
+                state: () => renderCall(call),
+                gaveUp: pubs => stopRinging(call, pubs),
                 ended: reason => ended(call, reason)
             }
         });
-        showCall(PalsCalls.stateText(call.role === 'caller' ? 'calling' : 'connecting', call.name));
+        renderCall(call);
+        watchSpeakers(call);
         return call.controller.start();
     }
 
-    /** It is over: the camera off, the channel closed, the layer says why. A caller who gave up stops the ringing. */
+    /** Rung from here and never answered: their ringing stops, and they find a missed call. */
+    function stopRinging(call, pubs) {
+        pubs.filter(pub => call.devices[pub]).forEach(function (pub) {
+            pushSignal(pub, call.devices[pub], call.id + '-x', PalsCalls.signal('cancel', call.id, Date.now()), PalsCalls.MISSED_TEXT)
+                .catch(() => {});
+        });
+    }
+
+    /** It is over: the camera off, the channel closed, the layer says why. */
     function ended(call, reason) {
         if (call.media) {
             call.media.getTracks().forEach(t => t.stop());
@@ -1063,19 +1246,22 @@
         if (call.source) {
             call.source.close();
         }
+        clearTimeout(call.poll);
+        Object.keys(call.leaving).forEach(pub => clearTimeout(call.leaving[pub]));
+        if (call.wake) {
+            call.wake.release().catch(() => {});
+            call.wake = null;
+        }
         if (current === call) {
             current = null;
         }
         play($('self_video'), null);
-        play($('contact_video'), null);
-        showCall('Call with ' + call.name + ': ' + reason + '.');
+        [1, 2, 3].forEach(i => play(videoOf(i), null));
+        renderCall(call);
+        showCall('Call with ' + PalsCalls.names(peopleOf(call).map(p => p.name)) + ': ' + reason + '.');
         $('hang_up').hidden = true;
         $('call_close').hidden = false;
         render();
-        if (call.role === 'caller' && (reason === 'cancelled' || reason === 'no answer') && call.device) {
-            pushSignal(call.peer, call.device, call.id + '-x', PalsCalls.signal('cancel', call.id, Date.now()), PalsCalls.MISSED_TEXT)
-                .catch(() => {});
-        }
     }
 
     /**
@@ -1085,7 +1271,7 @@
     function abandon(call, why) {
         const controller = call.controller;
         call.controller = null;
-        call.device = null;
+        call.devices = {};
         if (controller) {
             controller.hangUp();
         }
@@ -1109,58 +1295,169 @@
     }
 
     /**
-     * Call, from a pal's messages: the camera on, the call's channel open,
-     * then the pal rung by push. WebRTC starts when they answer (call.js).
+     * Rings one of them by push, sealed to their pinned key, saying who else
+     * is in the call. A ring that went out after the call was given up is
+     * stopped at once.
      */
-    function startCall() {
-        if (!checkSession() || current) {
-            return Promise.resolve();
+    function ringOne(call, pub, device) {
+        const others = call.controller.people()
+            .filter(p => p.pub !== pub && !PalsConference.isGone(p.status))
+            .map(p => ({ pub: p.pub, name: p.name }));
+        const extra = {};
+        if (others.length) {
+            extra.with = others;
         }
-        const pal = ui.filter.kind === 'pal' ? PalsModel.pal(state, ui.filter.pub) : null;
-        if (!ownKey) {
-            say('Load your ID Card on this device first - calls are set up sealed with its key.');
-            return Promise.resolve();
+        if (call.group) {
+            extra.group = call.group;
         }
-        if (!pal) {
-            say('Only a pal can be called: add them with + first.');
-            return Promise.resolve();
-        }
-        if (!callsOn) {
-            say('Switch video calls on in Settings first.');
-            return Promise.resolve();
-        }
-        const call = current = newCall(callId(), pal.pub, 'caller', null);
+        return pushSignal(pub, device, call.id, PalsCalls.signal('ring', call.id, Date.now(), extra), PalsCalls.RING_TEXT)
+            .then(function () {
+                call.devices[pub] = device;
+                if (current !== call) {
+                    // Hung up while the ring was on its way: stop it.
+                    stopRinging(call, [pub]);
+                } else if (call.controller) {
+                    call.controller.rung(pub);
+                }
+            }, function (e) {
+                if (current === call && call.controller) {
+                    call.controller.drop(pub, 'could not ring them: ' + e.message);
+                }
+            });
+    }
+
+    /**
+     * Rings pals - one, or up to three of a group: the camera on, the call's
+     * channel open, then each rung by push. WebRTC starts as they answer
+     * (conference.js).
+     */
+    function ringPals(pals, group) {
+        const call = current = newCall(callId(), 'caller', pals.map(p => ({ pub: p.pub, name: p.name, by: '' })));
+        call.group = group || '';
         openCall(call);
         showCall('Getting the camera ready…');
         render();
         return cameraFor(call)
-            .then(() => Promise.all([lookUp(pal.pub), listen(call), rtcConfig()]))
+            .then(() => Promise.all([Promise.all(pals.map(p => lookUp(p.pub))), listen(call), rtcConfig()]))
             .then(function (found) {
                 if (current !== call) {
                     throw GONE;
                 }
-                if (!found[0]) {
-                    throw new Error('they have not set Pals up');
+                const devices = found[0];
+                if (!devices.some(Boolean)) {
+                    throw new Error(pals.length === 1 ? 'they have not set Pals up' : 'none of them has set Pals up');
                 }
-                return connect(call, found[2])
-                    .then(() => pushSignal(call.peer, found[0], call.id, PalsCalls.signal('ring', call.id, Date.now()), PalsCalls.RING_TEXT))
-                    // Rung: from here on, giving up stops the ringing.
-                    .then(function () {
-                        call.device = found[0];
-                        if (current !== call) {
-                            // Hung up while the ring was on its way: stop it.
-                            pushSignal(call.peer, call.device, call.id + '-x', PalsCalls.signal('cancel', call.id, Date.now()), PalsCalls.MISSED_TEXT)
-                                .catch(() => {});
-                        } else if (call.controller && call.controller.state() === 'calling') {
-                            showCall(PalsCalls.stateText('ringing', call.name));
-                        }
-                    });
+                return connect(call, found[2]).then(() => Promise.all(pals.map(function (p, i) {
+                    if (!devices[i]) {
+                        call.controller.drop(p.pub, 'they have not set Pals up');
+                        return null;
+                    }
+                    return ringOne(call, p.pub, devices[i]);
+                })));
             })
             .catch(function (e) {
                 if (e !== GONE) {
                     abandon(call, 'could not ring them: ' + e.message);
                 }
             });
+    }
+
+    // ---- picking whom to ring --------------------------------------------
+
+    let picking = null;
+
+    /** Up to `max` of `pals`, ticked in a list; Ring hands them to `then`. */
+    function pick(pals, max, hint, then) {
+        picking = { pals: pals, max: max, picked: [] };
+        $('pick_hint').textContent = hint;
+        $('pick_list').innerHTML = PalsViews.pickList(pals, []);
+        ask('pick', function () {
+            const chosen = picking ? pals.filter(p => picking.picked.indexOf(p.pub) !== -1) : [];
+            if (!chosen.length) {
+                throw new Error('Pick somebody to ring.');
+            }
+            picking = null;
+            return () => then(chosen);
+        });
+    }
+
+    function togglePick(pub) {
+        if (!picking) {
+            return;
+        }
+        const at = picking.picked.indexOf(pub);
+        $('pick_error').textContent = '';
+        if (at !== -1) {
+            picking.picked.splice(at, 1);
+        } else if (picking.picked.length < picking.max) {
+            picking.picked.push(pub);
+        } else {
+            $('pick_error').textContent = picking.max === 1 ? 'One more fits in the call.' : picking.max + ' at most: a call has four people.';
+        }
+        $('pick_list').innerHTML = PalsViews.pickList(picking.pals, picking.picked);
+    }
+
+    /**
+     * Call, from a pal's messages - or a group's: its members, up to three,
+     * picked first when there are more.
+     */
+    function startCall() {
+        if (!checkSession() || current) {
+            return Promise.resolve();
+        }
+        if (!ownKey) {
+            say('Load your ID Card on this device first - calls are set up sealed with its key.');
+            return Promise.resolve();
+        }
+        const pal = ui.filter.kind === 'pal' ? PalsModel.pal(state, ui.filter.pub) : null;
+        const members = ui.filter.kind === 'group' ? PalsModel.members(state, ui.filter.id) : [];
+        if (!pal && !members.length) {
+            say(ui.filter.kind === 'group' ? 'Nobody in this group to call: add members first.' : 'Only a pal can be called: add them with + first.');
+            return Promise.resolve();
+        }
+        if (!callsOn) {
+            say('Switch video calls on in Settings first.');
+            return Promise.resolve();
+        }
+        if (pal) {
+            return ringPals([pal], '');
+        }
+        const group = ui.filter.id;
+        if (members.length < PalsCalls.MAX) {
+            return ringPals(members, group);
+        }
+        pick(members, PalsCalls.MAX - 1, 'Up to three of ' + group + ': a call has four people.', chosen => ringPals(chosen, group));
+        return Promise.resolve();
+    }
+
+    /** + in a call: one more pal rung - or as many as fit - and everybody in it told. */
+    function addToCall() {
+        const call = current;
+        const conf = call && call.controller;
+        if (!conf) {
+            return;
+        }
+        const room = PalsCalls.MAX - conf.count();
+        const inCall = conf.people().filter(p => !PalsConference.isGone(p.status)).map(p => p.pub);
+        const choices = state.pals.filter(p => inCall.indexOf(p.pub) === -1);
+        if (room <= 0 || !choices.length) {
+            showCall(room <= 0 ? 'The call is full: four is the most.' : 'Every pal is in the call already.');
+            return;
+        }
+        pick(choices, room, room === 1 ? 'One more fits in the call.' : 'Up to ' + room + ' more fit in the call.', function (chosen) {
+            return Promise.all(chosen.map(function (p) {
+                if (current !== call || !conf.add(p.pub, p.name)) {
+                    return null;
+                }
+                return lookUp(p.pub).then(function (device) {
+                    if (!device) {
+                        conf.drop(p.pub, 'they have not set Pals up');
+                        return null;
+                    }
+                    return ringOne(call, p.pub, device);
+                }, e => conf.drop(p.pub, 'could not ring them: ' + e.message));
+            }));
+        });
     }
 
     function hangUp() {
@@ -1172,6 +1469,33 @@
             call.controller.hangUp();
         } else {
             abandon(call, 'cancelled');
+        }
+    }
+
+    /** A tap on a tile makes it large, and a tap on the large one goes back to the grid. */
+    function tapTile(i) {
+        const call = current;
+        const conf = call && call.controller;
+        const pub = call ? call.tiles[i - 1] : null;
+        if (!conf || !pub || call.tiles.filter(Boolean).length < 2) {
+            return;
+        }
+        conf.makeLarge(conf.large() === pub ? null : pub);
+    }
+
+    /** Compare keys with a pal in the call, while you can hear each other. */
+    function compareKeys(pub) {
+        if (pub && PalsModel.pal(state, pub)) {
+            ui.pal = pub;
+            verifyPal();
+        }
+    }
+
+    function mute(what) {
+        const conf = current && current.controller;
+        if (conf) {
+            conf.mute(what, !conf.own()[what]);
+            renderCall(current);
         }
     }
 
@@ -1201,12 +1525,31 @@
             });
     }
 
+    /**
+     * Who else a ring says is in the call, as this device has them: a pal by
+     * the name given here; anybody else by the caller's name for them, as
+     * introduced by the caller.
+     */
+    function othersIn(r) {
+        return r.with.filter(w => w.pub !== me.pub && w.pub !== r.from).map(function (w) {
+            const pal = PalsModel.pal(state, w.pub);
+            return { pub: w.pub, name: pal ? pal.name : w.name, by: pal ? '' : r.from };
+        });
+    }
+
     function ring(r) {
         if (ringing && ringing.call === r.call) {
             return;
         }
         ringing = r;
         $('incoming_from').innerHTML = callWith(r.from);
+        const others = othersIn(r);
+        const caller = PalsModel.nameOf(state, r.from, me);
+        $('incoming_with').hidden = !others.length;
+        $('incoming_with').innerHTML = others.length
+            ? 'With ' + PalsViews.inCall(others.map(o => ({ pub: o.pub, name: o.name, byName: o.by ? caller : '' }))) +
+              (r.group ? ' - in ' + PalsViews.esc(r.group) : '')
+            : '';
         if (!$('dlg_incoming').open) {
             $('dlg_incoming').showModal();
         }
@@ -1224,7 +1567,8 @@
         }
         handled.push(r.call);
         closeIncoming();
-        const call = current = newCall(r.call, r.from, 'callee', null);
+        const people = [{ pub: r.from, name: PalsModel.nameOf(state, r.from, me), by: '' }].concat(othersIn(r));
+        const call = current = newCall(r.call, 'callee', people);
         openCall(call);
         showCall('Getting the camera ready…');
         render();
@@ -1238,7 +1582,7 @@
             })
             .catch(function (e) {
                 if (e !== GONE) {
-                    signal(call, 'decline');
+                    signal(call, r.from, 'decline');
                     abandon(call, 'could not answer: ' + e.message);
                 }
             });
@@ -1251,7 +1595,7 @@
         }
         handled.push(r.call);
         closeIncoming();
-        return signal(newCall(r.call, r.from, 'callee', null), 'decline');
+        return signal(newCall(r.call, 'callee', []), r.from, 'decline');
     }
 
     /**
@@ -1277,7 +1621,7 @@
         }
         if (r && current) {
             // On a call already: the other caller hears so.
-            signal(newCall(r.call, r.from, 'callee', null), 'decline', { busy: true });
+            signal(newCall(r.call, 'callee', []), r.from, 'decline', { busy: true });
             lost.push(r);
             r = null;
         }
@@ -1455,6 +1799,11 @@
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) {
             checkSession();
+            // A browser lets go of the screen's wake lock when the page is hidden.
+            if (current && current.wake) {
+                current.wake = null;
+                keepAwake(current);
+            }
             // A ring that came while the page was away.
             drain();
         }
@@ -1495,13 +1844,24 @@
     $('hang_up').addEventListener('click', hangUp);
     $('call_answer').addEventListener('click', answerCall);
     $('call_decline').addEventListener('click', declineCall);
-    // Keys compared while the two can hear each other: the call's pal, in the Key overlay.
-    $('call_key').addEventListener('click', function () {
-        if (callPeer && PalsModel.pal(state, callPeer)) {
-            ui.pal = callPeer;
-            verifyPal();
-        }
+    // Keys compared while they can hear each other: the call's pal, in the Key
+    // overlay - or, with more in the call, the pal on the tile.
+    $('call_key').addEventListener('click', () => compareKeys(shownCall && shownCall.tiles.find(Boolean)));
+    [1, 2, 3].forEach(function (i) {
+        $('tile_' + i).addEventListener('click', () => tapTile(i));
+        $('key_' + i).addEventListener('click', function (event) {
+            if (event && event.stopPropagation) {
+                // Not a tap on the tile as well.
+                event.stopPropagation();
+            }
+            compareKeys(shownCall && shownCall.tiles[i - 1]);
+        });
     });
+    $('call_mic').addEventListener('click', () => mute('mic'));
+    $('call_camera').addEventListener('click', () => mute('camera'));
+    $('call_add').addEventListener('click', addToCall);
+    $('add_tile').addEventListener('click', addToCall);
+    onRow('pick_list', 'data-pub', togglePick);
     // The call layer stays while there is a call: Escape does not close it.
     $('dlg_call').addEventListener('cancel', function (event) {
         if (current) {

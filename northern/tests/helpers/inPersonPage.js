@@ -106,7 +106,19 @@ export function fakeWebRTC() {
         pc.remoteDescription = null;
         pc.connectionState = 'new';
         pc.closed = false;
-        pc.addTrack = (track, stream) => { pc.tracks.push(track); pc.stream = stream; };
+        pc.senders = [];
+        // A sender keeps what was set on it, as RTCRtpSender.setParameters does.
+        pc.addTrack = (track, stream) => {
+            pc.tracks.push(track);
+            pc.stream = stream;
+            const sender = {
+                track, params: { encodings: [{}] }, set: [],
+                getParameters() { return JSON.parse(JSON.stringify(this.params)); },
+                setParameters(params) { this.params = params; this.set.push(params); return Promise.resolve(); }
+            };
+            pc.senders.push(sender);
+            return sender;
+        };
         pc.createDataChannel = function (label) {
             pc.channel = { label, readyState: 'open', sent: [], onmessage: null, send(data) { this.sent.push(data); if (pc.other && pc.other.channel && pc.other.channel.onmessage) pc.other.channel.onmessage({ data }); } };
             return pc.channel;

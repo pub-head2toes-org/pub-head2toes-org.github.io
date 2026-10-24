@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=19">
+  <link rel="stylesheet" href="./styles.css?v=20">
   <title>Pals</title>
 </head>
 <body>
@@ -78,7 +78,7 @@
     </div>
     <div class="buttons">
       <button type="button" class="primary" id="message_add">Send</button>
-      <!-- A video call, when the layer shows a pal. -->
+      <!-- A video call, when the layer shows a pal - or a group, up to three of it (UPDATE_10). -->
       <button type="button" id="call_start" hidden>Call</button>
       <button type="submit" class="close">Close</button>
     </div>
@@ -98,24 +98,45 @@
   </form>
 </dialog>
 
-<!-- A video call with a pal: their camera large, this device's small in its corner. -->
+<!-- A video call. Two: the pal's camera large, this device's small in its corner.
+     Three or four: a 2x2 grid, this device's camera in the last tile; a tap on a
+     tile makes it large (UPDATE_10). -->
 <dialog class="layer" id="dlg_call" aria-labelledby="call_title">
   <form method="dialog">
     <h2 id="call_title">Call <span class="context" id="call_with"></span></h2>
-    <section class="videos" aria-label="The call">
-      <figure class="video contact">
+    <section class="videos n2" id="call_videos" aria-label="The call">
+      <figure class="video contact" id="tile_1">
         <video id="contact_video" autoplay playsinline></video>
+        <p class="note" id="note_1"></p>
         <figcaption id="contact_caption">Contact</figcaption>
+        <button type="button" class="tile-key" id="key_1" hidden>Key</button>
       </figure>
-      <figure class="video self">
+      <figure class="video contact" id="tile_2" hidden>
+        <video id="contact_video_2" autoplay playsinline></video>
+        <p class="note" id="note_2"></p>
+        <figcaption id="contact_caption_2">Contact</figcaption>
+        <button type="button" class="tile-key" id="key_2" hidden>Key</button>
+      </figure>
+      <figure class="video contact" id="tile_3" hidden>
+        <video id="contact_video_3" autoplay playsinline></video>
+        <p class="note" id="note_3"></p>
+        <figcaption id="contact_caption_3">Contact</figcaption>
+        <button type="button" class="tile-key" id="key_3" hidden>Key</button>
+      </figure>
+      <!-- With three in the call, the free tile rings one more. -->
+      <button type="button" class="video add" id="add_tile" hidden>+ Add a pal</button>
+      <figure class="video self" id="tile_self">
         <video id="self_video" autoplay playsinline muted></video>
-        <figcaption>Self</figcaption>
+        <figcaption id="self_caption">Self</figcaption>
       </figure>
     </section>
     <p class="status" id="call_state" role="status"></p>
     <div class="buttons">
-      <!-- Compare keys while you can hear each other. -->
+      <!-- Compare keys while you can hear each other: here with one pal, on each tile with more. -->
       <button type="button" id="call_key" aria-label="Compare keys with this pal">Key</button>
+      <button type="button" id="call_mic" aria-pressed="false" hidden>Mic off</button>
+      <button type="button" id="call_camera" aria-pressed="false" hidden>Camera off</button>
+      <button type="button" id="call_add" aria-label="Add a pal to the call" hidden>+</button>
       <button type="button" class="danger" id="hang_up" hidden>Hang up</button>
       <button type="submit" class="close" id="call_close">Close</button>
     </div>
@@ -126,9 +147,25 @@
 <dialog id="dlg_incoming" aria-labelledby="incoming_title">
   <form method="dialog">
     <h2 id="incoming_title"><span id="incoming_from"></span> is calling</h2>
+    <!-- Who else is in the call, and who introduced them when they are not a pal. -->
+    <p id="incoming_with" hidden></p>
     <div class="buttons">
       <button type="button" class="danger" id="call_decline">Decline</button>
       <button type="button" class="primary" id="call_answer">Answer</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Whom to ring: from a group of more than three, or one more into a call (UPDATE_10). -->
+<dialog id="dlg_pick" aria-labelledby="pick_title">
+  <form method="dialog">
+    <h2 id="pick_title">Ring</h2>
+    <p id="pick_hint"></p>
+    <div class="box" id="pick_list" role="listbox" aria-multiselectable="true" aria-label="Pals to ring"></div>
+    <p class="error" id="pick_error"></p>
+    <div class="buttons">
+      <button type="button" data-close>Cancel</button>
+      <button type="submit" class="primary">Ring</button>
     </div>
   </form>
 </dialog>
@@ -249,21 +286,22 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=19"></script>
-<script src="../../reg/cookies.js?v=19"></script>
-<script src="../../reg/oo.js?v=19"></script>
-<script src="../../reg/idcard.js?v=19"></script>
-<script src="../../reg/keystore.js?v=19"></script>
-<script src="../../reg/session.js?v=19"></script>
+<script src="../../reg/sjcl.js?v=20"></script>
+<script src="../../reg/cookies.js?v=20"></script>
+<script src="../../reg/oo.js?v=20"></script>
+<script src="../../reg/idcard.js?v=20"></script>
+<script src="../../reg/keystore.js?v=20"></script>
+<script src="../../reg/session.js?v=20"></script>
 
-<script src="./version.js?v=19"></script>
-<script src="./model.js?v=19"></script>
-<script src="./store.js?v=19"></script>
-<script src="./seal.js?v=19"></script>
-<script src="./backup.js?v=19"></script>
-<script src="./views.js?v=19"></script>
-<script src="./calls.js?v=19"></script>
-<script src="./call.js?v=19"></script>
-<script src="./pals.js?v=19"></script>
+<script src="./version.js?v=20"></script>
+<script src="./model.js?v=20"></script>
+<script src="./store.js?v=20"></script>
+<script src="./seal.js?v=20"></script>
+<script src="./backup.js?v=20"></script>
+<script src="./views.js?v=20"></script>
+<script src="./calls.js?v=20"></script>
+<script src="./call.js?v=20"></script>
+<script src="./conference.js?v=20"></script>
+<script src="./pals.js?v=20"></script>
 </body>
 </html>

@@ -17,6 +17,7 @@ const urlsToCache = [
   './views.js',
   './calls.js',
   './call.js',
+  './conference.js',
   './pals.js',
   './welcome.js',
   './manifest.json',
@@ -81,18 +82,20 @@ function open(outer) {
 
 /**
  * Who a message is from: the receiver's own name for them, if any, whether
- * they are a pal, and whether the receiver has video calls switched on.
+ * they are a pal, and whether the receiver has video calls switched on - and
+ * a name for anybody else, as `nameOf(pub, given)` (who else is in a call).
  */
 function sender(envelope) {
-  if (!envelope) return Promise.resolve({ name: '', pal: false, calls: false });
+  if (!envelope) return Promise.resolve({ name: '', pal: false, calls: false, nameOf: (pub, given) => given });
   return Promise.all([PalsStore.get('state', envelope.to), PalsStore.get('setup', 'calls ' + envelope.to).catch(() => null)])
     .then(([stored, calls]) => {
       const state = PalsModel.load(stored);
       const name = PalsModel.nameOf(state, envelope.from);
-      return { name: name === '?' ? PalsModel.label('A new pal', envelope.from) : name, pal: !!PalsModel.pal(state, envelope.from),
-               calls: PalsCalls.enabled(calls) };
+      const pal = pub => PalsModel.pal(state, pub);
+      return { name: name === '?' ? PalsModel.label('A new pal', envelope.from) : name, pal: !!pal(envelope.from),
+               calls: PalsCalls.enabled(calls), nameOf: (pub, given) => pal(pub) ? pal(pub).name : given };
     })
-    .catch(() => ({ name: '', pal: false, calls: false }));
+    .catch(() => ({ name: '', pal: false, calls: false, nameOf: (pub, given) => given }));
 }
 
 /**
@@ -109,7 +112,10 @@ function notice(envelope, from) {
   const tag = 'pals-call-' + signal.call;
   const name = from.name || PalsModel.label('A new pal', envelope.from);
   if (signal.t === 'ring' && from.pal && from.calls && Date.now() - signal.ts < PalsCalls.RING_MS) {
-    return { body: name + ' is calling', icon: './icon-192.png', tag, requireInteraction: true, renotify: true, data: { call: signal.call } };
+    // In a call of more (UPDATE_10): who else is in it.
+    const others = (signal.with || []).map((w) => from.nameOf(w.pub, w.name));
+    return { body: name + ' is calling' + (others.length ? ' - with ' + PalsCalls.names(others) : ''), icon: './icon-192.png',
+             tag, requireInteraction: true, renotify: true, data: { call: signal.call } };
   }
   return { body: 'Missed call from ' + name, icon: './icon-192.png', tag };
 }
