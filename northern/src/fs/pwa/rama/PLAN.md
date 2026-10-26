@@ -18,6 +18,7 @@ except what is listed under *Not verified*.
 | `model.js` | `RamaModel`: notes, types, search, the two lists, reminders, time. No DOM, no storage — tested as data |
 | `views.js` | `RamaViews`: the list rows and the type suggestions, as HTML text, everything escaped |
 | `store.js` | `RamaStore`: IndexedDB, reachable from the page and the service worker |
+| `backup.js` | `RamaBackup`: the backup file, sealed with the ID Card's key (UPDATE_1) |
 | `remind.js` | `RamaRemind.fire`: shows what is due, once — run by the page and the worker alike |
 | `rama.js` | The wiring: session, recorder, peeling, lists, overlay, reminders |
 | `sw.js` | The offline shell, periodic sync, and notification clicks |
@@ -34,7 +35,8 @@ the stored public key). Without one the page goes to
 in — as Pals does. The cookie lasts a day, so the check runs again whenever the
 page comes back into view, and before a recording starts or a note is updated.
 
-Rama needs no ID Card on the device: nothing is signed or sealed.
+Recording needs no ID Card on the device. Backup and Restore do (UPDATE_1,
+below): the file is sealed with its key.
 
 ## Storage — IndexedDB `rama`
 
@@ -147,6 +149,43 @@ belongs to the origin, which Rama shares with the other apps.
 **Bump `RAMA_VERSION` and every `?v=` in `index.html` together** whenever a
 cached file changes.
 
+## UPDATE_1.md — Settings, with Backup and Restore (version 2)
+
+- **Settings** opens from the gear at the end of the recorder's bar: who is
+  signed in, then *Backup* and *Restore*, then *Close*.
+- **Backup** makes one file of the signed-in user's recordings: the sound of
+  each and everything written about it (buzz, type, reminder, essay), and the
+  types they added. Nobody else's recordings on the device go in.
+- **Sealed as Pals seals its backup** (`backup.js`): HKDF-SHA256 over ECDH of
+  the ID Card's key with its own public key, then AES-256-GCM — with its own
+  info string, `Rama backup v1`, so a Pals key never opens a Rama file nor the
+  other way round. The key is the one `reg/keystore.js` keeps once the ID Card
+  is loaded on the device (signing in on Reg does it), so the page now loads
+  `keystore.js`. Without it Settings says so and links to Reg; the buttons
+  say why they do nothing. To anybody else, and to wherever the file is kept,
+  the file shows nothing but its size.
+- **The file**: `Rama backup\n`, a version byte and a salt, then records, each
+  sealed apart with its place in the file: the index first (the notes, the
+  types, which sound goes with which note), then one record per sound. Sounds
+  are sealed one at a time, and a restore reads the file one slice at a time,
+  never whole. A file cut short, changed, made with another ID Card or by a
+  newer Rama is refused before anything is restored, and says why.
+- **Saving it**: once made, the backup is a link —
+  *Save rama-backup-ann-2026-10-26.rama, 3.2 MB* — which the user taps.
+  iPhone asks before it saves a file, and drops a download a page starts on
+  its own.
+- **Restore adds; it never removes or changes** (`RamaModel.restore`). It asks
+  first. A recording is known by its id, so one already here stays as it is
+  here, and restoring twice is restoring once. Each goes back one at a time,
+  its sound before its note, so no note is kept without the sound it has; a
+  sound that will not open leaves its note without one, and the report says
+  how many. Types the backup has are added to the user's.
+- **Reminders on restore**: one that came due before the backup was made had
+  its turn on the device it came from, so it is marked shown (`fired`) and
+  only listed, struck through. One that came due since is shown at once; one
+  still to come waits as any other.
+- `RAMA_VERSION` is 2.
+
 ## Not verified
 
 What needs a real browser, which the sandbox here cannot run:
@@ -155,7 +194,10 @@ What needs a real browser, which the sandbox here cannot run:
   made (the WebM it makes has no cues, so a seek may take a moment);
 - the look of the corner and of the peel;
 - notifications appearing, and periodic background sync firing at all;
-- the `<dialog>` and focus.
+- the `<dialog>` and focus;
+- the file picker, and saving the backup from its link (on iPhone above all);
+- WebCrypto with the key `reg/keystore.js` kept in a real browser (Pals
+  does the same, and is used).
 
 ## Not built
 

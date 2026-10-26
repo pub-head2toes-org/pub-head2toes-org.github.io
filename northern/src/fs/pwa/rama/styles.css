@@ -133,6 +133,23 @@ textarea { resize: vertical; }
   white-space: nowrap;
 }
 
+/* The gear, at the end of the recorder's bar: the way to the settings (UPDATE_1). */
+button.icon {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+button.icon:hover { color: var(--theme); }
+
 /* ---- the corner: lifted, it shows the page under it ---- */
 
 .peel {
@@ -481,6 +498,49 @@ button.primary {
 }
 
 button.primary:hover { background: var(--theme-dark); }
+
+/* ---- Settings: Backup and Restore (UPDATE_1) ---- */
+
+dialog .meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.backup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.backup .buttons { justify-content: flex-start; }
+
+.notice, .report {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.notice { color: var(--muted); }
+.report:empty { display: none; }
+
+a.link {
+  color: var(--theme);
+  overflow-wrap: anywhere;
+}
+
+/* Restore's file picker: opened by the button, never seen. Not display:none,
+   which some browsers will not open a picker from. */
+.picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
 
 @media (max-width: 480px) {
   .row { grid-template-columns: minmax(0, 1fr) auto; }

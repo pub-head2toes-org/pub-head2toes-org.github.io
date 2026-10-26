@@ -87,6 +87,9 @@ function stubElements(ids, html) {
                 getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; },
                 removeAttribute(name) { delete this.attributes[name]; if (name === 'src') this.src = ''; },
                 showModal() { this.open = true; },
+                // A file picker, opened by the page: the test then sets `files` and fires change.
+                clicks: 0,
+                click() { this.clicks += 1; },
                 close() { if (this.open) { this.open = false; this.fire('close'); } },
                 focus() { this.focused += 1; }
             };
@@ -156,7 +159,7 @@ function stubWorker({ registered = true, periodic = true } = {}) {
  * browser's to show.
  */
 export function mountRama({ localStorage = {}, cookie = '', idb, indexedDB: reuse, hash = '', now = Date.UTC(2026, 9, 6, 9, 0),
-    permission = 'granted', answer = 'granted', microphone, recorder = true, worker: workerOptions } = {}) {
+    permission = 'granted', answer = 'granted', microphone, recorder = true, worker: workerOptions, confirm = true } = {}) {
     const html = read('index.html');
     const element = stubElements(idsOf(html), html);
     const indexedDB = reuse || fakeIndexedDB(idb || {});
@@ -169,6 +172,7 @@ export function mountRama({ localStorage = {}, cookie = '', idb, indexedDB: reus
         revokeObjectURL(url) { urls.revoked.push(url); }
     };
     const asked = [];
+    const confirms = [];
     const Notification = function Notification(title, options) { worker.notified.push({ title, page: true, ...options }); };
     Notification.permission = permission;
     Notification.requestPermission = () => { asked.push(1); Notification.permission = answer; return Promise.resolve(answer); };
@@ -192,6 +196,9 @@ export function mountRama({ localStorage = {}, cookie = '', idb, indexedDB: reus
     const sandbox = {
         console: { log() {}, warn() {} },
         document, location, indexedDB, URL, Blob, Notification, Promise, JSON, Math, encodeURIComponent,
+        // A backup is sealed with WebCrypto (UPDATE_1).
+        crypto: globalThis.crypto, Uint8Array, TextEncoder, TextDecoder, atob, btoa,
+        confirm: text => { confirms.push(text); return confirm; },
         localStorage: storage(localStorage),
         navigator: { serviceWorker: worker.serviceWorker, ...(recorder ? { mediaDevices: mic.mediaDevices } : {}) },
         Date: clock.Date,
@@ -203,10 +210,10 @@ export function mountRama({ localStorage = {}, cookie = '', idb, indexedDB: reus
     }
     sandbox.window = sandbox;
     const context = vm.createContext(sandbox);
-    for (const name of ['cookies.js', 'idcard.js', 'session.js']) {
+    for (const name of ['cookies.js', 'idcard.js', 'keystore.js', 'session.js']) {
         vm.runInContext(readReg(name), context, { filename: name });
     }
-    for (const name of ['version.js', 'model.js', 'store.js', 'remind.js', 'views.js', 'rama.js']) {
+    for (const name of ['version.js', 'model.js', 'store.js', 'backup.js', 'remind.js', 'views.js', 'rama.js']) {
         vm.runInContext(read(name), context, { filename: name });
     }
 
@@ -215,7 +222,7 @@ export function mountRama({ localStorage = {}, cookie = '', idb, indexedDB: reus
     const target = (attribute, value) => ({ closest: () => ({ getAttribute: name => name === attribute ? value : null }) });
 
     return {
-        element, indexedDB, clock, mic, worker, urls, asked, document, location, audio, settle, Notification,
+        element, indexedDB, clock, mic, worker, urls, asked, confirms, document, location, audio, settle, Notification,
         global: name => vm.runInContext(name, context),
         html: id => element(id).innerHTML,
         rows: rowsOf,
@@ -233,6 +240,13 @@ export function mountRama({ localStorage = {}, cookie = '', idb, indexedDB: reus
         show: () => { document.hidden = false; document.listeners.visibilitychange(); },
         stored: (store, key) => indexedDB.stores[store] && indexedDB.stores[store].get(key),
         all: store => [...(indexedDB.stores[store] || new Map()).values()],
+        /** Restore, with this file picked (UPDATE_1). */
+        restoreFrom: async (blob, name = 'rama-backup-alice.rama') => {
+            element('restore').fire('click', { target: null });
+            element('restore_file').files = [new File([blob], name)];
+            element('restore_file').fire('change');
+            for (let i = 0; i < 4; i++) await settle();
+        },
         /** What the service worker says to an open page when a notification was clicked. */
         message: data => worker.listeners.message({ data })
     };

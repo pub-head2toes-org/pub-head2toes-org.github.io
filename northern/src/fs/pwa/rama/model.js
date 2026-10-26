@@ -251,5 +251,42 @@ const RamaModel = (function () {
         return (h ? h + ':' + two(m) : String(m)) + ':' + two(s);
     };
 
+    // ---- restore (UPDATE_1) --------------------------------------------
+
+    /**
+     * What a backup adds to what is here: its notes that are `owner`'s and
+     * not here yet, and the types it has that `known` lacks - nothing here is
+     * removed or overwritten, so it restores on a device in use, and twice is
+     * the same as once.
+     *
+     * Returns `{notes, types, fired}`: the notes to add, the user's types as
+     * they are to be kept, and by note id the reminders to mark shown - those
+     * that came due before the backup was made, which had their turn on the
+     * device it came from. One that came due since is shown when it is restored.
+     */
+    api.restore = function (notes, known, backup, owner) {
+        const here = new Set(notes.map(note => note.id));
+        const added = [];
+        const fired = {};
+        (backup.notes || []).forEach(function (value) {
+            const note = api.clean(value);
+            if (note && note.owner === owner && !here.has(note.id)) {
+                here.add(note.id);
+                added.push(note);
+                if (note.remind && note.remind <= backup.at) {
+                    fired[note.id] = note.remind;
+                }
+            }
+        });
+        const types = (known || []).slice();
+        (backup.types || []).forEach(function (type) {
+            const clean = typeof type === 'string' ? oneLine(type).slice(0, api.TYPE_MAX) : '';
+            if (api.isNewType(clean, api.TYPES.concat(types))) {
+                types.push(clean);
+            }
+        });
+        return { notes: added, types: types, fired: fired };
+    };
+
     return api;
 })();

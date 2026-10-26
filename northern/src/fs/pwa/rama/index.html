@@ -9,7 +9,7 @@
   <meta name="description" content="Rama: audio notes to remember, and to be reminded of.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=1">
+  <link rel="stylesheet" href="./styles.css?v=2">
   <title>Rama</title>
 </head>
 <body>
@@ -21,6 +21,14 @@
   <header class="bar">
     <h1>Rama</h1>
     <p class="who" id="user"></p>
+    <!-- The way to the settings (UPDATE_1). -->
+    <button type="button" class="icon" id="settings_open" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </header>
   <button type="button" class="peel" id="peel_top" aria-label="Peel off to the reminders and recordings"></button>
 
@@ -95,21 +103,48 @@
   </form>
 </dialog>
 
+<!-- Settings (UPDATE_1): who is signed in, and Backup and Restore - this
+     user's recordings, in one file sealed with the ID Card's key. -->
+<dialog id="dlg_settings" aria-labelledby="settings_title">
+  <form method="dialog">
+    <h2 id="settings_title">Settings</h2>
+    <p class="meta">Signed in as <span id="settings_user"></span></p>
+    <div class="backup">
+      <!-- The key is kept on this device once the ID Card is loaded here. -->
+      <p class="notice" id="need_card" hidden>Backup and Restore need your ID Card on this device:
+        <a class="link" id="need_card_link" href="/fs/get/reg/Reg.html">load it</a>.</p>
+      <div class="buttons">
+        <button type="button" id="backup">Backup</button>
+        <button type="button" id="restore">Restore</button>
+      </div>
+      <input type="file" class="picker" id="restore_file" accept=".rama" tabindex="-1" aria-hidden="true">
+      <p class="report" id="backup_report" role="status"></p>
+      <!-- A link to tap, not a download started for the user: iPhone asks first. -->
+      <a class="link" id="backup_save" hidden></a>
+    </div>
+    <div class="buttons">
+      <button type="submit" class="primary" id="settings_close">Close</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- Every script and the stylesheet carry ?v=<the version in version.js>: a
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=1"></script>
-<script src="../../reg/cookies.js?v=1"></script>
-<script src="../../reg/oo.js?v=1"></script>
-<script src="../../reg/idcard.js?v=1"></script>
-<script src="../../reg/session.js?v=1"></script>
+<script src="../../reg/sjcl.js?v=2"></script>
+<script src="../../reg/cookies.js?v=2"></script>
+<script src="../../reg/oo.js?v=2"></script>
+<script src="../../reg/idcard.js?v=2"></script>
+<script src="../../reg/keystore.js?v=2"></script>
+<script src="../../reg/session.js?v=2"></script>
 
-<script src="./version.js?v=1"></script>
-<script src="./model.js?v=1"></script>
-<script src="./store.js?v=1"></script>
-<script src="./remind.js?v=1"></script>
-<script src="./views.js?v=1"></script>
-<script src="./rama.js?v=1"></script>
+<script src="./version.js?v=2"></script>
+<script src="./model.js?v=2"></script>
+<script src="./store.js?v=2"></script>
+<script src="./backup.js?v=2"></script>
+<script src="./remind.js?v=2"></script>
+<script src="./views.js?v=2"></script>
+<script src="./rama.js?v=2"></script>
 </body>
 </html>

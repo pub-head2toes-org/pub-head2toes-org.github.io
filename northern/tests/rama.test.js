@@ -5,8 +5,11 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import nodeCrypto from 'node:crypto';
 import { mountRama, fakeIndexedDB, fakeClock, read, settle, PWA_DIR, PAGE } from './helpers/ramaPage.js';
+import { agreementKey } from './helpers/palsPage.js';
 import { REPO_ROOT } from './helpers/db.js';
+import sjclClass from '../src/h2t/sjclClass.js';
 
 /** model.js and views.js need no DOM: they run in a context of their own. */
 function loadRama(clock) {
@@ -865,5 +868,257 @@ describe('Rama page', () => {
         await other.settle();
         assert.ok(other.has('page_browse', 'front'));
         assert.strictEqual(other.element('dlg_note').open, true);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// UPDATE_1: Settings, with Backup and Restore
+// ---------------------------------------------------------------------------
+
+const sjcl = new sjclClass().get();
+
+/** A Northern identity with a real key pair, as reg/session.js drafts one: a backup is sealed with it. */
+function identity(name) {
+    const pair = sjcl.ecc.ecdsa.generateKeys(256, 0);
+    const pub = sjcl.codec.base64.fromBits(pair.pub.get().x.concat(pair.pub.get().y));
+    const priv = sjcl.codec.base64.fromBits(pair.sec.get());
+    return { name, pub, priv };
+}
+
+const ann = identity('ann');
+const ben = identity('ben');
+const keys = { ann: await agreementKey(ann), ben: await agreementKey(ben) };
+/** The `keys` store of reg/keystore.js, with the ID Cards loaded on this device. */
+const kept = (...who) => Object.fromEntries(who.map(w => [w.pub, { key: keys[w.name], at: 1 }]));
+const annNote = (id, at, extra = {}) => ({ ...note(id, at, extra), owner: ann.pub });
+const sound = text => ({ type: 'audio/webm;codecs=opus', bytes: new TextEncoder().encode(text).buffer });
+
+/** backup.js runs wherever there is WebCrypto: here, in a context of its own. */
+const Backup = (function () {
+    const context = { crypto: globalThis.crypto, Uint8Array, TextEncoder, TextDecoder, atob, btoa, Blob };
+    vm.createContext(context);
+    vm.runInContext(read('backup.js'), context, { filename: 'backup.js' });
+    return vm.runInContext('RamaBackup', context);
+})();
+
+describe('Rama backup - the seal, the file and the model', () => {
+    const me = { pub: ann.pub, name: 'ann' };
+    const notes = () => [annNote('a', NOW - DAY, { buzz: 'Milk', type: 'Shopping', essay: 'and eggs' }),
+        annNote('b', NOW - HOUR, { buzz: 'Plumber', remind: NOW + DAY }), annNote('c', NOW)];
+    const sounds = { a: sound('sound of a'), b: sound('sound of b') };
+    const soundOf = n => Promise.resolve(sounds[n.id]);
+    const bytesOf = async blob => new Uint8Array(await blob.arrayBuffer());
+
+    it('seals with the ID Card\'s own key: that card opens it, and every record only in its place', async () => {
+        const salt = nodeCrypto.randomBytes(16);
+        const sealed = await Backup.seal(await Backup.key(keys.ann, ann.pub, salt), 3, new TextEncoder().encode('hello'));
+
+        assert.strictEqual(new TextDecoder().decode(await Backup.open(await Backup.key(keys.ann, ann.pub, salt), 3, sealed)), 'hello');
+        await assert.rejects(Backup.open(await Backup.key(keys.ann, ann.pub, salt), 4, sealed), 'not in another place');
+        await assert.rejects(Backup.open(await Backup.key(keys.ann, ann.pub, nodeCrypto.randomBytes(16)), 3, sealed), 'not with another salt');
+        await assert.rejects(Backup.open(await Backup.key(keys.ben, ben.pub, salt), 3, sealed), 'not with another ID Card');
+        // ben, knowing only ann's public key, makes the key of a message between them - not hers to herself.
+        await assert.rejects(Backup.open(await Backup.key(keys.ben, ann.pub, salt), 3, sealed));
+    });
+
+    it('keeps the recordings, their sounds and the types in one file that shows none of it, and reads them back', async () => {
+        const made = await Backup.make(keys.ann, me, notes(), ['Shopping'], soundOf, Date.UTC(2026, 9, 26, 12));
+        assert.strictEqual(made.files, 2, 'c has no sound here');
+        const raw = Buffer.from(await bytesOf(made.blob));
+        assert.strictEqual(raw.subarray(0, 12).toString(), 'Rama backup\n');
+        for (const clear of ['Milk', 'Plumber', 'and eggs', 'Shopping', 'sound of', ann.pub, 'ann']) {
+            assert.strictEqual(raw.indexOf(clear), -1, `${clear} is not in the clear`);
+        }
+
+        const opened = await Backup.read(keys.ann, me, made.blob);
+        assert.strictEqual(opened.at, Date.UTC(2026, 9, 26, 12));
+        assert.deepStrictEqual(plain(opened.notes), notes());
+        assert.deepStrictEqual(plain(opened.types), ['Shopping']);
+        assert.deepStrictEqual(plain(opened.files), [{ id: 'a', type: 'audio/webm;codecs=opus', size: 10 }, { id: 'b', type: 'audio/webm;codecs=opus', size: 10 }]);
+        assert.strictEqual(new TextDecoder().decode(await opened.sound(1)), 'sound of b');
+        assert.strictEqual(Backup.fileName('ann marie/x', Date.UTC(2026, 9, 26, 12)), 'rama-backup-ann-marie-x-2026-10-26.rama');
+    });
+
+    it('refuses what is not a backup, one cut short or changed, from a newer Rama, and somebody else\'s', async () => {
+        const made = await Backup.make(keys.ann, me, notes(), [], soundOf, 1);
+        const raw = await bytesOf(made.blob);
+        const blob = bytes => new Blob([bytes]);
+        const changed = Uint8Array.from(raw);
+        changed[60] ^= 1;
+        const lastByte = Uint8Array.from(raw);
+        lastByte[raw.length - 1] ^= 1;
+
+        for (const [what, file, why] of [
+            ['nothing', null, /not a Rama backup/],
+            ['a recording', blob(nodeCrypto.randomBytes(500)), /not a Rama backup/],
+            ['cut short', blob(raw.subarray(0, raw.length - 1)), /cut short/],
+            ['with more after it', blob(Buffer.concat([raw, Buffer.from('x')])), /more in it/],
+            ['changed', blob(changed), /does not open with your ID Card/],
+            ['from a newer Rama', blob(Buffer.concat([raw.subarray(0, 12), Buffer.of(2), raw.subarray(13)])), /newer Rama/]
+        ]) {
+            await assert.rejects(Backup.read(keys.ann, me, file), why, what);
+        }
+        await assert.rejects(Backup.read(keys.ben, { pub: ben.pub, name: 'ben' }, made.blob), /does not open with your ID Card/);
+        const opened = await Backup.read(keys.ann, me, blob(lastByte));
+        await assert.rejects(opened.sound(1), 'a sound changed does not open');
+    });
+
+    it('adds a backup\'s recordings and types to what is here: nothing removed or changed, and twice is once', () => {
+        const at = NOW;
+        const backup = { at, types: ['Shopping', 'todo', ' Poems ', 7], notes: [
+            annNote('a', NOW - DAY, { buzz: 'from the backup' }),
+            annNote('old', NOW - 2 * DAY, { remind: NOW - HOUR }),
+            annNote('since', NOW - 2 * DAY, { remind: NOW + HOUR }),
+            { ...annNote('bens', NOW - DAY), owner: ben.pub },
+            { junk: true }
+        ] };
+        const here = [annNote('a', NOW - DAY, { buzz: 'written here' })];
+
+        const found = plain(Model.restore(here, ['Shopping'], backup, ann.pub));
+        assert.deepStrictEqual(found.notes.map(n => n.id), ['old', 'since'], 'what is here stays as it is; nobody else\'s, and no junk');
+        assert.deepStrictEqual(found.types, ['Shopping', 'Poems'], 'TODO is one of the three; spelled once each');
+        assert.deepStrictEqual(found.fired, { old: NOW - HOUR }, 'a reminder due before the backup was made had its turn');
+
+        const again = plain(Model.restore(here.concat(found.notes), found.types, backup, ann.pub));
+        assert.deepStrictEqual([again.notes, again.types], [[], ['Shopping', 'Poems']]);
+    });
+
+    it('says how big a backup is, and how many recordings', () => {
+        assert.deepStrictEqual([Views.size(820), Views.size(34 * 1024), Views.size(3.2 * 1024 * 1024)], ['820 bytes', '34 KB', '3.2 MB']);
+        assert.deepStrictEqual([0, 1, 12].map(Views.counted), ['0 recordings', '1 recording', '12 recordings']);
+    });
+});
+
+describe('Rama settings - backup and restore', () => {
+    const asAnn = { localStorage: { pub: ann.pub, pub_name: 'ann' }, cookie: `ssid=${ann.pub}.1.sig` };
+    const open = async ({ idb = {}, ...options } = {}) => {
+        const page = mountRama({ ...asAnn, now: NOW, idb: { keys: kept(ann), ...idb }, ...options });
+        await page.settle();
+        return page;
+    };
+    const filled = () => ({
+        notes: { a: annNote('a', NOW - DAY, { buzz: 'Milk', type: 'Shopping' }), b: annNote('b', NOW - HOUR, { buzz: 'Plumber', remind: NOW + HOUR }),
+            old: annNote('old', NOW - 2 * DAY, { buzz: 'Dentist', remind: NOW - DAY }), bens: { ...annNote('bens', NOW), owner: ben.pub } },
+        audio: { a: sound('sound of a'), b: sound('sound of b'), old: sound('sound of old'), bens: sound('ben\'s') },
+        fired: { old: NOW - DAY },
+        meta: { [ann.pub]: { types: ['Shopping'] } }
+    });
+    /** Backup, and the file it offers to save. */
+    const backedUp = async page => {
+        page.click('backup');
+        await page.settle();
+        await page.settle();
+        return page.urls.made.get(page.element('backup_save').href);
+    };
+
+    it('opens Settings from the gear on the recorder: who is signed in, Backup and Restore, and Close', async () => {
+        const index = read('index.html');
+        const record = index.slice(index.indexOf('<section class="page record'), index.indexOf('<section class="page browse'));
+        assert.match(record, /<header class="bar">[\s\S]*id="settings_open" aria-label="Settings"[\s\S]*<svg[\s\S]*<\/header>/, 'a gear in the bar');
+        const dialog = index.slice(index.indexOf('<dialog id="dlg_settings"'));
+        for (const id of ['settings_user', 'need_card', 'backup', 'restore', 'restore_file', 'backup_report', 'backup_save', 'settings_close']) {
+            assert.ok(dialog.slice(0, dialog.indexOf('</dialog>')).includes(`id="${id}"`), id);
+        }
+        assert.match(dialog, /<form method="dialog">[\s\S]*<button type="submit" class="primary" id="settings_close">Close<\/button>/);
+
+        const page = await open();
+        assert.strictEqual(page.element('dlg_settings').open, false);
+        page.click('settings_open');
+        await page.settle();
+        assert.strictEqual(page.element('dlg_settings').open, true);
+        assert.strictEqual(page.element('settings_user').textContent, 'ann');
+        assert.strictEqual(page.element('need_card').hidden, true, 'the ID Card is loaded here');
+
+        const noCard = await open({ idb: { keys: {} } });
+        noCard.click('settings_open');
+        await noCard.settle();
+        assert.strictEqual(noCard.element('need_card').hidden, false);
+        assert.strictEqual(noCard.element('need_card_link').href, `/fs/get/reg/Reg.html#${PAGE}`);
+    });
+
+    it('makes a backup: a file to save, sealed with the ID Card\'s key, of every recording of this user and its sound', async () => {
+        const page = await open({ idb: filled() });
+        page.click('settings_open');
+        const blob = await backedUp(page);
+
+        const link = page.element('backup_save');
+        assert.strictEqual(link.hidden, false, 'a link to tap: iPhone drops a download the page starts itself');
+        assert.strictEqual(link.download, 'rama-backup-ann-2026-10-06.rama');
+        assert.strictEqual(link.textContent, `Save ${link.download}, ${Views.size(blob.size)}`);
+        assert.strictEqual(page.element('backup_report').textContent,
+            'The backup holds 3 recordings. It opens only with your ID Card: keep it somewhere safe.');
+        assert.strictEqual(page.element('backup').disabled, false);
+
+        const opened = await Backup.read(keys.ann, { pub: ann.pub }, blob);
+        assert.deepStrictEqual(plain(opened.notes.map(n => n.id).sort()), ['a', 'b', 'old'], 'not ben\'s');
+        assert.deepStrictEqual(plain(opened.types), ['Shopping']);
+        const heard = await Promise.all(opened.files.map((f, i) => opened.sound(i).then(b => [f.id, new TextDecoder().decode(b)])));
+        assert.deepStrictEqual(heard.sort(), [['a', 'sound of a'], ['b', 'sound of b'], ['old', 'sound of old']]);
+
+        const first = link.href;
+        await backedUp(page);
+        assert.deepStrictEqual(page.urls.revoked, [first], 'a new backup lets the last one go');
+    });
+
+    it('restores on another device: recordings, sounds and types - and a reminder only if it came due since - and twice is once', async () => {
+        const before = await open({ idb: filled() });
+        const blob = await backedUp(before);
+
+        // Another device, a day later, where ann has recorded once already.
+        const later = NOW + DAY;
+        const page = await open({ now: later, idb: { notes: { here: annNote('here', later - MINUTE, { buzz: 'New here' }) }, audio: { here: sound('here') } } });
+        page.click('settings_open');
+        await page.restoreFrom(blob);
+
+        assert.strictEqual(page.element('restore_file').clicks, 1, 'Restore opens the file picker');
+        assert.strictEqual(page.confirms.at(-1),
+            'Restore from rama-backup-alice.rama? Its recordings are added to those here; none here is removed or changed.');
+        assert.strictEqual(page.element('backup_report').textContent, 'Restored: 3 recordings added.');
+        assert.deepStrictEqual(page.all('notes').map(n => n.id).sort(), ['a', 'b', 'here', 'old']);
+        assert.strictEqual(new TextDecoder().decode(page.stored('audio', 'b').bytes), 'sound of b');
+        assert.deepStrictEqual(plain(page.stored('meta', ann.pub)), { types: ['Shopping'] });
+        assert.deepStrictEqual(page.worker.notified.map(n => n.body), ['Plumber'], 'due since the backup: shown; the dentist was shown before');
+        assert.strictEqual(page.stored('fired', 'old'), NOW - DAY);
+        assert.deepStrictEqual(page.rows('recordings').map(r => r.id), ['here', 'b', 'a', 'old'], 'listed with what is here');
+
+        await page.restoreFrom(blob);
+        assert.strictEqual(page.element('backup_report').textContent, 'Restored: 0 recordings added.');
+        assert.strictEqual(page.all('notes').length, 4);
+        assert.strictEqual(page.element('restore_file').value, '', 'the same file can be picked again');
+        assert.strictEqual(page.element('restore').disabled, false);
+    });
+
+    it('needs the ID Card for both, restores nobody else\'s backup, and nothing unless the user says so', async () => {
+        const noCard = await open({ idb: { ...filled(), keys: {} } });
+        noCard.click('backup');
+        await noCard.settle();
+        assert.strictEqual(noCard.element('backup_report').textContent, 'Load your ID Card on this device first - the backup is sealed with its key.');
+        assert.strictEqual(noCard.urls.made.size, 0);
+        noCard.click('restore');
+        assert.strictEqual(noCard.element('restore_file').clicks, 0);
+        assert.strictEqual(noCard.element('backup_report').textContent, 'Load your ID Card on this device first - a backup opens only with its key.');
+
+        const bens = await Backup.make(keys.ben, { pub: ben.pub, name: 'ben' }, [], [], () => Promise.resolve(), 1);
+        const page = await open();
+        await page.restoreFrom(bens.blob);
+        assert.strictEqual(page.element('backup_report').textContent,
+            'The backup could not be restored: it does not open with your ID Card - it is somebody else\'s backup, or it is damaged');
+        assert.strictEqual(page.element('restore').disabled, false);
+
+        const blob = await backedUp(await open({ idb: filled() }));
+        const declined = await open({ confirm: false });
+        await declined.restoreFrom(blob);
+        assert.strictEqual(declined.element('backup_report').textContent, '');
+        assert.deepStrictEqual(declined.all('notes'), []);
+    });
+
+    it('restores a recording whose sound would not open, and says so', async () => {
+        const blob = await backedUp(await open({ idb: filled() }));
+        const raw = Uint8Array.from(Buffer.from(await blob.arrayBuffer()));
+        raw[raw.length - 1] ^= 1;
+        const page = await open();
+        await page.restoreFrom(new Blob([raw]));
+        assert.match(page.element('backup_report').textContent, /^Restored: 3 recordings added \(1 without its sound: it was not in the backup, or would not open\)\.$/);
+        assert.strictEqual(page.all('audio').length, 2);
     });
 });

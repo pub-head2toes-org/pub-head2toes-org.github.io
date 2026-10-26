@@ -63,5 +63,15 @@ const RamaViews = (function () {
             '" aria-selected="' + (i === active ? 'true' : 'false') + '">' + esc(type) + '</li>').join('');
     };
 
+    /** How big a file is: 820 bytes, 34 KB, 3.2 MB. */
+    api.size = function (bytes) {
+        const n = Number(bytes) || 0;
+        return n < 1024 ? n + ' bytes' : n < 1024 * 1024 ? Math.round(n / 1024) + ' KB'
+            : (Math.round(n / 1024 / 1024 * 10) / 10) + ' MB';
+    };
+
+    /** How many recordings a backup holds, or a restore added (UPDATE_1): 1 recording, 12 recordings. */
+    api.counted = n => (n || 0) + ' ' + (n === 1 ? 'recording' : 'recordings');
+
     return api;
 })();

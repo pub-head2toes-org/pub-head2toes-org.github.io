@@ -481,6 +481,163 @@
         }
     }
 
+    // ---- Settings: Backup and Restore (UPDATE_1) ------------------------
+
+    // The ID Card's key, as reg/keystore.js kept it when the card was loaded
+    // on this device: not extractable, for key agreement only. A backup is
+    // sealed with it, and opens only with it.
+    let ownKey = null;
+    // The backup last made, as an object URL, until the next one is.
+    let backupUrl = null;
+    let busy = false;
+
+    function loadKey() {
+        if (typeof NorthernKeys === 'undefined' || !NorthernKeys.available()) {
+            return Promise.resolve(null);
+        }
+        return NorthernKeys.get(me.pub).catch(() => null).then(key => { ownKey = key; });
+    }
+
+    function needCard() {
+        $('need_card').hidden = !!ownKey;
+        $('need_card_link').href = RamaModel.regUrl(window.location.pathname, window.location.search, '');
+    }
+
+    function backupSays(text) {
+        $('backup_report').textContent = text || '';
+    }
+
+    function working(on) {
+        busy = on;
+        $('backup').disabled = on;
+        $('restore').disabled = on;
+    }
+
+    $('settings_open').addEventListener('click', function () {
+        $('settings_user').textContent = me.name;
+        needCard();
+        $('dlg_settings').showModal();
+        // An ID Card loaded in another tab since counts too.
+        loadKey().then(needCard);
+    });
+
+    /**
+     * Backup: this user's recordings - the sound and what was written about
+     * each - and the types they added, sealed with the ID Card's key into one
+     * file (backup.js). It is offered as a link the user taps to save it:
+     * iPhone asks before it saves a file, and drops a download the page
+     * starts on its own.
+     */
+    function backup() {
+        if (busy) {
+            return Promise.resolve();
+        }
+        if (!ownKey) {
+            backupSays('Load your ID Card on this device first - the backup is sealed with its key.');
+            return Promise.resolve();
+        }
+        working(true);
+        $('backup_save').hidden = true;
+        backupSays('Making the backup…');
+        const at = Date.now();
+        const kept = notes.slice();
+        return RamaBackup.make(ownKey, me, kept, known.slice(), note => RamaStore.get('audio', note.id).catch(() => null), at)
+            .then(function (made) {
+                if (backupUrl) {
+                    URL.revokeObjectURL(backupUrl);
+                }
+                backupUrl = URL.createObjectURL(made.blob);
+                const name = RamaBackup.fileName(me.name, at);
+                const link = $('backup_save');
+                link.href = backupUrl;
+                link.download = name;
+                link.textContent = 'Save ' + name + ', ' + RamaViews.size(made.blob.size);
+                link.hidden = false;
+                const silent = kept.length - made.files;
+                backupSays('The backup holds ' + RamaViews.counted(kept.length) +
+                    (silent ? ' (' + silent + ' without its sound, which is not in this browser)' : '') +
+                    '. It opens only with your ID Card: keep it somewhere safe.');
+            }, e => backupSays('The backup could not be made: ' + e.message))
+            .then(() => working(false));
+    }
+
+    /** Restore: picks the file first. */
+    function restore() {
+        if (busy) {
+            return;
+        }
+        if (!ownKey) {
+            backupSays('Load your ID Card on this device first - a backup opens only with its key.');
+            return;
+        }
+        $('restore_file').value = '';
+        $('restore_file').click();
+    }
+
+    /**
+     * Adds what a backup holds to what is here (RamaModel.restore): one
+     * recording at a time, its sound before its note, so no note is ever kept
+     * without the sound it has. Nothing here is removed or changed.
+     */
+    function restoreFrom() {
+        const files = $('restore_file').files;
+        const picked = files && files.length ? files[0] : null;
+        if (!picked || busy || !checkSession()) {
+            return Promise.resolve();
+        }
+        if (!window.confirm('Restore from ' + picked.name + '? Its recordings are added to those here; none here is removed or changed.')) {
+            $('restore_file').value = '';
+            return Promise.resolve();
+        }
+        working(true);
+        backupSays('Opening the backup…');
+        let added = 0;
+        let silent = 0;
+        return RamaBackup.read(ownKey, me, picked)
+            .then(function (opened) {
+                const found = RamaModel.restore(notes, known, opened, me.pub);
+                const where = {};
+                opened.files.forEach((f, i) => { where[f.id] = i; });
+                return found.notes.reduce((done, note, n) => done.then(function () {
+                    backupSays('Restoring recordings: ' + (n + 1) + ' of ' + found.notes.length + '…');
+                    const i = where[note.id];
+                    // A reminder shown before the backup was made is not shown again: marked first.
+                    return (found.fired[note.id] ? RamaStore.put('fired', note.id, found.fired[note.id]) : Promise.resolve())
+                        .then(() => i === undefined ? false : opened.sound(i)
+                            .then(bytes => RamaStore.put('audio', note.id, { type: opened.files[i].type || note.mime, bytes: bytes.buffer }))
+                            .then(() => true, () => false))
+                        .then(function (heard) {
+                            silent += heard ? 0 : 1;
+                            return RamaStore.put('notes', note.id, note);
+                        })
+                        .then(function () {
+                            notes.push(note);
+                            added += 1;
+                        });
+                }), Promise.resolve()).then(function () {
+                    if (found.types.length !== known.length) {
+                        known = found.types;
+                        return RamaStore.put('meta', me.pub, { types: known.slice() });
+                    }
+                });
+            })
+            .then(function () {
+                backupSays('Restored: ' + RamaViews.counted(added) + ' added' +
+                    (silent ? ' (' + silent + ' without its sound: it was not in the backup, or would not open)' : '') + '.');
+            }, e => backupSays((added ? 'The restore stopped after ' + RamaViews.counted(added) + ': ' : 'The backup could not be restored: ') + e.message))
+            .then(function () {
+                $('restore_file').value = '';
+                working(false);
+                render();
+                // A reminder that came due since the backup was made is shown now.
+                return remind();
+            });
+    }
+
+    $('backup').addEventListener('click', backup);
+    $('restore').addEventListener('click', restore);
+    $('restore_file').addEventListener('change', restoreFrom);
+
     // ---- the service worker --------------------------------------------
 
     /**
@@ -522,6 +679,7 @@
 
     $('user').textContent = me.name;
     $('version').textContent = 'v' + RAMA_VERSION;
+    loadKey();
 
     Promise.all([RamaStore.all('notes'), RamaStore.get('meta', me.pub)])
         .then(function ([rows, meta]) {

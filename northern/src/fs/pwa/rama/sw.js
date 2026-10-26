@@ -10,6 +10,7 @@ const urlsToCache = [
   './model.js',
   './store.js',
   './remind.js',
+  './backup.js',
   './views.js',
   './rama.js',
   './manifest.json',
@@ -20,6 +21,7 @@ const urlsToCache = [
   '../../reg/cookies.js',
   '../../reg/oo.js',
   '../../reg/idcard.js',
+  '../../reg/keystore.js',
   '../../reg/session.js'
 ];
 
