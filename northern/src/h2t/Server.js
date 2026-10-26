@@ -19,8 +19,8 @@ import TurnApi from './TurnApi.js';
 import { posix, join, dirname } from 'node:path';
 const sub = {};
 
-// The host names an app is served under (Pals: UPDATE_1; InPerson the same
-// way). An origin is only an app's own if nobody else's page can run on it,
+// The host names an app is served under (Pals: UPDATE_1; InPerson and Zine the
+// same way). An origin is only an app's own if nobody else's page can run on it,
 // and here every user can write a page: a database row with no extension is
 // served as HTML. So on such a host only the app and the sign-in pages run as
 // themselves; every other document is served sandboxed, in an origin of its
@@ -28,7 +28,8 @@ const sub = {};
 // sandbox on it changes nothing: InPerson loads Pals' seal.js that way.
 const APP_HOSTS = [
     { host: /^pals\./i, home: '/fs/get/pwa/pals/index.html', app: '/fs/get/pwa/pals/' },
-    { host: /^inperson\./i, home: '/fs/get/pwa/inPerson/index.html', app: '/fs/get/pwa/inPerson/' }
+    { host: /^inperson\./i, home: '/fs/get/pwa/inPerson/index.html', app: '/fs/get/pwa/inPerson/' },
+    { host: /^zine\./i, home: '/fs/get/pwa/zine/index.html', app: '/fs/get/pwa/zine/' }
 ];
 const appHost = function (host) {
     return APP_HOSTS.find(entry => entry.host.test(host || '')) || null;

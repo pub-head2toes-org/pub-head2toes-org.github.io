@@ -83,6 +83,40 @@ describe('GET /', () => {
     });
 });
 
+// The zine host name opens on Zine and runs only Zine and the sign-in pages
+// as themselves, as the pals and inperson ones do.
+describe('the zine host name', () => {
+    const at = (host, p) => new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port: httpPort, method: 'GET', path: p, headers: { host } }, res => {
+            res.resume();
+            res.on('end', () => resolve({ status: res.statusCode, headers: res.headers }));
+        });
+        req.on('error', reject);
+        req.end();
+    });
+
+    it('opens on Zine', async () => {
+        const res = await at('zine.example', '/');
+
+        assert.strictEqual(res.status, 302);
+        assert.strictEqual(res.headers.location, '/fs/get/pwa/zine/index.html');
+    });
+
+    it('serves Zine itself and the sign-in pages as they are', async () => {
+        for (const p of ['/fs/get/pwa/zine/index.html', '/fs/get/pwa/zine/error.html', '/fs/get/pwa/zine/sw.js', '/fs/get/reg/Reg.html']) {
+            const res = await at('zine.example', p);
+            assert.strictEqual(res.status, 200, p);
+            assert.strictEqual(res.headers['content-security-policy'], undefined, p);
+        }
+    });
+
+    it('sandboxes every other page, however the path is spelled', async () => {
+        for (const p of ['/fs/get/home.html', '/fs/get/pwa/pals/index.html', '/fs/get/pwa/zine/../pals/index.html', '/zine/mallory/page']) {
+            assert.strictEqual((await at('zine.example', p)).headers['content-security-policy'], 'sandbox', p);
+        }
+    });
+});
+
 // Feature B2: writes require a session cookie
 describe('registration gate', () => {
     it('redirects an unauthenticated POST to the registration page, keeping the path in the fragment', async () => {
