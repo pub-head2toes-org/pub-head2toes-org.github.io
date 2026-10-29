@@ -51,6 +51,7 @@ describe('the private key never reaches local storage', () => {
     it('is absent after saving an ID Card', async () => {
         const page = await signedIn();
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.ok(!JSON.stringify(page.localStorage).includes(PRIV));
     });
@@ -114,6 +115,7 @@ describe('Reg.html first visit', () => {
         const page = loadRegPage();
         await page.init();
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.strictEqual(page.warnsOnLeave(), false);
     });
@@ -321,11 +323,12 @@ describe('Reg.html ID Card download', () => {
         page.element('username').value = 'alice';
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.strictEqual(page.downloads.length, 1);
         assert.match(page.downloads[0].name, /^alice\.\d{8}T\d{6}\.id\.txt$/);
 
-        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        const card = page.idcard.parse(page.downloads[0].content);
         assert.strictEqual(card.username, 'alice');
         assert.strictEqual(card.pub, PUB);
         assert.strictEqual(card.priv, PRIV);
@@ -335,6 +338,8 @@ describe('Reg.html ID Card download', () => {
         const page = await signedIn();
 
         await page.saveToNamedFile();
+        page.tapDownload();
+        await new Promise(resolve => setTimeout(resolve, 0));
 
         assert.strictEqual(page.downloads.length, 1);
         assert.strictEqual(page.requests.length, 1);
@@ -345,6 +350,7 @@ describe('Reg.html ID Card download', () => {
         page.element('username').value = '';
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.match(page.downloads[0].name, /^UNKNOWN\.\d{8}T\d{6}\.id\.txt$/);
     });
@@ -358,9 +364,10 @@ describe('Reg.html saving without a card loaded', () => {
         page.element('username').value = 'bob';
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.strictEqual(page.downloads.length, 1);
-        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        const card = page.idcard.parse(page.downloads[0].content);
         assert.strictEqual(card.username, 'bob');
         assert.ok(card.priv, 'with the private half in it, which is the point');
         assert.notStrictEqual(card.pub, PUB, 'a new identity, since the old key is not here');
@@ -372,8 +379,9 @@ describe('Reg.html saving without a card loaded', () => {
         const offered = page.element('pubkey').value;
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
-        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        const card = page.idcard.parse(page.downloads[0].content);
         assert.strictEqual(card.pub, offered);
     });
 
@@ -382,8 +390,10 @@ describe('Reg.html saving without a card loaded', () => {
         await page.init();
 
         await page.saveToNamedFile();
+        page.tapDownload();
+        await new Promise(resolve => setTimeout(resolve, 0));
 
-        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        const card = page.idcard.parse(page.downloads[0].content);
         assert.strictEqual(page.localStorage.pub, card.pub);
         assert.strictEqual(page.session.unlocked(), true);
         assert.ok(page.cookie().startsWith(`ssid=${card.pub}.`), 'the cookie is re-signed by the new key');
@@ -399,7 +409,7 @@ describe('Reg.html saving without a card loaded', () => {
 
         await page.saveToNamedFile();
 
-        assert.strictEqual(page.downloads.length, 0);
+        assert.notStrictEqual(page.element('saved').hidden, false, 'nothing is offered');
         assert.strictEqual(page.localStorage.pub, PUB, 'the signed-in identity is untouched');
         assert.strictEqual(page.session.unlocked(), false);
     });
@@ -409,6 +419,7 @@ describe('Reg.html saving without a card loaded', () => {
         await page.init();
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.strictEqual(page.downloads.length, 1);
         assert.ok(page.cookie().startsWith(`ssid=${page.localStorage.pub}.`));
@@ -422,9 +433,10 @@ describe('Reg.html saving without a card loaded', () => {
 
         await page.upload(CARD);
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.strictEqual(page.element('pubkey').value, PUB);
-        const card = page.idcard.parse(decodeURIComponent(page.downloads[0].href.split(',')[1]));
+        const card = page.idcard.parse(page.downloads[0].content);
         assert.strictEqual(card.pub, PUB);
         assert.notStrictEqual(card.pub, drafted);
     });
@@ -439,10 +451,11 @@ describe('Reg.html passphrase', () => {
         page.element('passphrase2').value = 's3cret';
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
         assert.match(page.downloads[0].name, /^alice\*\.\d{8}T\d{6}\.id\.txt$/);
 
-        const content = decodeURIComponent(page.downloads[0].href.split(',')[1]);
+        const content = page.downloads[0].content;
         assert.strictEqual(page.idcard.isEncrypted(content), true);
         assert.ok(!content.includes(PRIV), 'the private key must not be readable in the file');
         assert.ok(!content.includes('alice'), 'the user name must not be readable in the file');
@@ -455,8 +468,9 @@ describe('Reg.html passphrase', () => {
 
         await page.saveToNamedFile();
 
-        assert.strictEqual(page.downloads.length, 0, 'nothing is downloaded');
+        assert.notStrictEqual(page.element('saved').hidden, false, 'nothing is offered');
         assert.strictEqual(page.requests.length, 0, 'nothing is registered');
+        assert.strictEqual(page.element('passphrase_error').hidden, false, 'and it says so under the fields');
         assert.match(page.element('msg').textContent, /do not match/);
     });
 
@@ -464,10 +478,90 @@ describe('Reg.html passphrase', () => {
         const page = await signedIn();
 
         await page.saveToNamedFile();
+        page.tapDownload();
 
-        const content = decodeURIComponent(page.downloads[0].href.split(',')[1]);
+        const content = page.downloads[0].content;
         assert.strictEqual(page.idcard.isEncrypted(content), false);
         assert.ok(!page.downloads[0].name.includes('*'));
+    });
+});
+
+// UPDATE_10: an eye on each Reg passphrase, and the mismatch said under them
+describe('Reg.html passphrase fields', () => {
+    it('shows and hides a passphrase with its eye', async () => {
+        const page = loadRegPage();
+        await page.init();
+        for (const id of ['passphrase', 'passphrase2']) {
+            page.element(id).type = 'password';
+
+            page.fire(`reveal_${id}`, 'click');
+            assert.strictEqual(page.element(id).type, 'text', id);
+            assert.strictEqual(page.element(`reveal_${id}`).getAttribute('aria-pressed'), 'true');
+
+            page.fire(`reveal_${id}`, 'click');
+            assert.strictEqual(page.element(id).type, 'password', id);
+            assert.strictEqual(page.element(`reveal_${id}`).getAttribute('aria-pressed'), 'false');
+        }
+    });
+
+    it('gives each eye a button that cannot submit anything, and a label', () => {
+        for (const id of ['passphrase', 'passphrase2']) {
+            const button = HTML.match(new RegExp(`<button[^>]*id="reveal_${id}"[^>]*>`))[0];
+            assert.match(button, /type="button"/);
+            assert.match(button, /aria-label="Show/);
+            assert.match(button, new RegExp(`aria-controls="${id}"`));
+        }
+    });
+
+    it('says a mismatch under the fields once the repeat is left', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.element('passphrase_error').hidden = true;   // as the markup starts it
+        assert.match(HTML, /<p id="passphrase_error"[^>]*hidden/);
+        page.element('passphrase').value = 's3cret';
+        page.element('passphrase2').value = 's3cr';
+
+        page.fire('passphrase2', 'input');
+        assert.notStrictEqual(page.element('passphrase_error').hidden, false, 'not while still typing');
+
+        page.fire('passphrase2', 'change');
+        assert.strictEqual(page.element('passphrase_error').hidden, false);
+        assert.strictEqual(page.element('passphrase_error').textContent, 'The passphrases do not match.');
+        assert.strictEqual(page.element('passphrase2').getAttribute('aria-invalid'), 'true');
+
+        page.element('passphrase2').value = 's3cret';
+        page.fire('passphrase2', 'input');
+        assert.strictEqual(page.element('passphrase_error').hidden, true, 'gone as soon as they match');
+        assert.strictEqual(page.element('passphrase2').getAttribute('aria-invalid'), 'false');
+    });
+
+    it('says it when Save Id Card is pressed, empty repeat included', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.element('passphrase').value = 's3cret';
+
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.element('passphrase_error').hidden, false);
+        assert.strictEqual(page.element('passphrase_error').textContent, 'Repeat the passphrase.');
+        assert.notStrictEqual(page.element('saved').hidden, false, 'nothing offered');
+    });
+
+    it('refuses a repeat typed without a passphrase, rather than saving it unencrypted', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.element('passphrase2').value = 's3cret';
+
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.element('passphrase_error').hidden, false);
+        assert.notStrictEqual(page.element('saved').hidden, false);
+    });
+
+    it('marks the field in red, and keeps 16px text in it', () => {
+        assert.match(CSS, /input\[aria-invalid="true"\] {[^}]*border-color/);
+        assert.match(CSS, /\.field-error {[^}]*color: #f66/);
+        assert.doesNotMatch(CSS.slice(CSS.indexOf('.pass-field')), /font-size: (?!16px|0\.9em)/);
     });
 });
 
@@ -569,6 +663,145 @@ describe('Reg.html ID Card upload', () => {
         assert.strictEqual(page.localStorage.pub, PUB);
     });
 
+    it('says under the Sign in passphrase that an encrypted card needs it', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+
+        await page.upload(envelope);
+
+        assert.strictEqual(page.element('signin_error').hidden, false);
+        assert.strictEqual(page.element('signin_error').textContent,
+            'This ID Card is encrypted - enter its passphrase, then tap Load Id Card & Continue.');
+        assert.strictEqual(page.element('signin_passphrase').getAttribute('aria-invalid'), 'true');
+        assert.match(page.element('msg').textContent, /the same file is opened, with no need to pick it/);
+    });
+
+    it('opens the remembered card on the next Load, skipping the file picker', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie(), hash: '#/fs/get/keyboard.html' });
+        await page.init();
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+        await page.upload(envelope);
+
+        page.element('signin_passphrase').value = 's3cret';
+        const tap = await page.tapLoad();
+
+        assert.strictEqual(tap.picker, false, 'no file picker');
+        assert.strictEqual(page.session.unlocked(), true);
+        assert.strictEqual(page.session.card().priv, PRIV);
+        assert.strictEqual(page.element('signin_error').hidden, true);
+        assert.strictEqual(page.element('signin_passphrase').getAttribute('aria-invalid'), 'false');
+        assert.strictEqual(page.window.location.href, '/fs/get/keyboard.html', 'and carries on');
+    });
+
+    it('opens the file picker once the remembered card failed with this passphrase - it may be the wrong file', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+        await page.upload(envelope);
+
+        page.element('signin_passphrase').value = 'wrong';
+        assert.strictEqual((await page.tapLoad()).picker, false, 'the first Load after entering it retries');
+        assert.strictEqual(page.element('signin_error').textContent,
+            'Wrong passphrase for this ID Card - correct it, then tap Load Id Card & Continue.');
+        assert.strictEqual((await page.tapLoad()).picker, true, 'the next one picks a file');
+
+        page.element('signin_passphrase').value = 's3cret';
+        assert.strictEqual((await page.tapLoad()).picker, false, 'a new passphrase retries the card again');
+        assert.strictEqual(page.session.unlocked(), true);
+    });
+
+    it('opens the file picker when no passphrase was entered, or no card is waiting', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        assert.strictEqual((await page.tapLoad()).picker, true, 'nothing waiting');
+
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+        await page.upload(envelope);
+        assert.strictEqual((await page.tapLoad()).picker, true, 'still no passphrase');
+        assert.strictEqual(page.session.unlocked(), false);
+    });
+
+    it('opens no file picker while a card is still being opened', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+        await page.upload(envelope);
+        page.element('signin_passphrase').value = 's3cret';
+
+        const first = page.tapLoad();
+        const second = await page.tapLoad();
+        assert.strictEqual(second.picker, false);
+        assert.strictEqual((await first).picker, false);
+        assert.strictEqual(page.session.unlocked(), true);
+    });
+
+    it('opens the remembered card on Enter too, and tries each passphrase once', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+        await page.upload(envelope);
+        let opened = 0;
+        const open = page.idcard.open;
+        page.idcard.open = (...args) => { opened++; return open(...args); };
+
+        page.element('signin_passphrase').value = 'wrong';
+        await page.fire('signin_passphrase', 'keydown', { key: 'a' });
+        assert.strictEqual(opened, 0, 'not while typing');
+        await page.fire('signin_passphrase', 'keydown', { key: 'Enter' });
+        await page.fire('signin_passphrase', 'keydown', { key: 'Enter' });
+        assert.strictEqual(opened, 1, 'the same passphrase is not tried twice');
+        assert.strictEqual(page.session.unlocked(), false);
+
+        page.element('signin_passphrase').value = 's3cret';
+        await page.fire('signin_passphrase', 'keydown', { key: 'Enter' });
+        assert.strictEqual(opened, 2);
+        assert.strictEqual(page.session.unlocked(), true);
+        assert.strictEqual(page.session.card().priv, PRIV);
+        assert.strictEqual(page.element('signin_error').hidden, true);
+    });
+
+    it('forgets a waiting card once a card that is not encrypted is picked', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        const envelope = await page.idcard.encrypt(page.idcard.build('alice', PUB, PRIV), 's3cret');
+        await page.upload(envelope);
+        await page.upload('this is just some text');
+
+        page.element('signin_passphrase').value = 's3cret';
+        assert.strictEqual((await page.tapLoad()).picker, true);
+
+        assert.strictEqual(page.session.unlocked(), false, 'the encrypted card is no longer waiting');
+        assert.strictEqual(page.element('signin_error').hidden, true);
+        assert.match(page.element('msg').textContent, /not an ID Card/);
+    });
+
+    it('clears the file picker, so the same card can be picked again', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.element('fileinput').value = 'C:\\fakepath\\card.id.txt';
+
+        await page.upload(CARD);
+
+        assert.strictEqual(page.element('fileinput').value, '');
+    });
+
+    it('gives the Sign in passphrase an eye as well', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.element('signin_passphrase').type = 'password';
+
+        page.fire('reveal_signin_passphrase', 'click');
+        assert.strictEqual(page.element('signin_passphrase').type, 'text');
+        page.fire('reveal_signin_passphrase', 'click');
+        assert.strictEqual(page.element('signin_passphrase').type, 'password');
+
+        const button = HTML.match(/<button[^>]*id="reveal_signin_passphrase"[^>]*>/)[0];
+        assert.match(button, /type="button"/);
+        assert.match(button, /aria-controls="signin_passphrase"/);
+        assert.match(HTML, /<p id="signin_error"[^>]*hidden/);
+    });
+
     it('reports a file that is not an ID Card at all', async () => {
         const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
         await page.init();
@@ -586,7 +819,8 @@ describe('Reg.html ID Card upload', () => {
         saving.element('passphrase').value = 'correct horse';
         saving.element('passphrase2').value = 'correct horse';
         await saving.saveToNamedFile();
-        const content = decodeURIComponent(saving.downloads[0].href.split(',')[1]);
+        saving.tapDownload();
+        const content = saving.downloads[0].content;
 
         const loading = loadRegPage();
         await loading.init();
@@ -647,7 +881,7 @@ describe('Reg.html layout', () => {
 
     it('gives the Sign in section its own passphrase, apart from the one used to save', () => {
         assert.match(HTML, /id="signin_passphrase"[\s\S]*type="file" id="fileinput"/);
-        assert.match(HTML, /idcard\.open\(text, getSignInPassphrase\(\)\)/, 'loading uses it');
+        assert.match(HTML, /const passphrase = getSignInPassphrase\(\);\s+let card;\s+try {\s+card = await idcard\.open\(text, passphrase\)/, 'loading uses it');
         assert.match(HTML, /idcard\.toFile\(currentIdCard\(\), passphrase\)/, 'saving uses the other one');
     });
 
@@ -747,41 +981,194 @@ describe('Reg.html accordion', () => {
     });
 });
 
-// The page's own download can be dropped on iPhone, and leaving the page closed
-// the "Download?" prompt before it was answered - so the page stays, and says.
+// UPDATE_10: on the affected iPhones a data: download never finished, whether
+// the page clicked it or the visitor tapped it, while a tapped Blob link and
+// the share sheet both did (DownloadCheck.html, tests E, F and G). So Save Id
+// Card builds the card and offers it; the visitor's own tap saves it. The page
+// never leaves by itself, which closed the "Download?" prompt before it was answered.
 describe('Reg.html saving on a phone', () => {
-    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+    // A few turns of the timers: registration goes on one after a tap, and a
+    // retry on another.
+    const settle = async () => {
+        for (let i = 0; i < 5; i++) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    };
 
-    it('stays on the page after saving, offering the card again and Continue', async () => {
+    /** A share sheet that takes files, recording what it was handed. */
+    function shareSheet(outcome = async () => {}) {
+        const shared = [];
+        const navigator = {
+            canShare(data) {
+                if (this !== navigator) throw new TypeError('Illegal invocation');
+                return !!(data.files && data.files.length);
+            },
+            async share(data) {
+                if (this !== navigator) throw new TypeError('Illegal invocation');
+                shared.push(data);
+                return outcome();
+            }
+        };
+        return { navigator, shared };
+    }
+
+    it('offers the card as a link to tap, and saves nothing by itself', async () => {
         const page = loadRegPage({ hash: '#/fs/get/keyboard.html' });
         await page.init();
         page.element('username').value = 'alice';
         await page.saveToNamedFile();
         await settle();
 
-        assert.strictEqual(page.window.location.href, '', 'nothing navigated away');
         assert.strictEqual(page.element('saved').hidden, false);
-        assert.strictEqual(page.element('download_again').href, page.downloads[0].href);
-        assert.strictEqual(page.element('download_again').download, page.downloads[0].name);
+        assert.match(page.element('download_card').download, /^alice\.\d{8}T\d{6}\.id\.txt$/);
         assert.strictEqual(page.element('saved_continue').href, '/fs/get/keyboard.html');
-        assert.match(page.element('msg').textContent, /Saving your ID Card as alice\./);
-        assert.match(page.element('msg').textContent, /Registered on the server/);
+        assert.strictEqual(page.window.location.href, '', 'nothing navigated away');
+        assert.match(page.element('msg').textContent, /Your ID Card is ready: alice\./);
+        assert.match(page.element('msg').textContent, /Tap "Download Id Card"/);
+        assert.strictEqual(page.warnsOnLeave(), true, 'still only in the page');
+        assert.strictEqual(page.requests.length, 0, 'not registered before it leaves the page');
     });
 
-    it('keeps the leave warning and points at the link when the download is refused', async () => {
+    it('links to a plain-text Blob, never a data: URL', async () => {
         const page = loadRegPage();
         await page.init();
-        page.document.createElement = () => ({ click() { throw new Error('blocked'); } });
+        page.element('username').value = 'alice';
+        await page.saveToNamedFile();
+        page.tapDownload();
+
+        assert.match(page.downloads[0].href, /^blob:/);
+        assert.strictEqual(page.downloads[0].type, 'text/plain');
+        assert.strictEqual(page.idcard.parse(page.downloads[0].content).username, 'alice');
+        assert.doesNotMatch(HTML, /data:application/);
+    });
+
+    it('stops warning and registers once the link is tapped - once only', async () => {
+        const page = loadRegPage();
+        await page.init();
         await page.saveToNamedFile();
 
-        assert.strictEqual(page.warnsOnLeave(), true);
-        assert.strictEqual(page.element('saved').hidden, false);
-        assert.match(page.element('msg').textContent, /download did not start: blocked/);
-        assert.strictEqual(page.requests.length, 0, 'not registered while unsaved');
+        page.tapDownload();
+        await settle();
+        assert.strictEqual(page.warnsOnLeave(), false);
+        assert.strictEqual(page.requests.length, 1);
+        assert.match(page.element('msg').textContent, /Saving your ID Card as /);
+        assert.match(page.element('msg').textContent, /Registered on the server/);
 
-        page.savedByLink();
-        assert.strictEqual(page.warnsOnLeave(), false, 'the tap on the link saved it');
-        assert.strictEqual(page.requests.length, 1, 'and registered it');
+        page.tapDownload();
+        await settle();
+        assert.strictEqual(page.downloads.length, 2, 'a second copy is fine');
+        assert.strictEqual(page.requests.length, 1, 'but it is not registered again');
+    });
+
+    it('registers after the tap, not inside it, which would start the download over the POST', async () => {
+        const page = loadRegPage();
+        await page.init();
+        await page.saveToNamedFile();
+        assert.match(HTML, /var regTiming = \{ delay: [1-9]\d*,/, 'the page waits for real');
+
+        page.tapDownload();
+        assert.strictEqual(page.requests.length, 0, 'nothing sent while the tap is handled');
+
+        await settle();
+        assert.strictEqual(page.requests.length, 1);
+        assert.strictEqual(page.requests[0].keepalive, true, 'a navigation does not stop it');
+    });
+
+    it('sends a registration that got no answer once more, to the same path', async () => {
+        const page = loadRegPage();
+        await page.init();
+        await page.saveToNamedFile();
+        let calls = 0;
+        const sent = [];
+        page.window.fetch = async (url) => {
+            sent.push(url);
+            if (calls++ === 0) {
+                throw new TypeError('Load failed');
+            }
+            return { status: 200, json: async () => ({ status: 'OK' }) };
+        };
+
+        page.tapDownload();
+        await settle();
+
+        assert.strictEqual(sent.length, 2);
+        assert.strictEqual(sent[0], sent[1]);
+        assert.match(page.element('msg').textContent, /Registered on the server/);
+        assert.doesNotMatch(page.element('msg').textContent, /failed/);
+    });
+
+    it('warns on leaving after a save over a live session, until the new card is tapped', async () => {
+        const page = loadRegPage({ localStorage: known(), cookie: liveCookie() });
+        await page.init();
+        assert.strictEqual(page.warnsOnLeave(), false, 'the signed-in identity has a card already');
+
+        await page.saveToNamedFile();
+        assert.strictEqual(page.warnsOnLeave(), true, 'the new one has not left the page');
+        assert.strictEqual(page.element('continue').hidden, true);
+
+        page.tapDownload();
+        assert.strictEqual(page.warnsOnLeave(), false);
+        assert.strictEqual(page.element('continue').hidden, false);
+    });
+
+    it('has no share button where the share sheet takes no files', async () => {
+        const page = loadRegPage();
+        await page.init();
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.element('share_card').hidden, true);
+        assert.doesNotMatch(page.element('msg').textContent, /Save to Files/);
+    });
+
+    it('hands the card to the share sheet, as a plain-text file', async () => {
+        const { navigator, shared } = shareSheet();
+        const page = loadRegPage({ navigator });
+        await page.init();
+        page.element('username').value = 'alice';
+        page.element('passphrase').value = 's3cret';
+        page.element('passphrase2').value = 's3cret';
+        await page.saveToNamedFile();
+
+        assert.strictEqual(page.element('share_card').hidden, false);
+        assert.match(page.element('msg').textContent, /Or tap "Share \/ Save to Files"/);
+
+        await page.shareCard();
+        await settle();
+
+        const [file] = shared[0].files;
+        assert.match(file.name, /^alice\*\.\d{8}T\d{6}\.id\.txt$/);
+        assert.strictEqual(file.type, 'text/plain');
+        assert.strictEqual(page.idcard.isEncrypted(file.text), true);
+        assert.strictEqual(page.warnsOnLeave(), false);
+        assert.strictEqual(page.requests.length, 1);
+        assert.match(page.element('msg').textContent, /went to the share sheet/);
+    });
+
+    it('keeps the warning when the share sheet is closed without saving', async () => {
+        const { navigator } = shareSheet(async () => {
+            throw Object.assign(new Error('cancelled'), { name: 'AbortError' });
+        });
+        const page = loadRegPage({ navigator });
+        await page.init();
+        await page.saveToNamedFile();
+        await page.shareCard();
+
+        assert.strictEqual(page.warnsOnLeave(), true);
+        assert.strictEqual(page.requests.length, 0);
+        assert.match(page.element('msg').textContent, /share sheet closed before the ID Card was saved/);
+    });
+
+    it('points at the link when the share sheet fails', async () => {
+        const { navigator } = shareSheet(async () => {
+            throw Object.assign(new Error('not allowed'), { name: 'NotAllowedError' });
+        });
+        const page = loadRegPage({ navigator });
+        await page.init();
+        await page.saveToNamedFile();
+        await page.shareCard();
+
+        assert.strictEqual(page.warnsOnLeave(), true);
+        assert.match(page.element('msg').textContent, /could not take the ID Card: not allowed\nTap "Download Id Card" instead/);
     });
 
     it('reports a registration the server refused', async () => {
@@ -789,10 +1176,25 @@ describe('Reg.html saving on a phone', () => {
         await page.init();
         page.window.fetch = async () => ({ status: 500, statusText: 'Internal Server Error' });
         await page.saveToNamedFile();
+        page.tapDownload();
         await settle();
 
         assert.match(page.element('msg').textContent, /Saving your ID Card/, 'the download advice stays');
         assert.match(page.element('msg').textContent, /Registration on the server failed: the server answered 500/);
+    });
+
+    it('reports a registration the database refused behind a 200', async () => {
+        const page = loadRegPage();
+        await page.init();
+        page.window.fetch = async () => ({ status: 200,
+            json: async () => ({ errno: 8, code: 'SQLITE_READONLY' }) });
+        await page.saveToNamedFile();
+        page.tapDownload();
+        await settle();
+
+        assert.doesNotMatch(page.element('msg').textContent, /Registered on the server/);
+        assert.match(page.element('msg').textContent,
+            /Registration on the server failed: the server did not store it \(SQLITE_READONLY\)/);
     });
 
     it('reports a registration that never reached the server', async () => {
@@ -800,6 +1202,7 @@ describe('Reg.html saving on a phone', () => {
         await page.init();
         page.window.fetch = async () => { throw new Error('offline'); };
         await page.saveToNamedFile();
+        page.tapDownload();
         await settle();
 
         assert.match(page.element('msg').textContent, /Registration on the server failed: offline/);
@@ -812,7 +1215,7 @@ describe('Reg.html saving on a phone', () => {
         await page.saveToNamedFile();
 
         assert.match(page.element('msg').textContent, /ID Card not saved: no crypto/);
-        assert.strictEqual(page.downloads.length, 0);
+        assert.notStrictEqual(page.element('saved').hidden, false);
     });
 
     it('gives the fields 16px text, so Safari does not zoom in on them', () => {

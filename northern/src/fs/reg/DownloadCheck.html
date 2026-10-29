@@ -150,7 +150,7 @@
 
 <div class="test" id="t_A">
     <h3>A. Save Id Card, no passphrase</h3>
-    <p class="hint">Exactly what Reg.html does: the page clicks a hidden <code>data:</code> link by itself, straight after your tap.</p>
+    <p class="hint">What Reg.html did before Update 10: the page clicks a hidden <code>data:</code> link by itself, straight after your tap.</p>
     <button id="run_A">Run A</button>
     <label for="out_A">What happened?</label>
     <select id="out_A" class="outcome"></select>
@@ -186,7 +186,7 @@
 
 <div class="test" id="t_E">
     <h3>E. Tap a real <code>data:</code> link</h3>
-    <p class="hint">Like Reg.html&rsquo;s &ldquo;Download Id Card again&rdquo;: you tap the link itself, nothing is clicked for you.</p>
+    <p class="hint">Like Reg.html&rsquo;s old &ldquo;Download Id Card again&rdquo;: you tap the link itself, nothing is clicked for you.</p>
     <a class="btn" id="run_E" href="#" download>Run E</a>
     <label for="out_E">What happened?</label>
     <select id="out_E" class="outcome"></select>
@@ -195,7 +195,7 @@
 
 <div class="test" id="t_F">
     <h3>F. Tap a real Blob link (text file)</h3>
-    <p class="hint">As E, but the file is a Blob marked as plain text instead of a <code>data:</code> URL.</p>
+    <p class="hint">As E, but the file is a Blob marked as plain text instead of a <code>data:</code> URL. Reg.html&rsquo;s &ldquo;Download Id Card&rdquo; since Update 10.</p>
     <a class="btn" id="run_F" href="#" download>Run F</a>
     <label for="out_F">What happened?</label>
     <select id="out_F" class="outcome"></select>
@@ -204,7 +204,7 @@
 
 <div class="test" id="t_G">
     <h3>G. Share sheet &rsaquo; Save to Files</h3>
-    <p class="hint">Opens the share sheet with the file. Choose &ldquo;Save to Files&rdquo; and pick <em>On My iPhone</em>. Safari&rsquo;s downloads are not used at all.</p>
+    <p class="hint">Opens the share sheet with the file, as Reg.html&rsquo;s &ldquo;Share / Save to Files&rdquo; does since Update 10. Choose &ldquo;Save to Files&rdquo; and pick <em>On My iPhone</em>. Safari&rsquo;s downloads are not used at all.</p>
     <button id="run_G">Run G</button>
     <label for="out_G">What happened?</label>
     <select id="out_G" class="outcome"></select>
@@ -325,7 +325,7 @@ function prepare (test, star){
     return { token: token, name: name, content: content };
 }
 
-// The same URL Reg.html's fileHref() builds.
+// The URL Reg.html's fileHref() built before UPDATE_10.
 function dataHref (content){
     return 'data:application/octet-stream,' + encodeURIComponent(content);
 }
@@ -335,7 +335,7 @@ function blobHref (content){
     return URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
 }
 
-// The same steps as Reg.html's startDownload().
+// The steps of Reg.html's startDownload() before UPDATE_10.
 function clickDownload (href, name){
     const link = document.createElement('a');
     link.href = href;
@@ -345,7 +345,7 @@ function clickDownload (href, name){
     document.body.removeChild(link);
 }
 
-/** A download the page starts by itself, as Reg.html's Save Id Card does. */
+/** A download the page starts by itself, as Reg.html's Save Id Card did. */
 function pageDownload (test, star, how){
     const file = prepare(test, star);
     const tap = gesture();

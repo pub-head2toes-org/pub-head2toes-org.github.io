@@ -166,7 +166,7 @@ describe('DownloadCheck.html loads', () => {
 });
 
 describe('DownloadCheck.html tests', () => {
-    it('A clicks a data: link the way Reg.html does', async () => {
+    it('A clicks a data: link the way Reg.html did', async () => {
         const page = loadPage();
         await page.element('run_A').fire('click');
 

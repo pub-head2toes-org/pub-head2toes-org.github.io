@@ -204,3 +204,74 @@ details.panel .menu-item {
     color: #0f0;
 }
 
+
+/* Reg's passphrase fields, each with an eye at its right end that shows what
+   was typed. The field keeps the full width; the eye sits over its padding. */
+.pass-field {
+    position: relative;
+    margin: 10px;
+}
+
+.pass-field input[type="password"],
+.pass-field input[type="text"] {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding-right: 48px;
+}
+
+.pass-field .reveal {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 44px;                    /* a fingertip, on a phone */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #0f0;
+    cursor: pointer;
+}
+
+.pass-field .reveal svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.pass-field .reveal:hover {
+    color: #fff;
+}
+
+.pass-field .reveal:focus-visible {
+    outline: 1px dashed #0f0;
+    outline-offset: -4px;
+}
+
+/* Hidden: an open eye. Shown: the eye struck through, to hide it again. */
+.reveal .eye-shut,
+.reveal[aria-pressed="true"] .eye-open {
+    display: none;
+}
+
+.reveal[aria-pressed="true"] .eye-shut {
+    display: inline;
+}
+
+/* The passphrases do not match: said right under them, as well as on the board. */
+.field-error {
+    margin: 0 10px;
+    color: #f66;
+    font-size: 0.9em;
+}
+
+input[aria-invalid="true"] {
+    border-color: #f66;
+}

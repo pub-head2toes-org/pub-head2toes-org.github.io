@@ -10,7 +10,7 @@ const read = name => fs.readFileSync(path.join(REG_DIR, name), 'utf8');
 
 /** The functions a page may expose; each is optional, pages differ. */
 const EXPORTS = ['init', 'saveIdCard', 'saveToNamedFile', 'currentIdCard',
-    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels', 'savedByLink', 'logout'];
+    'rememberUserName', 'idcard', 'session', 'getNextURL', 'closeOtherPanels', 'savedByLink', 'shareCard', 'logout', 'regTiming'];
 
 /**
  * The host's WebCrypto, for a page in a vm. Node's importKey turns down a JWK
@@ -45,12 +45,17 @@ function inlineScripts(html) {
  *
  * Everything the harness observes - stored values, the POSTed body, the
  * download - is exposed so tests can assert on the page's actual behaviour.
+ * A download is what a tap on the page's Download Id Card link would save:
+ * see tapDownload().
+ *
+ * `navigator` stands in for the browser's, e.g. one whose share sheet takes
+ * files; by default there is no share sheet at all.
  *
  * With `indexedDB` (a fakeIndexedDB from palsPage.js) the real keystore.js
  * runs too, as it does on Reg.html, and keeps its keys there; pass the same
  * one to a second page for the same browser on a later visit.
  */
-export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: pageFile = 'reg/Reg.html', indexedDB } = {}) {
+export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: pageFile = 'reg/Reg.html', indexedDB, navigator = {} } = {}) {
     const elements = {};
     const listeners = {};
     const downloads = [];
@@ -64,6 +69,9 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
                 value: '',
                 href: '',
                 innerHTML: '',
+                attributes: {},
+                setAttribute(name, value) { this.attributes[name] = String(value); },
+                getAttribute(name) { return name in this.attributes ? this.attributes[name] : null; },
                 addEventListener: (event, fn) => { listeners[`${id}:${event}`] = fn; }
             };
         }
@@ -84,7 +92,6 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
         // Only Reg.html's accordion asks, and only for its two panels.
         querySelectorAll: selector => selector === 'details.panel'
             ? ['signin_panel', 'reg_panel'].map(element) : [],
-        createElement: () => ({ href: '', download: '', click() { downloads.push({ name: this.download, href: this.href }); } }),
         body: { appendChild() {}, removeChild() {} },
         get cookie() {
             return [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
@@ -115,8 +122,34 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
         }
     }
 
+    // Blobs keep their text where a test can read it back; URL.createObjectURL
+    // throws when called detached from URL, as Chrome's does.
+    class Blob {
+        constructor(parts, options = {}) {
+            this.text = parts.join('');
+            this.type = options.type || '';
+        }
+    }
+    class File extends Blob {
+        constructor(parts, name, options) {
+            super(parts, options);
+            this.name = name;
+        }
+    }
+    const blobs = new Map();
+    const URL = {
+        createObjectURL(blob) {
+            if (this !== URL) {
+                throw new TypeError('Illegal invocation');
+            }
+            const url = `blob:https://reg.test/${blobs.size + 1}`;
+            blobs.set(url, blob);
+            return url;
+        }
+    };
+
     const sandbox = {
-        document, FileReader, localStorage,
+        document, FileReader, localStorage, Blob, File, URL, navigator,
         location: { hash, href: '', replace(url) { this.href = url; } },
         addEventListener: (event, fn) => { windowListeners[event] = fn; },
         crypto: pageCrypto, TextEncoder, TextDecoder, atob, btoa,
@@ -124,8 +157,9 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
         console: { log() {} },
         ...(indexedDB ? { indexedDB } : {}),
         fetch: async (url, options) => {
-            requests.push({ url, method: options && options.method, body: options && options.body });
-            return { status: 200 };
+            requests.push({ url, method: options && options.method, body: options && options.body,
+                keepalive: options && options.keepalive });
+            return { status: 200, json: async () => ({ status: 'OK', path: url }) };
         }
     };
 
@@ -149,6 +183,13 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
         `({ ${EXPORTS.map(name => `${name}: typeof ${name} !== 'undefined' ? ${name} : undefined`).join(', ')} })`,
         context);
 
+    // Registration waits a moment after a tap, for the download to get going;
+    // a test does not have to.
+    if (page.regTiming) {
+        page.regTiming.delay = 0;
+        page.regTiming.retry = 0;
+    }
+
     return {
         ...page,
         document,
@@ -167,6 +208,34 @@ export function loadRegPage({ hash = '', localStorage = {}, cookie = '', page: p
             let prevented = false;
             listener({ preventDefault: () => { prevented = true; }, returnValue: null });
             return prevented;
+        },
+        /**
+         * Fires the handler the page gave an element for an event, e.g. an
+         * input's 'input', with `detail` as the event; returns what it returned.
+         */
+        fire: (id, event, detail = {}) => listeners[`${id}:${event}`].call(element(id), detail),
+        /**
+         * A tap on Download Id Card: records the file the link would save -
+         * its name, the Blob's type and text - and runs the page's handler.
+         */
+        tapDownload: () => {
+            const link = element('download_card');
+            const blob = blobs.get(link.href);
+            if (!blob) {
+                throw new Error(`Download Id Card points at no Blob: ${link.href}`);
+            }
+            downloads.push({ name: link.download, href: link.href, type: blob.type, content: blob.text });
+            listeners['download_card:click'].call(link, {});
+        },
+        /**
+         * A tap on Load Id Card & Continue, which reaches the file input as a
+         * click. Resolves, once anything it started is done, to whether the
+         * file picker would open.
+         */
+        tapLoad: async () => {
+            let prevented = false;
+            await listeners['fileinput:click'].call(element('fileinput'), { preventDefault: () => { prevented = true; } });
+            return { picker: !prevented };
         },
         /** Fires the file input's change handler with an ID Card file. */
         upload: async text => {

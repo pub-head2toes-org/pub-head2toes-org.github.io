@@ -25,11 +25,13 @@ function getOperation(cb,ctx){
     const hdrs = new Headers({
 	    contentType: "application/json"
     });
+    // ctx.keepalive: the request outlives a navigation that starts meanwhile.
     const fetchData = {
 	    method: 'POST',
 	    mode: 'cors',
 	    body: reqInput,
-	    headers: hdrs
+	    headers: hdrs,
+	    keepalive: !!ctx.keepalive
     }
     fetch(reqPath, fetchData).then(function(data) {
         ctx.insertResponse = data;

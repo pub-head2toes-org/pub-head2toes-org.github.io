@@ -6,12 +6,12 @@
     <title>Registration</title>
     <script type="text/javascript" src="sjcl.js"></script>
     <script type="text/javascript" src="cookies.js"></script>
-    <script type="text/javascript" src="db.js?v=2"></script>
+    <script type="text/javascript" src="db.js?v=3"></script>
     <script type="text/javascript" src="oo.js"></script>
     <script type="text/javascript" src="idcard.js"></script>
     <script type="text/javascript" src="keystore.js?v=2"></script>
     <script type="text/javascript" src="session.js?v=2"></script>
-    <link rel="stylesheet" media="screen" href="style.css?v=3">
+    <link rel="stylesheet" media="screen" href="style.css?v=4">
 </head>
 
 
@@ -42,15 +42,26 @@
 
         <div class="summary" role="article">
             <label for="signin_passphrase">Passphrase <small>(optional)</small></label>
-            <input type="password" id="signin_passphrase" name="signin_passphrase"
-                   autocomplete="current-password"
-                   placeholder="only for an ID Card marked with *" />
+            <div class="pass-field">
+              <input type="password" id="signin_passphrase" name="signin_passphrase"
+                     autocomplete="current-password" aria-describedby="signin_error"
+                     placeholder="only for an ID Card marked with *" />
+              <button type="button" class="reveal" id="reveal_signin_passphrase" aria-controls="signin_passphrase"
+                      aria-pressed="false" aria-label="Show passphrase">
+                <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-shut" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 21L21 3"/></svg>
+              </button>
+            </div>
+            <!-- An encrypted ID Card that would not open says why here, and is
+                 kept: entering the passphrase opens it, no second pick needed. -->
+            <p id="signin_error" class="field-error" role="alert" hidden></p>
 
             <label for="fileinput" class="menu-item">Load Id Card &amp; Continue</label>
             <input class="button-hidden" type="file" id="fileinput" />
 
             <p class="hint">An ID Card whose name is marked with <code>*</code> is
-               encrypted &mdash; type its passphrase above before loading it.</p>
+               encrypted &mdash; type its passphrase above. Loaded it first? Type
+               the passphrase, then tap Load again: the same file is opened.</p>
 
             <!-- Shown only while the session cookie is live: no file needed then. -->
             <a id="continue" class="menu-item" href="#" hidden>Continue</a>
@@ -70,13 +81,31 @@
           <input type="text" id="username" name="username" autocomplete="username"
                  placeholder="how you want to be known" maxlength="60" />
 
+          <!-- Each passphrase has an eye that shows what was typed, so the two
+               can be compared before a typo is locked into the ID Card. -->
           <label for="passphrase">Passphrase <small>(optional)</small></label>
-          <input type="password" id="passphrase" name="passphrase" autocomplete="new-password"
-                 placeholder="leave empty to save an unencrypted ID Card" />
+          <div class="pass-field">
+            <input type="password" id="passphrase" name="passphrase" autocomplete="new-password"
+                   placeholder="leave empty to save an unencrypted ID Card" />
+            <button type="button" class="reveal" id="reveal_passphrase" aria-controls="passphrase"
+                    aria-pressed="false" aria-label="Show passphrase">
+              <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-shut" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 21L21 3"/></svg>
+            </button>
+          </div>
 
           <label for="passphrase2">Repeat passphrase</label>
-          <input type="password" id="passphrase2" name="passphrase2" autocomplete="new-password"
-                 placeholder="repeat it - a typo here cannot be recovered" />
+          <div class="pass-field">
+            <input type="password" id="passphrase2" name="passphrase2" autocomplete="new-password"
+                   aria-describedby="passphrase_error"
+                   placeholder="repeat it - a typo here cannot be recovered" />
+            <button type="button" class="reveal" id="reveal_passphrase2" aria-controls="passphrase2"
+                    aria-pressed="false" aria-label="Show repeated passphrase">
+              <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-shut" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 21L21 3"/></svg>
+            </button>
+          </div>
+          <p id="passphrase_error" class="field-error" role="alert" hidden></p>
 
           <!-- Kept for the script, which still fills it in, but not shown. -->
           <label for="pubkey" hidden>Public key</label>
@@ -85,12 +114,15 @@
 
           <button class="menu-item" onclick="javascript:saveToNamedFile()">Save Id Card</button>
 
-          <!-- Shown once the card is saved. A tap on a real link is a download
-               every browser honours - the one the page starts by itself can be
-               dropped on iPhone - and the page no longer leaves on its own, which
-               closed the iPhone's "Download?" prompt before it was answered. -->
+          <!-- Shown once the card is built: the visitor saves it from here
+               (UPDATE_10). The download check found that on the affected
+               iPhones a data: link - clicked by the page or tapped - never
+               finished, while a tapped Blob link and the share sheet did. The
+               page never leaves on its own, which closed the iPhone's
+               "Download?" prompt before it was answered. -->
           <div id="saved" hidden>
-            <a id="download_again" class="menu-item" href="#" download onclick="savedByLink()">Download Id Card again</a>
+            <a id="download_card" class="menu-item" href="#" download>Download Id Card</a>
+            <button id="share_card" class="menu-item" type="button" hidden>Share / Save to Files</button>
             <a id="saved_continue" class="menu-item" href="#">Continue</a>
           </div>
         </div>
@@ -117,49 +149,165 @@
               say(`ID Card not loaded: the file could not be read${reader.error ? ` (${reader.error.message})` : ''}.`);
             };
 
-            reader.onload = async function(e) {
-            const text = reader.result;
-
-            let card;
-            try {
-              card = await idcard.open(text, getSignInPassphrase());
-            } catch (err) {
-              console.log(err);
-              say(`ID Card not loaded: ${err.message}`);
-              return;
-            }
-
-            // The key goes into memory only; session storage keeps the public half.
-            session.unlock(card);
-            session.mintCookie();
-            unsavedIdentity = false;
-
-            if (card.username){
-              document.getElementById("username").value = card.username;
-            }
-            showPub();
-
-            const who = card.username ? `${card.username} (${card.pub})` : card.pub;
-            say(`ID loaded!  ID=${who}`);
-
-            // "Load Id Card & Continue": there is nothing left to do on this
-            // page, once the key-agreement copy is safely in IndexedDB.
-            try {
-              await session.kept();
-            } catch (err) {
-              console.log(err);
-            }
-            window.location.href = getNextURL();
-
-            }
+            reader.onload = function () {
+              return openCard(reader.result);
+            };
 
             reader.readAsText(file);
 
+            // The same file can be picked again, and still be read.
+            this.value = "";
+
         }, false);
 
+        ["signin_passphrase", "passphrase", "passphrase2"].forEach(function (id){
+          const input = document.getElementById(id);
+          const reveal = document.getElementById(`reveal_${id}`);
+          reveal.addEventListener("click", function (){
+            toggleReveal(reveal, input);
+          });
+        });
+
+        // A tap on Load Id Card & Continue, which the label passes on to the
+        // file input. With an ID Card waiting for the passphrase just entered,
+        // that card is opened instead: the file was read already, so the picker
+        // is skipped. Tried with this passphrase already, the picker opens -
+        // it may be the wrong file. Not while a card is still being opened.
+        document.getElementById("fileinput").addEventListener("click", function (event){
+          if (opening){
+            event.preventDefault();
+            return;
+          }
+          const retry = retryLockedCard();
+          if (retry){
+            event.preventDefault();
+          }
+          return retry;   // ignored by the browser; a test can wait on it
+        });
+
+        // Enter / Go in the passphrase field does the same, picker or not.
+        document.getElementById("signin_passphrase").addEventListener("keydown", function (event){
+          if (event.key === "Enter"){
+            return retryLockedCard();
+          }
+        });
+
+        ["passphrase", "passphrase2"].forEach(function (id){
+          const input = document.getElementById(id);
+          // While typing, an error already shown is kept up to date - and goes
+          // as soon as the two match. A new one waits until a field is left.
+          input.addEventListener("input", function (){
+            checkPassphrases(false);
+          });
+          input.addEventListener("change", function (){
+            checkPassphrases(document.getElementById("passphrase2").value !== "");
+          });
+        });
+
+        document.getElementById("download_card").addEventListener("click", function (){
+          savedByLink();
+        });
+        document.getElementById("share_card").addEventListener("click", function (){
+          shareCard();
+        });
+
+
+// An encrypted ID Card that would not open - no passphrase, or the wrong one -
+// with the passphrase it was last tried with. The file's text is kept so that
+// entering the right one opens it, without picking the file again.
+var lockedCard = null;
+
+// Set while an ID Card is being opened, which takes a key derivation or two.
+var opening = false;
+
+/** Opens an ID Card read from a file, and signs in with it. */
+async function openCard (text){
+  opening = true;
+  try {
+    await unlockCard(text);
+  } finally {
+    opening = false;
+  }
+}
+
+async function unlockCard (text){
+  const passphrase = getSignInPassphrase();
+
+  let card;
+  try {
+    card = await idcard.open(text, passphrase);
+  } catch (err) {
+    console.log(err);
+    if (idcard.isEncrypted(text)){
+      lockedCard = { text: text, tried: passphrase };
+      showSignInError(passphrase
+        ? "Wrong passphrase for this ID Card - correct it, then tap Load Id Card & Continue."
+        : "This ID Card is encrypted - enter its passphrase, then tap Load Id Card & Continue.");
+      say(`ID Card not loaded: ${err.message}
+Enter its passphrase under Sign in and tap Load Id Card & Continue again:
+the same file is opened, with no need to pick it.`);
+    } else {
+      lockedCard = null;
+      showSignInError("");
+      say(`ID Card not loaded: ${err.message}`);
+    }
+    return;
+  }
+
+  lockedCard = null;
+  showSignInError("");
+
+  // The key goes into memory only; session storage keeps the public half.
+  session.unlock(card);
+  session.mintCookie();
+  unsavedIdentity = false;
+
+  if (card.username){
+    document.getElementById("username").value = card.username;
+  }
+  showPub();
+
+  const who = card.username ? `${card.username} (${card.pub})` : card.pub;
+  say(`ID loaded!  ID=${who}`);
+
+  // "Load Id Card & Continue": there is nothing left to do on this
+  // page, once the key-agreement copy is safely in IndexedDB.
+  try {
+    await session.kept();
+  } catch (err) {
+    console.log(err);
+  }
+  window.location.href = getNextURL();
+}
+
+/**
+ * Tries the locked ID Card again, when a passphrase has been entered that it
+ * was not already tried with. Returns the attempt, or nothing when there was
+ * none to make - then a tap on Load picks a file as usual.
+ */
+function retryLockedCard (){
+  const passphrase = getSignInPassphrase();
+  if (!lockedCard || !passphrase || passphrase === lockedCard.tried){
+    return;
+  }
+  lockedCard.tried = passphrase;
+  return openCard(lockedCard.text);
+}
+
+// The word under the Sign in passphrase; empty takes it away.
+function showSignInError (text){
+  const error = document.getElementById("signin_error");
+  error.textContent = text;
+  error.hidden = !text;
+  document.getElementById("signin_passphrase").setAttribute("aria-invalid", text ? "true" : "false");
+}
 
 // Set while a freshly generated identity exists only in this page's memory.
 var unsavedIdentity = false;
+
+// The ID Card built by the last Save Id Card, offered by the download link and
+// the share sheet. `pending` until one of them first hands it over.
+var savedFile = null;
 
 // The key pair the Reg section offers, drafted on every visit. It belongs to
 // nobody until Save Id Card is pressed - see currentDraft().
@@ -381,6 +529,30 @@ function getSignInPassphrase (){
   return document.getElementById("signin_passphrase").value;
 }
 
+// The eye on a passphrase field: shows what was typed, or hides it again.
+function toggleReveal (button, input){
+  const shown = input.type === "password";
+  input.type = shown ? "text" : "password";
+  button.setAttribute("aria-pressed", shown ? "true" : "false");
+}
+
+/**
+ * The inline word under the Reg passphrases. True when the two match. A
+ * mismatch is shown when `insist` - a field was left, or Save Id Card pressed -
+ * and otherwise only kept up to date, so nobody is told off mid-word.
+ */
+function checkPassphrases (insist){
+  const repeat = document.getElementById("passphrase2");
+  const error = document.getElementById("passphrase_error");
+  const match = getPassphrase() === repeat.value;
+  const show = !match && (insist || !error.hidden);
+
+  error.textContent = repeat.value ? "The passphrases do not match." : "Repeat the passphrase.";
+  error.hidden = !show;
+  repeat.setAttribute("aria-invalid", show ? "true" : "false");
+  return match;
+}
+
 /**
  * The ID Card the Reg section would save: the loaded card when there is one,
  * and otherwise this visit's drafted pair, which nothing has adopted yet.
@@ -393,6 +565,11 @@ function currentIdCard (){
   return idcard.build(username, currentDraft().pub, currentDraft().priv);
 }
 
+/**
+ * Registers the public key. A request that never got an answer - stopped by
+ * the browser, or the network - is sent once more, a little later, to the
+ * same path; a refusal from the server is not.
+ */
 function saveIdCard (){
   try {
       const ts = new Date().getTime();
@@ -402,11 +579,30 @@ function saveIdCard (){
       const payload = session.publicRecord();
       ctx.reqPath = `/id/${ts}/${payload.pub}.json?isPublic=true`;
       ctx.payload = JSON.stringify(payload);
-      insertOperation (confirmReg, ctx, failedReg);
+      ctx.keepalive = true;
+      let retries = 1;
+      const unanswered = function (err){
+        if (retries-- > 0){
+          console.log(err);
+          setTimeout(() => insertOperation(confirmReg, ctx, unanswered), regTiming.retry);
+          return;
+        }
+        failedReg(err);
+      };
+      insertOperation (confirmReg, ctx, unanswered);
   } catch (err) {
       failedReg(err);
   }
 }
+
+/**
+ * When registration goes after the ID Card was handed over, in ms. A tap on
+ * Download Id Card starts the browser's navigation to the Blob once its
+ * handler is done, and Safari stops the page's requests in flight when that
+ * happens: the POST sent from the tap itself never reached the server
+ * (UPDATE_10). So it waits for the download to be under way.
+ */
+var regTiming = { delay: 500, retry: 2000 };
 
 
 function bakeCookie (val){
@@ -415,6 +611,8 @@ function bakeCookie (val){
 
 // The server's answer to the registration. The page stays put either way: the
 // visitor leaves with Continue, once the ID Card is safely on their device.
+// A 200 is not enough: Northern answers a write its database refused (one
+// SQLITE_READONLY, say) with a 200 too, and only {status:'OK'} means stored.
 function confirmReg (ctx){
     const res = ctx.insertResponse;
     console.log(JSON.stringify(ctx));
@@ -422,55 +620,110 @@ function confirmReg (ctx){
       failedReg(new Error(`the server answered ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`));
       return;
     }
-    sayMore(`Registered on the server.`);
+    Promise.resolve(res && res.json ? res.json() : null).then(function (answer){
+      if (!answer || answer.status !== 'OK'){
+        failedReg(new Error(`the server did not store it (${(answer && (answer.code || answer.message)) || 'no answer'})`));
+        return;
+      }
+      sayMore(`Registered on the server.`);
+    }, failedReg);
 }
 
 function failedReg (err){
     console.log(err);
     sayMore(`Registration on the server failed: ${(err && err.message) || err}.
-Your ID Card is still good. To register it, press Save Id Card again once you are back online.`);
+Your ID Card is still good. To register it, once you are back online press Save Id Card again and download it.`);
 }
 
 /**
- * Starts the download the way a click on a download link would. Returns false
- * when the browser refused, so the visitor can be pointed at the real link.
+ * A tap on Download Id Card, or a share sheet that finished: the card is on its
+ * way off this page. The first time, the identity is safe to leave with and
+ * gets registered; a second copy of the same card only gets the advice again.
  */
-function startDownload (file){
-  try {
-    var downloadLink = document.createElement("a");
-    downloadLink.href = fileHref(file);
-    downloadLink.download = file.name;
+function savedByLink (){
+  handedOver("download");
+}
 
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    return true;
+function handedOver (how){
+  const file = savedFile;
+  if (!file || !file.pending){
+    return;
+  }
+  file.pending = false;
+
+  // As far as a page can tell: whether the file reached the disk, only the
+  // visitor sees.
+  unsavedIdentity = false;
+  showContinue();
+
+  const share = file.shareable ? `"Share / Save to Files" or ` : "";
+  say(how === "share"
+    ? `Your ID Card ${file.name} went to the share sheet.
+It is the only copy of your key - keep it safe.
+Check it is in Files, then Continue.`
+    : `Saving your ID Card as ${file.name}
+It is the only copy of your key - keep it safe.
+iPhone: tap Download when asked; it goes to Files > Downloads.
+No file? Tap ${share}"Download Id Card" again, then Continue.`);
+
+  setTimeout(() => saveIdCard(), regTiming.delay);
+}
+
+/**
+ * The share sheet, whose Save to Files skips Safari's downloads altogether.
+ * Nothing is awaited before navigator.share, which needs the tap to still be
+ * fresh: the File was made when the card was saved.
+ */
+async function shareCard (){
+  const file = savedFile;
+  if (!file || !file.shareable){
+    return;
+  }
+  try {
+    await navigator.share({ files: [file.shared] });
   } catch (err) {
     console.log(err);
-    say(`The download did not start: ${err.message}
-Tap "Download Id Card again" below to save your ID Card.`);
+    say(err.name === "AbortError"
+      ? `The share sheet closed before the ID Card was saved.
+Tap "Share / Save to Files" to try again, or "Download Id Card".`
+      : `The share sheet could not take the ID Card: ${err.message}
+Tap "Download Id Card" instead.`);
+    return;
+  }
+  handedOver("share");
+}
+
+// Whether this browser's share sheet takes files; asking can throw in some.
+function canShareFile (shared){
+  try {
+    return !!(shared && navigator.share && navigator.canShare && navigator.canShare({ files: [shared] }));
+  } catch (err) {
+    console.log(err);
     return false;
   }
 }
 
-// A tap on Download Id Card again, after the page's own download was refused:
-// the card is on its way now, so it can be registered as well.
-function savedByLink (){
-  if (unsavedIdentity){
-    unsavedIdentity = false;
-    saveIdCard();
-  }
-}
-
-function fileHref (file){
-  return "data:application/octet-stream," + encodeURIComponent(file.content);
-}
-
-// The saved card stays on offer as a real link, with Continue next to it.
+/**
+ * Offers the card as a real link and, where there is one, the share sheet,
+ * with Continue next to them. The link is a Blob of plain text, never a data:
+ * URL: on the affected iPhones a data: download never finished. The Blob URL
+ * is not revoked - revoking one Safari is still reading hangs it too.
+ */
 function showSaved (file){
-  const again = document.getElementById("download_again");
-  again.href = fileHref(file);
-  again.download = file.name;
+  const shared = typeof File === "undefined" ? null
+    : new File([file.content], file.name, { type: "text/plain" });
+
+  savedFile = {
+    name: file.name,
+    pending: true,
+    shared: shared,
+    shareable: canShareFile(shared)
+  };
+
+  const link = document.getElementById("download_card");
+  link.href = URL.createObjectURL(new Blob([file.content], { type: "text/plain" }));
+  link.download = file.name;
+  document.getElementById("share_card").hidden = !savedFile.shareable;
   document.getElementById("saved_continue").href = getNextURL();
   document.getElementById("saved").hidden = false;
 }
@@ -487,7 +740,7 @@ async function saveToNamedFile (){
 async function saveCard (){
   const passphrase = getPassphrase();
 
-  if (passphrase && passphrase !== document.getElementById("passphrase2").value){
+  if (!checkPassphrases(true)){
     say("The two passphrases do not match. Nothing was saved.");
     return;
   }
@@ -501,34 +754,26 @@ async function saveCard (){
     return;
   }
 
-  // The card is on its way to disk, so the pair it holds becomes this browser's
-  // identity - replacing whoever was signed in, whose own card is untouched.
-  // Nothing was adopted until here, so a card that could not be built changes
-  // nothing at all.
+  // The card is about to be offered, so the pair it holds becomes this
+  // browser's identity - replacing whoever was signed in, whose own card is
+  // untouched. Nothing was adopted until here, so a card that could not be
+  // built changes nothing at all. Until the card leaves the page, the new
+  // identity exists nowhere else: leaving warns.
   if (!session.unlocked()){
     session.adopt(currentDraft(), document.getElementById("username").value);
     session.mintCookie();
     draft = null;
+    unsavedIdentity = true;
     showPub();
     showContinue();
   }
 
   showSaved(file);
 
-  if (!startDownload(file)){
-    return;   // still unsaved: the warning on leaving stays on
-  }
-
-  // The identity now exists off this page, so leaving is safe again - as far
-  // as a page can tell: whether the file reached the disk, only the visitor sees.
-  unsavedIdentity = false;
-
-  say(`Saving your ID Card as ${file.name}
-It is the only copy of your key - keep it safe.
-iPhone: tap Download when asked; it goes to Files > Downloads.
-No file? Tap "Download Id Card again", then Continue.`);
-
-  saveIdCard();
+  say(`Your ID Card is ready: ${file.name}
+Tap "Download Id Card" below to save it - it is the only copy of your key.
+iPhone: tap Download when asked; it goes to Files > Downloads.${savedFile.shareable ? `
+Or tap "Share / Save to Files" and pick On My iPhone.` : ""}`);
 }
 
 </script>
