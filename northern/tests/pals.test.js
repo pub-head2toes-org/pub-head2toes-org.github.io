@@ -419,6 +419,235 @@ describe('Pals model - messages', () => {
     });
 });
 
+describe('Pals model - sharing a group (UPDATE_11)', () => {
+    const bobMe = { pub: bob.pub, name: 'bob' };
+    /** Alice's Family, with the people given, and the pals it takes. */
+    const owned = (...who) => {
+        const state = Model.empty();
+        Model.addGroup(state, 'Family', alice.pub);
+        for (const w of who) {
+            Model.addPal(state, w.pub, w.name, me);
+            Model.addMember(state, 'Family', w.pub);
+        }
+        return state;
+    };
+    /** What each of a share's pushes to `to` opens to. */
+    const envelopes = (message, to, from = alice) => Model.pushes(message, [to.pub]).map(p =>
+        ({ v: 2, from: from.pub, to: to.pub, ts: message.ts, id: p.id, part: p.part, parts: p.parts, body: p.message, share: p.share }));
+    const shareOf = (state, ts = 1000, wire = 'w' + ts) => Model.share(state, me, 'Family', ts, wire);
+    /** Bob's device: he has alice as a pal. */
+    const bobs = () => {
+        const state = Model.empty();
+        Model.addPal(state, alice.pub, 'alice', bobMe);
+        return state;
+    };
+    const take = (state, message, who = bobMe) => envelopes(message, who).map(e => Model.receive(state, who, e)).pop();
+
+    it('logs a share in the group, to every member, and a change is owed until it goes', () => {
+        const state = owned(bob, carol);
+        assert.strictEqual(state.groups[0].owner, alice.pub);
+        assert.deepStrictEqual(plain(Model.unshared(state, me)).map(g => g.name), ['Family']);
+
+        const m = shareOf(state);
+        assert.deepStrictEqual(Object.keys(m.delivery), [bob.pub, carol.pub]);
+        assert.strictEqual(m.body, 'Shared the group with bob, carol');
+        assert.deepStrictEqual(plain(m.to), { kind: 'group', id: 'Family', name: 'Family' });
+        assert.deepStrictEqual(plain(Model.log(state, { kind: 'group', id: 'Family' })).map(x => x.id), [m.id]);
+        assert.deepStrictEqual(plain(Model.unshared(state, me)), [], 'nothing is owed any more');
+        assert.strictEqual(state.groups[0].unshared, undefined);
+    });
+
+    it('tells whoever left, and only of a group that is the user\'s', () => {
+        const state = owned(bob, carol);
+        shareOf(state);
+        Model.removeMember(state, 'Family', carol.pub);
+        const m = shareOf(state, 2000);
+        assert.deepStrictEqual(Object.keys(m.delivery), [bob.pub, carol.pub]);
+        assert.deepStrictEqual(plain(m.share.members).map(x => x.pub), [bob.pub]);
+
+        Model.removePal(state, bob.pub);
+        assert.deepStrictEqual(plain(Model.unshared(state, me)).map(g => g.name), ['Family'], 'a pal removed leaves the group, and that is a change');
+        const last = shareOf(state, 3000);
+        assert.strictEqual(last.body, 'Nobody is left in the group');
+        assert.deepStrictEqual(Object.keys(last.delivery), [bob.pub]);
+
+        const theirs = owned();
+        theirs.groups[0].owner = bob.pub;
+        Model.addPal(theirs, bob.pub, 'bob', me);
+        Model.addPal(theirs, carol.pub, 'carol', me);
+        Model.addMember(theirs, 'Family', carol.pub);
+        assert.deepStrictEqual(plain(Model.unshared(theirs, me)), [], 'a member\'s copy owes nothing');
+        assert.throws(() => shareOf(theirs), /only bob can share Family/);
+    });
+
+    it('takes a group with nobody in it for nothing, and a group nobody shared for the user\'s', () => {
+        assert.throws(() => shareOf(owned()), /nobody is in Family yet/);
+        const state = Model.empty();
+        Model.addGroup(state, 'Family');
+        Model.addPal(state, bob.pub, 'bob', me);
+        Model.addMember(state, 'Family', bob.pub);
+        assert.deepStrictEqual(plain(Model.unshared(state, me)), [], 'not on its own: it may be somebody else\'s');
+        shareOf(state);
+        assert.strictEqual(state.groups[0].owner, alice.pub, 'sharing it makes it the user\'s');
+    });
+
+    it('adds the group and its members on the other side, so a reply reaches all of them', () => {
+        const state = owned(bob, carol, dave);
+        const mine = bobs();
+        Model.addPal(mine, dave.pub, 'my dave', bobMe);
+        Model.verify(mine, dave.pub, true);
+
+        const m = take(mine, shareOf(state));
+        const group = plain(Model.group(mine, 'Family'));
+        assert.strictEqual(group.owner, alice.pub);
+        assert.deepStrictEqual(group.members, [alice.pub, carol.pub, dave.pub], 'the sharer too, and not the user');
+        assert.deepStrictEqual(plain(Model.pal(mine, carol.pub)), { pub: carol.pub, name: 'carol', verified: false }, 'a new key is not a verified one');
+        assert.deepStrictEqual(plain(Model.pal(mine, dave.pub)), { pub: dave.pub, name: 'my dave', verified: true }, 'a name given here stays');
+        assert.strictEqual(m.body, 'Shared the group with you, carol, my dave');
+        assert.strictEqual(m.to.kind, 'group');
+        assert.strictEqual(m.complete, true);
+
+        const reply = Model.compose(mine, bobMe, { kind: 'group', id: 'Family' }, 'hi all', 2000, 'r1');
+        assert.deepStrictEqual(Object.keys(reply.delivery), [alice.pub, carol.pub, dave.pub]);
+    });
+
+    it('holds a stranger\'s share until they are a pal: a stranger adds nobody', () => {
+        const state = owned(bob, carol);
+        const mine = Model.empty();
+        const m = take(mine, shareOf(state));
+
+        assert.deepStrictEqual(plain(mine.groups), []);
+        assert.deepStrictEqual(plain(mine.pals), []);
+        assert.strictEqual(m.body, 'Shared the group Family. Add them with + to join it.');
+        assert.deepStrictEqual(plain(Model.others(mine)), [alice.pub], 'listed, to be added');
+
+        Model.addPal(mine, alice.pub, 'alice', bobMe);
+        Model.settleShares(mine, bobMe);
+        assert.deepStrictEqual(plain(Model.group(mine, 'Family').members), [alice.pub, carol.pub]);
+        assert.strictEqual(m.body, 'Shared the group with you, carol');
+        assert.strictEqual(m.to.kind, 'group');
+    });
+
+    it('follows the owner\'s list, and tells whoever was removed', () => {
+        const state = owned(bob, carol, dave);
+        const mine = bobs();
+        const first = shareOf(state, 1000);
+        Model.removeMember(state, 'Family', carol.pub);
+        const second = shareOf(state, 2000);
+        Model.removeMember(state, 'Family', bob.pub);
+        const third = shareOf(state, 3000);
+
+        take(mine, second);
+        take(mine, first);
+        assert.deepStrictEqual(plain(Model.group(mine, 'Family').members), [alice.pub, dave.pub], 'an older share that arrives late changes nothing');
+
+        const out = take(mine, third);
+        assert.strictEqual(out.body, 'Removed you from the group');
+        assert.deepStrictEqual(plain(Model.group(mine, 'Family').members), [], 'nobody left to write to');
+        assert.strictEqual(Model.group(mine, 'Family').owner, alice.pub, 'and the owner can have them back');
+        assert.ok(Model.log(mine, { kind: 'group', id: 'Family' }).length >= 1, 'what was said stays');
+    });
+
+    it('never lets a share change a group that is somebody else\'s', () => {
+        const state = owned(bob);
+        const mine = bobs();
+        Model.addGroup(mine, 'family', bob.pub);
+        const refused = take(mine, shareOf(state));
+        assert.strictEqual(refused.body, 'Shared a group called Family, but you have a group of that name already');
+        assert.strictEqual(refused.to.kind, 'pal');
+        assert.deepStrictEqual(plain(Model.group(mine, 'Family').members), []);
+        assert.strictEqual(Model.group(mine, 'Family').owner, bob.pub);
+
+        // A group that came with a message, or from before shares, has no owner yet.
+        const heard = bobs();
+        Model.receive(heard, bobMe, { ...envelope(carol, '[Family] hi'), to: bob.pub });
+        take(heard, shareOf(owned(bob), 2000));
+        assert.strictEqual(Model.group(heard, 'Family').owner, alice.pub);
+    });
+
+    it('puts a long list back together from parts in any order, once, and shows what is missing', () => {
+        const state = owned();
+        const wide = '字'.repeat(40);
+        for (let i = 0; i < 40; i++) {
+            const pub = Buffer.from(Array.from({ length: 64 }, (_, j) => (i * 7 + j) % 251 + 1)).toString('base64');
+            Model.addPal(state, pub, `${wide.slice(2)}"${i}`, me);
+            Model.addMember(state, 'Family', pub);
+        }
+        Model.addPal(state, bob.pub, 'bob', me);
+        Model.addMember(state, 'Family', bob.pub);
+        const parts = envelopes(shareOf(state), { pub: bob.pub });
+        assert.ok(parts.length > 1, 'it does not fit one push');
+        assert.ok(parts.slice(1).every(p => p.body === '[Family] '), 'the words go once');
+
+        const mine = bobs();
+        const [last, ...rest] = parts.reverse();
+        const m = Model.receive(mine, bobMe, last);
+        assert.strictEqual(m.body, 'Sharing a group...');
+        assert.strictEqual(m.complete, false);
+        assert.strictEqual(Model.group(mine, 'Family'), null, 'nothing happens until all of it is here');
+        rest.forEach(p => Model.receive(mine, bobMe, p));
+        assert.strictEqual(m.complete, true);
+        assert.strictEqual(Model.group(mine, 'Family').members.length, 41);
+        assert.strictEqual(Model.receive(mine, bobMe, last), null, 'a part again is nothing new');
+    });
+
+    it('files a share that makes no sense as just that', () => {
+        for (const share of ['not json', 'null', '{"group":"a[b","members":[]}', '{"group":"Family"}']) {
+            const mine = bobs();
+            const m = Model.receive(mine, bobMe, { ...envelope(alice, '[Family] x'), to: bob.pub, share });
+            assert.strictEqual(m.body, 'Shared a group that could not be read', share);
+            assert.deepStrictEqual(plain(mine.groups), [], share);
+        }
+    });
+
+    it('reads as a message to a Pals too old to know a share', () => {
+        const [push] = Model.pushes(shareOf(owned(bob)));
+        const old = Model.empty();
+        const m = Model.receive(old, { pub: bob.pub, name: 'bob' }, { ...envelope(alice, push.message), to: bob.pub });
+        assert.strictEqual(m.body, Model.SHARED);
+        assert.strictEqual(m.to.name, 'Family');
+    });
+
+    it('keeps who owns a group, and what is owed, through storing and a backup', () => {
+        const state = owned(bob, carol);
+        shareOf(state);
+        Model.removeMember(state, 'Family', carol.pub);
+        state.groups[0].sharedAt = 5;
+        const kept = Model.load(JSON.stringify(state));
+        assert.deepStrictEqual(plain(kept.groups), plain(state.groups));
+
+        const other = Model.empty();
+        Model.restore(other, JSON.stringify(state), me);
+        assert.strictEqual(other.groups[0].owner, alice.pub);
+        assert.strictEqual(other.groups[0].sharedAt, 5);
+
+        const waiting = Model.empty();
+        take(waiting, shareOf(owned(bob)));
+        const restored = bobs();
+        Model.restore(restored, JSON.stringify(waiting), bobMe);
+        assert.strictEqual(Model.group(restored, 'Family').owner, alice.pub, 'a share restored goes to use once its sender is a pal');
+    });
+
+    it('fits the seal and a push at its widest, and opens for the receiver alone', async () => {
+        const state = owned();
+        Model.addPal(state, bob.pub, 'bob', me);
+        Model.addMember(state, 'Family', bob.pub);
+        state.pals[0].name = '字"'.repeat(20);
+        Model.addGroup(state, '字'.repeat(40), alice.pub);
+        Model.addMember(state, '字'.repeat(40), bob.pub);
+        const m = Model.share(state, me, '字'.repeat(40), 1000, 'x'.repeat(40));
+        for (const push of plain(Model.pushes(m))) {
+            const wire = { id: push.id, part: 100, parts: 100 };
+            const sealed = await Seal.seal(keys.alice, alice.pub, bob.pub, wire, { ts: Date.now(), body: push.message, share: push.share });
+            const payload = JSON.stringify({ v: 2, from: alice.pub, to: bob.pub, ...wire, sealed });
+            assert.ok(payload.length <= MAX_PAYLOAD, `the push is ${payload.length} characters`);
+            const outer = { v: 2, from: alice.pub, to: bob.pub, ...wire, sealed };
+            assert.strictEqual((await Seal.open(keys.bob, outer)).share, push.share);
+            await assert.rejects(Seal.open(keys.carol, { ...outer, to: carol.pub }));
+        }
+    });
+});
+
 describe('Pals model - keeping it', () => {
     it('round trips through what IndexedDB stores', () => {
         const state = Model.empty();
@@ -1385,7 +1614,7 @@ describe('Pals page', () => {
         assert.strictEqual(page.element('dlg_members').open, true, 'a new group opens its members, to add some');
         assert.deepStrictEqual(page.rows('members'), [`bob (${tag(bob.pub)})`, `carol (${tag(carol.pub)})`]);
         assert.strictEqual(page.element('members_context').textContent, 'Family');
-        assert.deepStrictEqual(page.stored().groups, [{ name: 'Family', members: [bob.pub, carol.pub] }]);
+        assert.deepStrictEqual(page.stored().groups, [{ name: 'Family', members: [bob.pub, carol.pub], owner: alice.pub, unshared: [] }]);
 
         page.element('dlg_members').close();
         page.pick('groups', 'data-group', 'Family');
@@ -1803,13 +2032,134 @@ describe('Pals page', () => {
         const again = mountPals({ ...signedIn(), routes: northern(), indexedDB: page.indexedDB });
         await again.settle();
         assert.deepStrictEqual(again.rows('groups'), ['Family']);
-        assert.strictEqual(again.rows('messages').length, 1);
+        assert.strictEqual(again.rows('messages').length, 2, 'and the group, never shared, is shared now');
 
         page.indexedDB.stores.setup.set(bob.pub, { endpoint: 'https://fcm.googleapis.com/fcm/send/device' });
         const other = mountPals({ ...signedIn(bob), routes: northern(), indexedDB: page.indexedDB });
         await other.settle();
         assert.deepStrictEqual(other.rows('groups'), []);
         assert.deepStrictEqual(other.rows('messages'), []);
+    });
+
+    // UPDATE_11: a group's name and members go to its members.
+    const shares = page => opened(page).then(list => list.filter(e => typeof e.share === 'string'));
+    const closeMembers = async page => {
+        page.element('dlg_members').close();
+        await page.settle();
+    };
+
+    it('shares a group with each member from the members layer, next to Messages', async () => {
+        const index = fs.readFileSync(path.join(PWA_DIR, 'index.html'), 'utf8');
+        assert.ok(index.indexOf('id="group_share"') > index.indexOf('id="group_messages"'));
+
+        const page = await populated();
+        assert.strictEqual(page.element('group_share').disabled, false);
+        page.click('group_share');
+        await page.settle();
+
+        const got = await shares(page);
+        assert.deepStrictEqual(sent(page).map(p => p.to).sort(), [bob.pub, carol.pub].sort());
+        assert.deepStrictEqual(JSON.parse(got[0].share), {
+            group: 'Family', members: [{ pub: bob.pub, name: 'bob' }, { pub: carol.pub, name: 'carol' }]
+        });
+        assert.strictEqual(got[0].body, `[Family] ${Model.SHARED}`);
+        assert.strictEqual(page.element('status').textContent, 'Sent.');
+        assert.ok(page.rows('messages')[0].startsWith('Shared the group with bob, carol'));
+
+        await closeMembers(page);
+        assert.strictEqual(sent(page).length, 2, 'nothing has changed since: the layer closes with nothing to send');
+    });
+
+    it('needs somebody in the group to share it with, and the ID Card', async () => {
+        const page = await open();
+        page.click('group_add');
+        type(page, 'group_name', 'Family');
+        page.submit('group');
+        await page.settle();
+        assert.strictEqual(page.element('group_share').disabled, true);
+        await closeMembers(page);
+        assert.deepStrictEqual(sent(page), [], 'a new group has nobody to tell yet');
+
+        const noCard = await populated({ idb: { keys: {} } });
+        noCard.click('group_share');
+        await noCard.settle();
+        assert.match(noCard.element('status').textContent, /Load your ID Card/);
+        assert.deepStrictEqual(sent(noCard), []);
+        assert.deepStrictEqual(noCard.stored().messages, []);
+    });
+
+    it('shares on its own when the members layer closes: one share for all the changes', async () => {
+        const page = await populated();
+        assert.deepStrictEqual(sent(page), [], 'not while the members are being picked');
+        await closeMembers(page);
+        assert.strictEqual(sent(page).length, 2, 'bob and carol, once each');
+
+        page.pick('groups', 'data-group', 'Family');
+        page.pick('members', 'data-pub', carol.pub);
+        page.click('member_remove');
+        await closeMembers(page);
+        const last = (await shares(page)).slice(2);
+        assert.deepStrictEqual(sent(page).slice(2).map(p => p.to).sort(), [bob.pub, carol.pub].sort(), 'carol is told they are out');
+        assert.deepStrictEqual(JSON.parse(last[0].share).members.map(x => x.name), ['bob']);
+    });
+
+    it('shares when a pal in the group is removed, and sends a failed share again with Send again', async () => {
+        let down = true;
+        const page = await populated({ routes: { [one(carol)]: () => down ? [200, []] : [200, [listed(carol)]] } });
+        await closeMembers(page);
+        const log = page.stored().messages;
+        assert.strictEqual(log[0].delivery[bob.pub], 'sent');
+        assert.strictEqual(log[0].delivery[carol.pub], 'they have not set Pals up');
+
+        page.click('group_messages');
+        page.pick('messages', 'data-message', log[0].id);
+        assert.strictEqual(page.element('message_answer').hidden, true, 'a share is not the user\'s to edit');
+        down = false;
+        page.element('message_retry').onclick();
+        await page.settle();
+        assert.strictEqual(page.stored().messages[0].delivery[carol.pub], 'sent');
+
+        page.pick('pals', 'data-pub', bob.pub);
+        page.click('pal_remove');
+        await page.settle();
+        assert.deepStrictEqual(page.stored().messages.pop().share.members.map(x => x.name), ['carol']);
+    });
+
+    it('takes a group shared by a pal: the owner\'s to change, and a reply reaches everybody in it', async () => {
+        const share = JSON.stringify({ group: 'Book club', members: [{ pub: alice.pub, name: 'alice' }, { pub: carol.pub, name: 'carol' }] });
+        const page = await open();
+        await addPal(page, bob);
+        await page.settle();
+        page.indexedDB.stores.inbox = new Map([[1, openedItem(bob, '[Book club] Shared this group.', { ts: 10, id: 'share', share })]]);
+        page.show();
+        await page.settle();
+
+        assert.deepStrictEqual(page.rows('groups'), ['Book club']);
+        assert.ok(page.rows('pals').some(r => r.startsWith('carol')), 'carol is a pal now');
+        page.pick('groups', 'data-group', 'Book club');
+        assert.strictEqual(page.element('members_context').textContent, 'Book club, shared by bob');
+        for (const id of ['group_share', 'member_add', 'member_remove']) {
+            assert.strictEqual(page.element(id).disabled, true, id);
+        }
+        await closeMembers(page);
+        assert.deepStrictEqual(sent(page), [], 'and it is not shared back');
+
+        page.pick('groups', 'data-group', 'Book club');
+        page.click('group_messages');
+        await write(page, 'see you there');
+        assert.deepStrictEqual(sent(page).map(p => p.to).sort(), [bob.pub, carol.pub].sort());
+    });
+
+    it('waits for a stranger to be added as a pal before it takes their group', async () => {
+        const share = JSON.stringify({ group: 'Book club', members: [{ pub: alice.pub, name: 'alice' }, { pub: carol.pub, name: 'carol' }] });
+        const page = await open({ idb: { inbox: { 1: openedItem(bob, '[Book club] Shared this group.', { ts: 10, id: 'share', share }) } } });
+        assert.deepStrictEqual(page.rows('groups'), []);
+        assert.deepStrictEqual(page.rows('pals'), [`bob (${tag(bob.pub)})`], 'listed as somebody who wrote; carol is not added');
+
+        await addPal(page, bob);
+        await page.settle();
+        assert.deepStrictEqual(page.rows('groups'), ['Book club']);
+        assert.strictEqual(page.stored().pals.length, 2);
     });
 
     it('says so when this device no longer gets pushes', async () => {

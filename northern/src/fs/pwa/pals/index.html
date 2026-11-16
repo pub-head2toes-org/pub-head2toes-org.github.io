@@ -9,7 +9,7 @@
   <meta name="description" content="Pals: messaging among close friends.">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=20">
+  <link rel="stylesheet" href="./styles.css?v=21">
   <title>Pals</title>
 </head>
 <body>
@@ -93,6 +93,8 @@
       <button type="button" id="member_add" aria-label="Add a member to the group">+</button>
       <button type="button" id="member_remove" aria-label="Remove the selected member">&minus;</button>
       <button type="button" id="group_messages">Messages</button>
+      <!-- The group's name and members, to each member (UPDATE_11). -->
+      <button type="button" id="group_share">Share</button>
       <button type="submit" class="close">Close</button>
     </div>
   </form>
@@ -286,22 +288,22 @@
      cache between here and the browser (Cloudflare keeps .js for 4 hours) can
      then never hand this page the files of another version. Bump them all with it. -->
 <!-- The Northern identity: who is signed in, and whether the cookie is live. -->
-<script src="../../reg/sjcl.js?v=20"></script>
-<script src="../../reg/cookies.js?v=20"></script>
-<script src="../../reg/oo.js?v=20"></script>
-<script src="../../reg/idcard.js?v=20"></script>
-<script src="../../reg/keystore.js?v=20"></script>
-<script src="../../reg/session.js?v=20"></script>
+<script src="../../reg/sjcl.js?v=21"></script>
+<script src="../../reg/cookies.js?v=21"></script>
+<script src="../../reg/oo.js?v=21"></script>
+<script src="../../reg/idcard.js?v=21"></script>
+<script src="../../reg/keystore.js?v=21"></script>
+<script src="../../reg/session.js?v=21"></script>
 
-<script src="./version.js?v=20"></script>
-<script src="./model.js?v=20"></script>
-<script src="./store.js?v=20"></script>
-<script src="./seal.js?v=20"></script>
-<script src="./backup.js?v=20"></script>
-<script src="./views.js?v=20"></script>
-<script src="./calls.js?v=20"></script>
-<script src="./call.js?v=20"></script>
-<script src="./conference.js?v=20"></script>
-<script src="./pals.js?v=20"></script>
+<script src="./version.js?v=21"></script>
+<script src="./model.js?v=21"></script>
+<script src="./store.js?v=21"></script>
+<script src="./seal.js?v=21"></script>
+<script src="./backup.js?v=21"></script>
+<script src="./views.js?v=21"></script>
+<script src="./calls.js?v=21"></script>
+<script src="./call.js?v=21"></script>
+<script src="./conference.js?v=21"></script>
+<script src="./pals.js?v=21"></script>
 </body>
 </html>

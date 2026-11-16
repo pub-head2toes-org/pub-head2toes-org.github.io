@@ -195,7 +195,7 @@ function stubElements(ids) {
                 showModal() { this.open = true; },
                 clicks: 0,
                 click() { this.clicks += 1; },
-                close() { this.open = false; },
+                close() { this.open = false; if (this.listeners.close) this.listeners.close(); },
                 focus() {}, select() {}
             };
         }

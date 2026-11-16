@@ -171,7 +171,7 @@
         $('pals').innerHTML = PalsViews.pals(state, ui.pal, me);
         $('groups').innerHTML = PalsViews.groups(state, ui.group);
         $('members').innerHTML = PalsViews.members(state, ui.group, ui.member);
-        $('members_context').textContent = ui.group || '';
+        $('members_context').textContent = PalsViews.groupContext(state, ui.group, me);
 
         const messages = $('messages');
         messages.innerHTML = PalsViews.log(PalsModel.log(state, ui.filter), state, me);
@@ -181,8 +181,11 @@
         $('pal_remove').disabled = !ui.pal;
         $('pal_verify').disabled = !PalsModel.pal(state, ui.pal);
         $('group_remove').disabled = !ui.group;
-        $('member_add').disabled = !ui.group;
-        $('member_remove').disabled = !ui.member;
+        // The members of a group shared with the user are the sharer's to change.
+        const own = PalsModel.ownGroup(PalsModel.group(state, ui.group), me);
+        $('member_add').disabled = !own;
+        $('member_remove').disabled = !own || !ui.member;
+        $('group_share').disabled = !own || !PalsModel.members(state, ui.group).length;
 
         // A call is made from a pal's messages, to the key pinned for them -
         // or from a group's, to its members (UPDATE_10).
@@ -443,6 +446,8 @@
         let writing = false;
         button.textContent = m.out ? 'Edit' : 'Reply';
         button.className = '';
+        // What a share says of a group is not the user's to correct.
+        button.hidden = !!(m.out && m.share);
         $('message_answer_box').hidden = true;
         button.onclick = function () {
             if (!checkSession()) {
@@ -560,7 +565,7 @@
                     }
                     return PalsModel.pushes(message, [pub]).reduce((sent, push) => sent.then(function () {
                         const wire = { id: push.id, part: push.part, parts: push.parts };
-                        return PalsSeal.seal(ownKey, me.pub, push.to, wire, { ts: message.ts, body: push.message, att: push.att })
+                        return PalsSeal.seal(ownKey, me.pub, push.to, wire, { ts: message.ts, body: push.message, att: push.att, share: push.share })
                             .then(sealed => send({
                                 to: push.to,
                                 subscription: device.subscription,
@@ -779,6 +784,7 @@
                 throw new Error('pick a pal from the list');
             }
             const pal = PalsModel.addPal(state, entry.pub, entry.name, me);
+            PalsModel.settleShares(state, me);
             ui.pal = pal.pub;
             ui.group = null;
             ui.member = null;
@@ -806,12 +812,13 @@
         PalsModel.removePal(state, ui.pal);
         save();
         showAll();
+        shareChanged();
     }
 
     function addGroup() {
         $('group_name').value = '';
         ask('group', function () {
-            const group = PalsModel.addGroup(state, $('group_name').value);
+            const group = PalsModel.addGroup(state, $('group_name').value, me.pub);
             ui.pal = null;
             ui.group = group.name;
             ui.member = null;
@@ -851,6 +858,41 @@
         PalsModel.removeMember(state, ui.group, ui.member);
         save();
         selectGroup(ui.group);
+    }
+
+    function shareGroup(name) {
+        const message = PalsModel.share(state, me, name, Date.now(), wireId());
+        save();
+        render();
+        say('Sharing…');
+        return deliver(message);
+    }
+
+    /** Share: the group's name and members, to each member (UPDATE_11). */
+    function shareNow() {
+        if (!checkSession()) {
+            return;
+        }
+        if (!ownKey) {
+            say('Load your ID Card on this device first - messages are sealed with its key.');
+            return;
+        }
+        try {
+            return shareGroup(ui.group);
+        } catch (e) {
+            say(e.message);
+        }
+    }
+
+    /**
+     * Shares what changed in the user's groups: when the members layer closes,
+     * so that adding three people is one share, when a pal is removed, and
+     * when the page starts, for a change it did not get to send.
+     */
+    function shareChanged() {
+        if (ownKey && session.signedIn()) {
+            PalsModel.unshared(state, me).forEach(group => shareGroup(group.name));
+        }
     }
 
     /**
@@ -1840,6 +1882,8 @@
     $('group_remove').addEventListener('click', removeGroup);
     $('member_add').addEventListener('click', addMember);
     $('member_remove').addEventListener('click', removeMember);
+    $('group_share').addEventListener('click', shareNow);
+    $('dlg_members').addEventListener('close', shareChanged);
     $('call_start').addEventListener('click', startCall);
     $('hang_up').addEventListener('click', hangUp);
     $('call_answer').addEventListener('click', answerCall);
@@ -1919,6 +1963,7 @@
                 });
             }
             checkSubscription(setup);
+            shareChanged();
             return drain();
         });
     }).catch(function (e) {

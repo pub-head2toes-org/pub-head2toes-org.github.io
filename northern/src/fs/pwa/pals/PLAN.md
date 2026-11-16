@@ -1075,6 +1075,61 @@ time as a transform stream hands them over. Two runs:
    build the SFU and frame sealing together. Do not build frame sealing for
    one-to-one calls on their own (E8).
 
+## UPDATE_11.md — sharing a group (version 21)
+
+The issue: a reply to a group message reached only its sender, because the
+members of a group were known only on the device that made it.
+
+- **Share**, next to Messages in the members layer, sends the group's name and
+  members to each member. A change shares by itself when the layer closes, so
+  adding three people is one share; so does removing a pal who is in the group.
+  A new group has nobody to tell until somebody is in it. A change that could
+  not go (the page was closed, no ID Card) stays marked (`group.unshared`) and
+  goes when the page next starts.
+- **On the wire** a share is a message: `share` inside the seal, a piece of
+  `{group, members: [{pub, name}]}` as JSON text in each part, so the list has
+  no limit but `MAX_PARTS`. The `body` says *[Family] Shared this group.*, which
+  is what a Pals too old to know a share files.
+- **In the log** it is a line in the group, *Shared the group with bob, carol*,
+  with the usual delivery status and Send again. Edit is not offered.
+- **On receiving** (`PalsModel.receive`, `useShare`) the group takes the list,
+  the sharer included and the user left out, so a reply goes to everybody. A
+  member the user does not know is added as a pal.
+- **Whoever is removed is told**: the share goes to them too, the group stays
+  with nobody in it, and what was said stays. The owner can add them back.
+
+**Decisions:**
+
+- **The group has an owner**: who made it (`group.owner`). Only the owner's share
+  changes a copy, and on a copy +, − and Share are off, with *shared by alice*
+  in the title. Without this, two members changing the list would undo each
+  other.
+- **A group with no owner** (from before this version, or one that came with a
+  message) belongs to whoever shares it first, so existing groups work. These
+  never share by themselves: the owner taps Share once.
+- **Same name, other owner**: the share is refused, and a line says so. The
+  group here stays as it is.
+- **A share from somebody who is not a pal waits** in the log until they are
+  added (`settleShares`). Anybody listed in the directory can push to anybody,
+  and a share adds keys to the pals, so a stranger's must not take effect.
+- **A share older than the last one is only logged** (`group.sharedAt`, the
+  owner's clock): pushes can arrive out of order.
+
+**What this trusts:** a pal added by a share has the key the sharer sent. It is
+pinned as usual and not verified, so a dishonest owner could slip in a key
+under a friend's name. It shows as a second pal with another tag, and the Key
+comparison catches it. A pal already here keeps their key, name and mark.
+
+**Not built:**
+- Telling members when the owner removes the whole group.
+- Leaving a group: a member can remove their copy, but others still write to
+  them, and the next message or share brings it back.
+- Handing a group to a new owner.
+- A pal the user removed who is still in a shared group comes back with the
+  next share.
+
+`PALS_VERSION` is 21, with every `?v=` in both pages.
+
 ## Before it goes live
 
 1. **Fixed — the database could be downloaded.**
@@ -1184,6 +1239,7 @@ evaluation, limited to ECDH), and the browsers seal.
 | File | Tests | Covers |
 | --- | --- | --- |
 | `tests/pals.test.js` | 97 | the model (directory, splitting, prefix, compose and pushes, reassembly, the log, storage, the verified mark); **the seal** (round trip; refusal for the wrong receiver, a relabelled sender, a reflected message, a moved part, a changed byte; the key not extractable and unable to sign; fingerprints); the views; the shell (both pages, cached files, `sw.js` in a stubbed worker opening with the kept key and asking the server nothing); `pals.js` and `welcome.js` with the real identity scripts, an in-memory IndexedDB and real WebCrypto: sealing to the pinned key, opening in the page, the notice when the ID Card is not on the device, comparing keys; the premises below, with a directory round trip on a real server |
+| `tests/pals.test.js`, *sharing a group* | 18 | UPDATE_11: who a share goes to and what is owed; the group and its members on the other side, and a reply reaching them; a stranger's share waiting; the owner's list followed, late shares ignored, whoever is removed told; a group of another owner left alone; parts in any order; nonsense refused; an old Pals; storing and backups; the widest push; then the page: Share, sharing on closing the layer, Send again, a member's copy, a stranger added |
 | `tests/palsConference.test.js` | 15 | UPDATE_10: the ring's `with` and `group`, and what is refused; names; the video sizes; the worker naming who else is in a call; then three, four and five devices on one fake network: everybody rung and told who else is in it, six and twelve connections with the smaller key offering, the grid, tap to make large (sizes per connection), mic and camera, one leaving and the last, somebody introduced, the picker of three, one added in the middle of a call of two, a decline and no answer |
 | `tests/PushApi.test.js` | 21 | RFC 8291 byte for byte against Appendix A, and opened by WebCrypto; the VAPID token; the provider list (with the page agreeing); then through `Server.js` on a throwaway DB: the config row made, kept and unreadable, one written by somebody else refused, every refusal of `send`, the exact payload limit and the largest part the page makes, a full round trip of a browser-sealed message (the payload strict UTF-8, `from` taken from the cookie, the seal untouched, and opening only for bob), no `/push/api/open`, the push service's answers, the database file out of reach, and the `pals.` host guard |
 
@@ -1191,7 +1247,7 @@ evaluation, limited to ECDH), and the browsers seal.
 imports a private key, non-extractable, for `deriveBits` only, and never
 exports it.
 
-The full suite has 1,388 tests (as of version 20). The ones that fail were
+The full suite has 1,443 tests (as of version 21). The ones that fail were
 failing before this change: 98 in `bandage.test.js`, one flaky test in
 `grinder.test.js` (it passes on some runs), and `browserIdentity.test.js`, which flags
 `example/OpenChannel/msg.html` for rebuilding the SJCL key from

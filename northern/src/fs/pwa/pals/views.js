@@ -180,6 +180,16 @@ const PalsViews = (function () {
         ).join('');
     };
 
+    /** What the members layer says of a group: its name, and whose it is when it is somebody else's. */
+    api.groupContext = function (state, groupName, me) {
+        const group = PalsModel.group(state, groupName);
+        if (!group) {
+            return groupName || '';
+        }
+        return PalsModel.ownGroup(group, me) ? group.name
+            : group.name + ', shared by ' + PalsModel.nameOf(state, group.owner, me);
+    };
+
     api.members = function (state, groupName, selected) {
         if (!PalsModel.group(state, groupName)) {
             return api.empty('Pick a group to see who is in it.');

@@ -46,6 +46,8 @@ const PalsModel = (function () {
     api.DIRECTORY = '/pals/';
     // What the log says of a video call that was not taken (calls.js).
     api.MISSED_CALL = 'Missed video call';
+    // What a share says to a Pals too old to know one, which files it as a message.
+    api.SHARED = 'Shared this group.';
 
     api.empty = function () {
         return { v: api.VERSION, seq: 0, pals: [], groups: [], messages: [], incoming: [], unread: [] };
@@ -223,7 +225,10 @@ const PalsModel = (function () {
      */
     api.removePal = function (state, pub) {
         state.pals = state.pals.filter(p => p.pub !== pub);
-        state.groups.forEach(g => { g.members = g.members.filter(m => m !== pub); });
+        state.groups.filter(g => g.members.indexOf(pub) !== -1).forEach(function (g) {
+            g.members = g.members.filter(m => m !== pub);
+            changed(g, pub);
+        });
         state.incoming = state.incoming.filter(p => p !== pub);
         state.unread = state.unread.filter(p => p !== pub);
     };
@@ -263,10 +268,15 @@ const PalsModel = (function () {
 
     // ---- groups --------------------------------------------------------
     //
-    // A group is a name and a list of pals, and lives only here (UPDATE_1).
-    // Nobody else has it: a message to a group goes to each member on their
-    // own, its text starting with [<group name>], and whoever receives it
-    // files it under a group of that name of their own.
+    // A group is a name and a list of pals, and each device has its own copy
+    // (UPDATE_1): a message to a group goes to each member on their own, its
+    // text starting with [<group name>], and whoever receives it files it
+    // under a group of that name of their own.
+    //
+    // The list is the `owner`'s, who made the group, and goes to its members
+    // in a share (UPDATE_11); a member's copy takes the owner's word for it.
+    // A group with no owner - from before shares, or that came with a message
+    // - is whoever's shares it first.
 
     const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 
@@ -285,12 +295,15 @@ const PalsModel = (function () {
         return clean;
     };
 
-    api.addGroup = function (state, name) {
+    api.addGroup = function (state, name, owner) {
         const clean = api.groupName(name);
         if (api.group(state, clean)) {
             throw new Error('there is already a group called ' + clean);
         }
         const group = { name: clean, members: [] };
+        if (owner) {
+            group.owner = owner;
+        }
         state.groups.push(group);
         return group;
     };
@@ -298,6 +311,19 @@ const PalsModel = (function () {
     api.removeGroup = function (state, name) {
         state.groups = state.groups.filter(g => !same(g.name, name));
     };
+
+    /** Whether the user says who is in a group: everybody's own, or one nobody shared. */
+    api.ownGroup = function (group, me) {
+        return !!group && (!group.owner || group.owner === me.pub);
+    };
+
+    // A change to a group with an owner reaches its members with the next
+    // share: until then `unshared` is there, and lists who left.
+    function changed(group, left) {
+        if (group.owner) {
+            group.unshared = (group.unshared || []).concat(left || []);
+        }
+    }
 
     const needGroup = function (state, name) {
         const group = api.group(state, name);
@@ -314,13 +340,17 @@ const PalsModel = (function () {
         }
         if (group.members.indexOf(pub) === -1) {
             group.members.push(pub);
+            changed(group);
         }
         return group;
     };
 
     api.removeMember = function (state, name, pub) {
         const group = needGroup(state, name);
-        group.members = group.members.filter(m => m !== pub);
+        if (group.members.indexOf(pub) !== -1) {
+            group.members = group.members.filter(m => m !== pub);
+            changed(group, pub);
+        }
         return group;
     };
 
@@ -346,6 +376,142 @@ const PalsModel = (function () {
         const found = PREFIX.exec(String(text || ''));
         const name = found ? api.cleanName(found[1]) : '';
         return name ? { group: name, text: text.slice(found[0].length) } : { group: '', text: String(text || '') };
+    };
+
+    // ---- sharing a group (UPDATE_11) --------------------------------------
+    //
+    // A share is a message of its own: the group's name and members in the
+    // seal, as `share`, to every member and whoever just left. It is logged
+    // in the group, says how it got on and can be sent again like any other.
+
+    /** Who a share of this group goes to. */
+    const sharedWith = function (group) {
+        return group.members.concat((group.unshared || []).filter(pub => group.members.indexOf(pub) === -1));
+    };
+
+    /** The groups the user owns with a change their members have not heard of. */
+    api.unshared = function (state, me) {
+        return state.groups.filter(g => g.owner === me.pub && g.unshared && sharedWith(g).length);
+    };
+
+    /** A share the user sends: from now on, the group is theirs. */
+    api.share = function (state, me, name, ts, wire) {
+        const group = needGroup(state, name);
+        if (!api.ownGroup(group, me)) {
+            throw new Error('only ' + api.nameOf(state, group.owner, me) + ' can share ' + group.name);
+        }
+        const to = sharedWith(group);
+        if (!to.length) {
+            throw new Error('nobody is in ' + group.name + ' yet');
+        }
+        const members = api.members(state, group.name);
+        const delivery = {};
+        to.forEach(pub => { delivery[pub] = 'sending'; });
+        group.owner = me.pub;
+        delete group.unshared;
+        return file(state, {
+            ts: ts,
+            out: true,
+            wire: wire,
+            from: me.pub,
+            fromName: me.name || api.UNKNOWN,
+            to: { kind: 'group', id: group.name, name: group.name },
+            body: members.length ? 'Shared the group with ' + members.map(p => p.name).join(', ') : 'Nobody is left in the group',
+            delivery: delivery,
+            share: { group: group.name, members: members.map(p => ({ pub: p.pub, name: p.name })) }
+        });
+    };
+
+    /**
+     * A share's pushes: its JSON, cut to fit, one piece in each part. An old
+     * Pals reads the words of the first part and drops the rest.
+     */
+    const sharePushes = function (message, pubs) {
+        const group = api.prefix(message.to.name);
+        const cut = api.split(JSON.stringify(message.share), group + api.SHARED, bytesOf(',"share":""'));
+        const out = [];
+        pubs.forEach(function (to) {
+            cut.forEach(function (share, i) {
+                out.push({ to: to, id: message.wire, part: i + 1, parts: cut.length, message: group + (i ? '' : api.SHARED), share: share });
+            });
+        });
+        return out;
+    };
+
+    /** The JSON of a share as it came, checked - or null when it makes no sense. */
+    const readShare = function (text, from) {
+        try {
+            const share = JSON.parse(text);
+            const members = share.members.filter(x => x && api.isPub(x.pub) && x.pub !== from);
+            return { group: api.groupName(share.group), members: members.map(x => ({ pub: x.pub, name: api.cleanName(x.name) || api.UNKNOWN })) };
+        } catch (e) {
+            return null;
+        }
+    };
+
+    const said = function (m, text) {
+        m.body = text;
+        m.parts = [text];
+    };
+
+    /**
+     * A share from a pal, put to use. The group takes its members, with
+     * whoever is new added as a pal: their key comes from the sharer, so they
+     * are not verified, and a name given here stays. A share older than the
+     * one the group has is only logged. Whoever is not in it any more has
+     * nobody left in the group, and keeps what was said.
+     */
+    const useShare = function (state, me, m) {
+        const share = m.share;
+        const here = api.group(state, share.group);
+        share.pending = false;
+        if (here && here.owner && here.owner !== m.from) {
+            said(m, 'Shared a group called ' + share.group + ', but you have a group of that name already');
+            return;
+        }
+        const group = here || api.addGroup(state, share.group);
+        m.to = { kind: 'group', id: group.name, name: group.name };
+        const stays = share.members.some(x => x.pub === me.pub);
+        const others = share.members.filter(x => x.pub !== me.pub);
+        said(m, !stays ? 'Removed you from the group' : 'Shared the group with ' + ['you'].concat(others.map(function (x) {
+            const known = api.pal(state, x.pub);
+            return known ? known.name : x.name;
+        })).join(', '));
+        if (m.ts < group.sharedAt) {
+            return;
+        }
+        group.owner = m.from;
+        group.sharedAt = m.ts;
+        group.members = stays ? [m.from].concat(others.map(x => x.pub)) : [];
+        if (stays) {
+            others.filter(x => !api.pal(state, x.pub)).forEach(x => api.addPal(state, x.pub, x.name, me));
+        }
+    };
+
+    /**
+     * Puts to use the shares that wait for their sender to be a pal, oldest
+     * first: a stranger's word adds nobody to the pals. Run once a pal is added.
+     */
+    api.settleShares = function (state, me) {
+        const waiting = () => state.messages.filter(m => m.share && m.share.pending && api.pal(state, m.from))
+            .sort((a, b) => a.ts - b.ts);
+        for (let m = waiting()[0]; m; m = waiting()[0]) {
+            useShare(state, me, m);
+        }
+    };
+
+    /** A share with its last part in: waits for its sender to be a pal, or goes to use. */
+    const sharedIn = function (state, me, m) {
+        const share = m.complete ? readShare(m.body, m.from) : null;
+        if (!m.complete) {
+            m.body = 'Sharing a group...';
+        } else if (!share) {
+            said(m, 'Shared a group that could not be read');
+        } else {
+            m.share = Object.assign(share, { pending: true });
+            said(m, 'Shared the group ' + share.group + '. Add them with + to join it.');
+            api.settleShares(state, me);
+        }
     };
 
     // ---- messages ------------------------------------------------------
@@ -607,6 +773,9 @@ const PalsModel = (function () {
      * attachment - uploaded by now - goes with every part too, as `att`.
      */
     api.pushes = function (message, pubs) {
+        if (message.share) {
+            return sharePushes(message, pubs || Object.keys(message.delivery || {}));
+        }
         const group = message.to.kind === 'group' ? api.prefix(message.to.name) : '';
         const att = message.attachment ? api.wireAttachment(message.attachment) : null;
         const cut = api.split(message.body, group, api.attachmentCost(att));
@@ -650,13 +819,15 @@ const PalsModel = (function () {
 
     /**
      * An envelope PalsSeal.open returned: `{from, to, ts, id, part, parts,
-     * body, att?}`. It opened with the key shared with `from` alone, so `from` is
+     * body, att?, share?}`. It opened with the key shared with `from` alone, so `from` is
      * who wrote it.
      *
      * Parts of one message share an `id`, and come in any order or not at all:
      * the message is filed when its first part comes, and filled in as the rest
      * do. `fromName` is what the directory calls the sender, for somebody who
-     * is not a pal. Returns the message, or null for a part already seen.
+     * is not a pal. A share comes the same way, and is its `share`s put
+     * together, never its words. Returns the message, or null for a part
+     * already seen.
      */
     api.receive = function (state, me, envelope, fromName) {
         const e = envelope || {};
@@ -666,7 +837,8 @@ const PalsModel = (function () {
         const parts = Math.min(Math.max(Number(e.parts) || 1, 1), api.MAX_PARTS);
         const part = Math.min(Math.max(Number(e.part) || 1, 1), parts);
         const wire = e.from + ' ' + String(e.id || '');
-        const read = api.unprefix(e.body);
+        const shared = typeof e.share === 'string';
+        const read = shared ? { group: '', text: e.share } : api.unprefix(e.body);
         let group = read.group ? api.group(state, read.group) : null;
         if (read.group && !group) {
             // A group the user does not have comes into being with the message,
@@ -704,6 +876,9 @@ const PalsModel = (function () {
         m.parts[part - 1] = read.text;
         m.body = joined(m.parts);
         m.complete = m.parts.every(p => p !== null);
+        if (shared) {
+            sharedIn(state, me, m);
+        }
         api.noteIncoming(state, e.from);
         api.markUnread(state, e.from, true);
         return m;
@@ -832,7 +1007,17 @@ const PalsModel = (function () {
         list(stored.groups).forEach(function (g) {
             const name = g && api.cleanName(g.name);
             if (name && !/[\[\]]/.test(name) && !api.group(state, name)) {
-                state.groups.push({ name: name, members: list(g.members).filter(api.isPub) });
+                const group = { name: name, members: list(g.members).filter(api.isPub) };
+                if (api.isPub(g.owner)) {
+                    group.owner = g.owner;
+                }
+                if (Number(g.sharedAt) > 0) {
+                    group.sharedAt = Number(g.sharedAt);
+                }
+                if (Array.isArray(g.unshared)) {
+                    group.unshared = g.unshared.filter(api.isPub);
+                }
+                state.groups.push(group);
             }
         });
         state.messages = list(stored.messages)
@@ -876,8 +1061,10 @@ const PalsModel = (function () {
         backup.groups.forEach(function (g) {
             let group = api.group(state, g.name);
             if (!group) {
-                group = { name: g.name, members: [] };
-                state.groups.push(group);
+                group = api.addGroup(state, g.name, g.owner);
+                if (g.sharedAt) {
+                    group.sharedAt = g.sharedAt;
+                }
                 added.groups += 1;
             }
             g.members.filter(pub => api.pal(state, pub) && group.members.indexOf(pub) === -1)
@@ -907,6 +1094,9 @@ const PalsModel = (function () {
         });
         backup.incoming.filter(pub => state.incoming.indexOf(pub) === -1)
             .forEach(pub => state.incoming.push(pub));
+        if (me) {
+            api.settleShares(state, me);
+        }
         return added;
     };
 
